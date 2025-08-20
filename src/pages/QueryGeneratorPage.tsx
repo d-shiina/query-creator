@@ -3,11 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { KintoneApp, KintoneField, QueryCondition, KintoneAuth } from '@/types/kintone';
-import { ArrowLeft, Plus, Trash2, Copy, Play, Code, Eye, Loader2 } from 'lucide-react';
+import ToggleTheme from '@/components/ToggleTheme';
+import { KintoneAuth, KintoneApp, KintoneField, QueryCondition } from '@/types/kintone';
+import { ArrowLeft, Plus, Trash2, Copy, Play, Loader2, Code } from 'lucide-react';
 
 interface QueryGeneratorPageProps {
   auth: KintoneAuth;
@@ -213,7 +214,7 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex items-center space-x-3">
           <Loader2 className="w-6 h-6 animate-spin" />
           <span>フィールド情報を読み込み中...</span>
@@ -223,29 +224,32 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* ヘッダー */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center py-4 space-x-4">
-            <Button variant="ghost" onClick={onBack}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              戻る
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                クエリ生成 - {app.name}
-              </h1>
-              <p className="text-sm text-gray-500">アプリID: {app.appId}</p>
+          <div className="flex items-center justify-between py-4">
+            <div className="flex items-center space-x-4">
+              <Button variant="ghost" onClick={onBack}>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                戻る
+              </Button>
+              <div>
+                <h1 className="text-2xl font-semibold">
+                  クエリ生成 - {app.name}
+                </h1>
+                <p className="text-sm text-muted-foreground">アプリID: {app.appId}</p>
+              </div>
             </div>
+            <ToggleTheme />
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700">{error}</p>
+          <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <p className="text-destructive">{error}</p>
           </div>
         )}
 
@@ -261,7 +265,7 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
               </CardHeader>
               <CardContent className="space-y-4">
                 {conditions.map((condition, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-3">
+                  <div key={index} className="border border-border rounded-lg p-4 space-y-3">
                     {index > 0 && (
                       <div>
                         <Label>論理演算子</Label>
@@ -424,13 +428,13 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                   </TabsList>
                   
                   <TabsContent value="query" className="space-y-4">
-                    <div className="bg-gray-100 rounded-lg p-4 min-h-[200px]">
+                    <div className="bg-muted rounded-lg p-4 min-h-[200px]">
                       {generatedQuery ? (
-                        <pre className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                        <pre className="text-sm text-foreground whitespace-pre-wrap break-words">
                           {JSON.stringify(generatedQuery)}
                         </pre>
                       ) : (
-                        <p className="text-gray-500 text-center">
+                        <p className="text-muted-foreground text-center">
                           条件を設定してクエリを生成してください
                         </p>
                       )}
@@ -455,26 +459,26 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                   </TabsContent>
                   
                   <TabsContent value="preview" className="space-y-4">
-                    <div className="bg-gray-100 rounded-lg p-4 min-h-[200px]">
+                    <div className="bg-muted rounded-lg p-4 min-h-[200px]">
                       <div className="text-sm space-y-2">
-                        <div className="font-semibold">API URL:</div>
-                        <div className="bg-white p-2 rounded text-xs break-all">
+                        <div className="font-semibold text-foreground">API URL:</div>
+                        <div className="bg-background border border-border p-2 rounded text-xs break-all text-foreground">
                           GET https://{auth.subdomain}.cybozu.com/k/v1/records.json?app={app.appId}
                           {generatedQuery && `&query=${encodeURIComponent(generatedQuery)}&totalCount=true`}
                         </div>
                         
-                        <div className="font-semibold">Request Headers:</div>
-                        <div className="bg-white p-2 rounded text-xs">
-                          <pre>{JSON.stringify({
+                        <div className="font-semibold text-foreground">Request Headers:</div>
+                        <div className="bg-background border border-border p-2 rounded text-xs">
+                          <pre className="text-foreground">{JSON.stringify({
                             "X-Cybozu-Authorization": "Base64認証情報"
                           }, null, 2)}</pre>
                         </div>
                         
                         {generatedQuery && (
                           <>
-                            <div className="font-semibold">Query Parameter:</div>
-                            <div className="bg-white p-2 rounded text-xs">
-                              <pre>query={JSON.stringify(generatedQuery)}</pre>
+                            <div className="font-semibold text-foreground">Query Parameter:</div>
+                            <div className="bg-background border border-border p-2 rounded text-xs">
+                              <pre className="text-foreground">query={JSON.stringify(generatedQuery)}</pre>
                             </div>
                           </>
                         )}
@@ -503,10 +507,10 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                     
                     <TabsContent value="table" className="space-y-4">
                       {queryResult.records.length > 0 ? (
-                        <div className="overflow-x-auto max-h-96">
+                        <div className="overflow-x-auto max-h-96 scrollbar-thin">
                           <table className="w-full text-sm border-collapse">
                             <thead>
-                              <tr className="border-b bg-gray-50">
+                              <tr className="border-b bg-muted/50">
                                 {Object.keys(queryResult.records[0]).map(fieldCode => (
                                   <th key={fieldCode} className="p-2 text-left font-medium border-r">
                                     {fields.find(f => f.code === fieldCode)?.label || fieldCode}
@@ -516,7 +520,7 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                             </thead>
                             <tbody>
                               {queryResult.records.map((record: any, index: number) => (
-                                <tr key={index} className="border-b hover:bg-gray-50">
+                                <tr key={index} className="border-b hover:bg-muted/30">
                                   {Object.entries(record).map(([fieldCode, fieldData]: [string, any]) => (
                                     <td key={fieldCode} className="p-2 border-r max-w-48 overflow-hidden text-ellipsis">
                                       {formatFieldValue(fieldData)}
@@ -528,13 +532,13 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                           </table>
                         </div>
                       ) : (
-                        <p className="text-gray-500 text-center py-8">レコードがありません</p>
+                        <p className="text-muted-foreground text-center py-8">レコードがありません</p>
                       )}
                     </TabsContent>
                     
                     <TabsContent value="json" className="space-y-4">
-                      <div className="bg-gray-100 rounded-lg p-4 max-h-96 overflow-y-auto">
-                        <pre className="text-xs text-gray-600">
+                      <div className="bg-muted rounded-lg p-4 max-h-96 overflow-y-auto scrollbar-hover border border-border">
+                        <pre className="text-xs text-foreground">
                           {JSON.stringify(queryResult.records, null, 2)}
                         </pre>
                       </div>
@@ -550,12 +554,12 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                 <CardTitle>利用可能フィールド</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
+                <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto scrollbar-hover">
                   {fields.map(field => (
-                    <div key={field.code} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                    <div key={field.code} className="flex justify-between items-center p-2 bg-muted rounded border border-border">
                       <div>
-                        <div className="font-medium text-sm">{field.label}</div>
-                        <div className="text-xs text-gray-500">{field.code}</div>
+                        <div className="font-medium text-sm text-foreground">{field.label}</div>
+                        <div className="text-xs text-muted-foreground">{field.code}</div>
                       </div>
                       <Badge variant="secondary" className="text-xs">
                         {field.type}

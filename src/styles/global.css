@@ -201,3 +201,74 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* カスタムスクロールバー */
+@layer base {
+  /* Webkit系ブラウザ用のスクロールバー */
+  ::-webkit-scrollbar {
+    @apply h-2 w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border hover:bg-border/80 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+
+  /* ダークテーマでのスクロールバー */
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 hover:bg-muted-foreground/30;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+
+  /* Firefox用のスクロールバー */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .dark * {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
+  }
+}
+
+/* より細いスクロールバー用のユーティリティクラス */
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    @apply h-1 w-1;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    @apply hidden;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  /* ホバー時にのみ表示するスクロールバー */
+  .scrollbar-hover::-webkit-scrollbar {
+    @apply h-0 w-0;
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar {
+    @apply h-1 w-1;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar-thumb {
+    @apply bg-transparent;
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 hover:bg-muted-foreground/30 rounded-full;
+  }
+}

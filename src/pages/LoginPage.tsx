@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PasswordInput } from '@/components/ui/password-input';
+import ToggleTheme from '@/components/ToggleTheme';
 import { KintoneAuth } from '@/types/kintone';
 import { Lock, User, Globe, AlertCircle, Settings } from 'lucide-react';
 
@@ -105,49 +107,60 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="absolute top-4 right-4">
+        <ToggleTheme />
+      </div>
+      
+      <Card className="w-full max-w-md border-border shadow-lg">
+        <CardHeader className="space-y-2 text-center">
+          <CardTitle className="text-2xl font-semibold">
             Kintone Query Creator
           </CardTitle>
-          <CardDescription className="text-center">
+          <CardDescription>
             Kintoneアカウントでログインしてください
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="flex items-center space-x-2 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md">
-                <AlertCircle className="h-4 w-4" />
+              <div className="flex items-center space-x-2 p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 <span>{error}</span>
               </div>
             )}
             
             {/* サブドメイン */}
             <div className="space-y-2">
-              <Label htmlFor="subdomain">サブドメイン</Label>
+              <Label htmlFor="subdomain" className="text-sm font-medium">
+                サブドメイン
+              </Label>
               <div className="relative">
-                <Globe className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Globe className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="subdomain"
                   placeholder="your-company"
                   value={formData.subdomain}
                   onChange={handleChange('subdomain')}
-                  className="pl-10"
+                  className="pl-10 pr-20"
                   required
                 />
+                <div className="absolute right-3 top-3 text-sm text-muted-foreground">
+                  .cybozu.com
+                </div>
               </div>
-              <p className="text-xs text-gray-500">
-                https://your-company.cybozu.com の「your-company」部分
+              <p className="text-xs text-muted-foreground">
+                例: https://your-company.cybozu.com の「your-company」部分
               </p>
             </div>
 
             {/* ログインID */}
             <div className="space-y-2">
-              <Label htmlFor="username">ログインID</Label>
+              <Label htmlFor="username" className="text-sm font-medium">
+                ログインID
+              </Label>
               <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="username"
                   placeholder="ログインID"
@@ -161,12 +174,13 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
             {/* パスワード */}
             <div className="space-y-2">
-              <Label htmlFor="password">パスワード</Label>
+              <Label htmlFor="password" className="text-sm font-medium">
+                パスワード
+              </Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground z-10" />
+                <PasswordInput
                   id="password"
-                  type="password"
                   placeholder="パスワード"
                   value={formData.password}
                   onChange={handleChange('password')}
@@ -188,18 +202,23 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               </Label>
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={isLoading}
+              size="lg"
+            >
               {isLoading ? 'ログイン中...' : 'ログイン'}
             </Button>
           </form>
 
           {/* DevTools Control */}
-          <div className="mt-4 flex justify-center space-x-2">
+          <div className="flex justify-center">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => window.electronWindow?.toggleDevTools()}
+              onClick={() => (window as any).electronWindow?.toggleDevTools()}
               className="text-xs"
             >
               <Settings className="h-3 w-3 mr-1" />
@@ -207,10 +226,10 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             </Button>
           </div>
 
-          <div className="mt-6 text-center text-xs text-gray-500">
+          <div className="text-center text-xs text-muted-foreground space-y-1">
             <p>パスワード認証でKintone APIに接続します</p>
-            <p>パスワードは保存されません（サブドメインとログインIDのみ保存可能）</p>
-            <p className="mt-2 text-blue-600">
+            <p>パスワードは保存されません</p>
+            <p className="text-primary">
               CORS回避のためElectronのネットワーク機能を使用
             </p>
           </div>

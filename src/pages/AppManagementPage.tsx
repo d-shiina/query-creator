@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import ToggleTheme from '@/components/ToggleTheme';
 import { KintoneApp, AppFilter, KintoneAuth } from '@/types/kintone';
 import { Search, Star, StarOff, Settings, Play, Loader2 } from 'lucide-react';
 import { getFavoriteApps, addToFavorites, removeFromFavorites, isAppFavorite } from '@/utils/favorites';
@@ -30,11 +31,11 @@ export default function AppManagementPage({ auth, onSelectApp, onLogout }: AppMa
         setLoading(true);
         setError('');
         
-        const result = await window.kintoneAPI.getApps(auth);
+        const result = await (window as any).kintoneAPI.getApps(auth);
         
         if (result.success && result.data) {
           // お気に入り状態を設定
-          const appsWithFavorites = result.data.map(app => ({
+          const appsWithFavorites = result.data.map((app: any) => ({
             ...app,
             isFavorite: isAppFavorite(app.appId)
           }));
@@ -78,22 +79,25 @@ export default function AppManagementPage({ auth, onSelectApp, onLogout }: AppMa
   });
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* ヘッダー */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-2xl font-semibold">
               Kintone Query Creator
             </h1>
-            <Button variant="outline" onClick={onLogout}>
-              ログアウト
-            </Button>
+            <div className="flex items-center gap-2">
+              <ToggleTheme />
+              <Button variant="outline" onClick={onLogout}>
+                ログアウト
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* エラー表示 */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -121,7 +125,7 @@ export default function AppManagementPage({ auth, onSelectApp, onLogout }: AppMa
             <div className="mb-6 space-y-4">
               <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="アプリ名で検索..."
                     value={filter.searchTerm}
@@ -134,7 +138,7 @@ export default function AppManagementPage({ auth, onSelectApp, onLogout }: AppMa
                   onClick={() => setFilter(prev => ({ ...prev, showFavoritesOnly: !prev.showFavoritesOnly }))}
                   className="whitespace-nowrap"
                 >
-                  <Star className="w-4 h-4 mr-2" />
+                  <Star className={`w-4 h-4 mr-2 ${filter.showFavoritesOnly ? 'fill-current' : ''}`} />
                   お気に入りのみ
                 </Button>
               </div>
@@ -143,12 +147,12 @@ export default function AppManagementPage({ auth, onSelectApp, onLogout }: AppMa
             {/* アプリ一覧 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredApps.map(app => (
-                <Card key={app.appId} className="hover:shadow-lg transition-shadow">
+                <Card key={app.appId} className="hover:shadow-md transition-all duration-200 border-border hover:border-primary/50">
                   <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg">{app.name}</CardTitle>
-                        <Badge variant="secondary" className="mt-1">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg font-semibold truncate">{app.name}</CardTitle>
+                        <Badge variant="secondary" className="mt-2 text-xs">
                           ID: {app.appId}
                         </Badge>
                       </div>
@@ -156,29 +160,30 @@ export default function AppManagementPage({ auth, onSelectApp, onLogout }: AppMa
                         variant="ghost"
                         size="sm"
                         onClick={() => toggleFavorite(app.appId)}
-                        className="text-yellow-500 hover:text-yellow-600"
+                        className="flex-shrink-0"
                       >
                         {app.isFavorite ? (
-                          <Star className="w-4 h-4 fill-current" />
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                         ) : (
-                          <StarOff className="w-4 h-4" />
+                          <Star className="w-4 h-4 text-muted-foreground hover:text-yellow-400" />
                         )}
                       </Button>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <CardDescription className="mb-4 min-h-[2.5rem]">
+                    <CardDescription className="mb-4 min-h-[2.5rem] text-sm">
                       {cleanAndTruncateText(app.description || 'アプリの説明はありません', 80)}
                     </CardDescription>
                     <div className="flex gap-2">
                       <Button
                         onClick={() => onSelectApp(app)}
                         className="flex-1"
+                        size="sm"
                       >
                         <Play className="w-4 h-4 mr-2" />
                         クエリ生成
                       </Button>
-                      <Button variant="outline" size="icon">
+                      <Button variant="outline" size="sm" className="px-3">
                         <Settings className="w-4 h-4" />
                       </Button>
                     </div>

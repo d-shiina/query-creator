@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import LoginPage from '@/pages/LoginPage';
 import AppManagementPage from '@/pages/AppManagementPage';
 import QueryGeneratorPage from '@/pages/QueryGeneratorPage';
 import DragWindowRegion from '@/components/DragWindowRegion';
 import { KintoneAuth, KintoneApp } from '@/types/kintone';
+import { syncThemeWithLocal } from '@/helpers/theme_helpers';
 import './styles/global.css';
 
 type AppState = 'login' | 'appManagement' | 'queryGenerator';
@@ -12,6 +13,11 @@ function App() {
   const [currentState, setCurrentState] = useState<AppState>('login');
   const [auth, setAuth] = useState<KintoneAuth | null>(null);
   const [selectedApp, setSelectedApp] = useState<KintoneApp | null>(null);
+
+  // テーマの初期化
+  useEffect(() => {
+    syncThemeWithLocal();
+  }, []);
 
   const handleLogin = (authData: KintoneAuth) => {
     setAuth(authData);
@@ -65,7 +71,7 @@ function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <DragWindowRegion title="Kintone Query Creator" />
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-thin">
         {renderContent()}
       </div>
     </div>
