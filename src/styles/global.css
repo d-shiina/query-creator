@@ -182,7 +182,7 @@
 
 @layer base {
   body {
-    @apply overflow-hidden;
+    @apply bg-background text-foreground;
   }
   .draglayer {
     @apply bg-background;

@@ -1,26 +1,75 @@
-import React, { useEffect } from "react";
-import { createRoot } from "react-dom/client";
-import { syncThemeWithLocal } from "./helpers/theme_helpers";
-import { useTranslation } from "react-i18next";
-import "./localization/i18n";
-import { updateAppLanguage } from "./helpers/language_helpers";
-import { router } from "./routes/router";
-import { RouterProvider } from "@tanstack/react-router";
+import { useState } from 'react';
+import LoginPage from '@/pages/LoginPage';
+import AppManagementPage from '@/pages/AppManagementPage';
+import QueryGeneratorPage from '@/pages/QueryGeneratorPage';
+import DragWindowRegion from '@/components/DragWindowRegion';
+import { KintoneAuth, KintoneApp } from '@/types/kintone';
+import './styles/global.css';
 
-export default function App() {
-  const { i18n } = useTranslation();
+type AppState = 'login' | 'appManagement' | 'queryGenerator';
 
-  useEffect(() => {
-    syncThemeWithLocal();
-    updateAppLanguage(i18n);
-  }, [i18n]);
+function App() {
+  const [currentState, setCurrentState] = useState<AppState>('login');
+  const [auth, setAuth] = useState<KintoneAuth | null>(null);
+  const [selectedApp, setSelectedApp] = useState<KintoneApp | null>(null);
 
-  return <RouterProvider router={router} />;
+  const handleLogin = (authData: KintoneAuth) => {
+    setAuth(authData);
+    setCurrentState('appManagement');
+  };
+
+  const handleLogout = () => {
+    setAuth(null);
+    setSelectedApp(null);
+    setCurrentState('login');
+  };
+
+  const handleSelectApp = (app: KintoneApp) => {
+    setSelectedApp(app);
+    setCurrentState('queryGenerator');
+  };
+
+  const handleBackToApps = () => {
+    setSelectedApp(null);
+    setCurrentState('appManagement');
+  };
+
+  const renderContent = () => {
+    switch (currentState) {
+      case 'login':
+        return <LoginPage onLogin={handleLogin} />;
+      
+      case 'appManagement':
+        return auth ? (
+          <AppManagementPage 
+            auth={auth}
+            onSelectApp={handleSelectApp} 
+            onLogout={handleLogout} 
+          />
+        ) : <LoginPage onLogin={handleLogin} />;
+      
+      case 'queryGenerator':
+        return selectedApp && auth ? (
+          <QueryGeneratorPage 
+            auth={auth}
+            app={selectedApp} 
+            onBack={handleBackToApps} 
+          />
+        ) : <LoginPage onLogin={handleLogin} />;
+      
+      default:
+        return <LoginPage onLogin={handleLogin} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <DragWindowRegion title="Kintone Query Creator" />
+      <div className="flex-1 overflow-auto">
+        {renderContent()}
+      </div>
+    </div>
+  );
 }
 
-const root = createRoot(document.getElementById("app")!);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+export default App;

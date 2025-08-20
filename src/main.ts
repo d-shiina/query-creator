@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from "electron";
 import registerListeners from "./helpers/ipc/listeners-register";
+import { setupKintoneAPI } from "./main/kintone-api";
 // "electron-squirrel-startup" seems broken when packaging with vite
 //import started from "electron-squirrel-startup";
 import path from "path";
@@ -46,6 +47,9 @@ async function installExtensions() {
 }
 
 app.whenReady().then(createWindow).then(installExtensions);
+
+// Kintone API handlers
+setupKintoneAPI();
 
 //osX only
 app.on("window-all-closed", () => {

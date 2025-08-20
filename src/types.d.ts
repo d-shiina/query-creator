@@ -4,6 +4,8 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+import { KintoneAuth, KintoneApp, KintoneField } from "./types/kintone";
+
 // Preload types
 interface ThemeModeContext {
   toggle: () => Promise<boolean>;
@@ -16,9 +18,20 @@ interface ElectronWindow {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
+  toggleDevTools: () => Promise<void>;
+  openDevTools: () => Promise<void>;
+  closeDevTools: () => Promise<void>;
+}
+
+interface KintoneAPIContext {
+  login: (auth: KintoneAuth) => Promise<{ success: boolean; error?: string }>;
+  getApps: (auth: KintoneAuth) => Promise<{ success: boolean; data?: KintoneApp[]; error?: string }>;
+  getAppFields: (auth: KintoneAuth, appId: string) => Promise<{ success: boolean; data?: KintoneField[]; error?: string }>;
+  executeQuery: (auth: KintoneAuth, appId: string, query: string) => Promise<{ success: boolean; data?: { records: any[]; totalCount: number }; error?: string }>;
 }
 
 declare interface Window {
   themeMode: ThemeModeContext;
   electronWindow: ElectronWindow;
+  kintoneAPI: KintoneAPIContext;
 }
