@@ -6,9 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import ToggleTheme from '@/components/ToggleTheme';
 import { KintoneAuth, KintoneApp, KintoneField, QueryCondition } from '@/types/kintone';
-import { ArrowLeft, Plus, Trash2, Copy, Play, Loader2, Code } from 'lucide-react';
+import { useQueryGenerator } from '@/hooks/useQueryGenerator';
+import { ArrowLeft, Plus, Trash2, Copy, Play, Loader2, Code, ChevronRight, ChevronLeft, Save, Download, Calendar } from 'lucide-react';
 
 interface QueryGeneratorPageProps {
   auth: KintoneAuth;
@@ -44,6 +46,15 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
   const [generatedQuery, setGeneratedQuery] = useState('');
   const [queryResult, setQueryResult] = useState<any>(null);
   const [executing, setExecuting] = useState(false);
+  const [activeQueryTab, setActiveQueryTab] = useState('query');
+  const [activeResultTab, setActiveResultTab] = useState('table');
+  
+  // Query saving states
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [queryName, setQueryName] = useState('');
+  
+  // Use query generator hook
+  const { savedQueries, saveQuery, deleteQuery } = useQueryGenerator(app.appId);
 
   // Kintoneのフィールド値を適切に表示用文字列に変換する関数
   const formatFieldValue = (fieldData: any): string => {
@@ -126,6 +137,41 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
 
     fetchFields();
   }, [auth, app.appId]);
+
+  // Query save/load handlers
+  const handleSaveQuery = () => {
+    if (!queryName.trim()) {
+      alert('クエリ名を入力してください');
+      return;
+    }
+
+    const validConditions = conditions.filter(c => c.field && c.value);
+    if (validConditions.length === 0) {
+      alert('保存する条件がありません');
+      return;
+    }
+
+    saveQuery(queryName.trim(), conditions, orderBy, limit, offset);
+    setQueryName('');
+    setShowSaveDialog(false);
+  };
+
+  const handleLoadQuery = (savedQuery: any) => {
+    setConditions(savedQuery.conditions);
+    setOrderBy(savedQuery.orderBy);
+    setLimit(savedQuery.limit);
+    setOffset(savedQuery.offset);
+    // Regenerate query after loading
+    setTimeout(() => {
+      generateQuery();
+    }, 100);
+  };
+
+  const handleDeleteQuery = (queryId: string) => {
+    if (confirm('このクエリを削除しますか？')) {
+      deleteQuery(queryId);
+    }
+  };
 
   const addCondition = () => {
     setConditions([...conditions, { field: '', operator: '=', value: '', logicalOperator: 'and' }]);
@@ -226,27 +272,69 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
   return (
     <div className="min-h-screen bg-background">
       {/* ヘッダー */}
-      <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" onClick={onBack}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                戻る
+          <div className="flex items-center justify-between py-6">
+            <div className="flex items-center space-x-6">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={onBack}
+                className="h-9 w-9 rounded-lg hover:bg-muted/60 transition-colors group"
+              >
+                <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform duration-200" />
+                <span className="sr-only">戻る</span>
               </Button>
-              <div>
-                <h1 className="text-2xl font-semibold">
-                  クエリ生成 - {app.name}
-                </h1>
-                <p className="text-sm text-muted-foreground">アプリID: {app.appId}</p>
+              <div className="border-l border-border/60 pl-6">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-slate-500 to-slate-600 rounded-lg flex items-center justify-center">
+                    <Code className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-bold text-foreground">
+                      クエリ生成
+                    </h1>
+                    <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground/80">{app.name}</span>
+                      <span className="text-muted-foreground/60">•</span>
+                      <span className="px-2 py-0.5 bg-muted/50 rounded-md font-mono text-xs">
+                        ID: {app.appId}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <ToggleTheme />
+            <div className="flex items-center space-x-3">
+              <ToggleTheme />
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* ブレッドクラム */}
+        <nav className="mb-6" aria-label="ブレッドクラム">
+          <ol className="flex items-center space-x-2 text-sm">
+            <li>
+              <button
+                onClick={onBack}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                アプリ一覧
+              </button>
+            </li>
+            <li className="flex items-center">
+              <ChevronRight className="w-4 h-4 text-muted-foreground mx-2" />
+              <span className="font-medium text-foreground">{app.name}</span>
+            </li>
+            <li className="flex items-center">
+              <ChevronRight className="w-4 h-4 text-muted-foreground mx-2" />
+              <span className="text-muted-foreground">クエリ生成</span>
+            </li>
+          </ol>
+        </nav>
+
         {error && (
           <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
             <p className="text-destructive">{error}</p>
@@ -284,27 +372,36 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                       </div>
                     )}
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-4">
                         <Label>フィールド</Label>
                         <Select
                           value={condition.field}
                           onValueChange={(value) => updateCondition(index, { field: value })}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="フィールドを選択" />
+                            <SelectValue placeholder="フィールドを選択">
+                              {condition.field && (
+                                <span className="truncate">
+                                  {fields.find(f => f.code === condition.field)?.label || condition.field}
+                                </span>
+                              )}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {fields.map(field => (
                               <SelectItem key={field.code} value={field.code}>
-                                {field.label} ({field.code})
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{field.label}</span>
+                                  <span className="text-xs text-muted-foreground">{field.code}</span>
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
                       
-                      <div>
+                      <div className="md:col-span-3">
                         <Label>演算子</Label>
                         <Select
                           value={condition.operator}
@@ -323,7 +420,7 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                         </Select>
                       </div>
                       
-                      <div>
+                      <div className="md:col-span-5">
                         <Label>値</Label>
                         <Input
                           placeholder="値を入力"
@@ -370,12 +467,18 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                       <SelectItem value="none">なし</SelectItem>
                       {fields.map(field => (
                         <SelectItem key={field.code} value={field.code}>
-                          {field.label} 昇順
+                          <div className="flex items-center justify-between w-full">
+                            <span className="truncate">{field.label}</span>
+                            <span className="text-xs text-muted-foreground ml-2">昇順</span>
+                          </div>
                         </SelectItem>
                       ))}
                       {fields.map(field => (
                         <SelectItem key={`${field.code}_desc`} value={`${field.code} desc`}>
-                          {field.label} 降順
+                          <div className="flex items-center justify-between w-full">
+                            <span className="truncate">{field.label}</span>
+                            <span className="text-xs text-muted-foreground ml-2">降順</span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -421,10 +524,24 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="query" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="query">クエリ</TabsTrigger>
-                    <TabsTrigger value="preview">プレビュー</TabsTrigger>
+                <Tabs value={activeQueryTab} onValueChange={setActiveQueryTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 bg-muted border-0 p-1 rounded-lg relative overflow-hidden">
+                    <TabsTrigger 
+                      value="query"
+                      className="data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:border-transparent data-[state=active]:font-medium rounded-md transition-colors duration-300 relative z-10 hover:bg-transparent"
+                    >
+                      クエリ
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="preview"
+                      className="data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:border-transparent data-[state=active]:font-medium rounded-md transition-colors duration-300 relative z-10 hover:bg-transparent"
+                    >
+                      プレビュー
+                    </TabsTrigger>
+                    {/* スライド背景 */}
+                    <div className={`absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] bg-background border border-border rounded-md shadow-md transition-transform duration-300 ease-out ${
+                      activeQueryTab === 'preview' ? 'translate-x-full' : 'translate-x-0'
+                    }`} />
                   </TabsList>
                   
                   <TabsContent value="query" className="space-y-4">
@@ -499,10 +616,24 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Tabs defaultValue="table" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="table">テーブル表示</TabsTrigger>
-                      <TabsTrigger value="json">JSON表示</TabsTrigger>
+                  <Tabs value={activeResultTab} onValueChange={setActiveResultTab} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 bg-muted border-0 p-1 rounded-lg relative overflow-hidden">
+                      <TabsTrigger 
+                        value="table"
+                        className="data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:border-transparent data-[state=active]:font-medium rounded-md transition-colors duration-300 relative z-10 hover:bg-transparent"
+                      >
+                        テーブル表示
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="json"
+                        className="data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:border-transparent data-[state=active]:font-medium rounded-md transition-colors duration-300 relative z-10 hover:bg-transparent"
+                      >
+                        JSON表示
+                      </TabsTrigger>
+                      {/* スライド背景 */}
+                      <div className={`absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] bg-background border border-border rounded-md shadow-md transition-transform duration-300 ease-out ${
+                        activeResultTab === 'json' ? 'translate-x-full' : 'translate-x-0'
+                      }`} />
                     </TabsList>
                     
                     <TabsContent value="table" className="space-y-4">
@@ -548,24 +679,97 @@ export default function QueryGeneratorPage({ auth, app, onBack }: QueryGenerator
               </Card>
             )}
 
-            {/* フィールド一覧 */}
+            {/* 保存済みクエリ */}
             <Card>
-              <CardHeader>
-                <CardTitle>利用可能フィールド</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle>保存済みクエリ</CardTitle>
+                <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      size="sm" 
+                      className="bg-gradient-to-r from-slate-500 to-slate-600 hover:from-slate-600 hover:to-slate-700"
+                      disabled={conditions.filter(c => c.field && c.value).length === 0}
+                    >
+                      <Save className="w-4 h-4 mr-2" />
+                      保存
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>クエリを保存</DialogTitle>
+                      <DialogDescription>
+                        現在の検索条件を保存します。
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="name" className="text-right">
+                          クエリ名
+                        </Label>
+                        <Input
+                          id="name"
+                          value={queryName}
+                          onChange={(e) => setQueryName(e.target.value)}
+                          placeholder="例: 今月の新規データ"
+                          className="col-span-3"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button onClick={handleSaveQuery}>保存</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto scrollbar-hover">
-                  {fields.map(field => (
-                    <div key={field.code} className="flex justify-between items-center p-2 bg-muted rounded border border-border">
-                      <div>
-                        <div className="font-medium text-sm text-foreground">{field.label}</div>
-                        <div className="text-xs text-muted-foreground">{field.code}</div>
-                      </div>
-                      <Badge variant="secondary" className="text-xs">
-                        {field.type}
-                      </Badge>
+                <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-hover">
+                  {savedQueries.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Save className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">保存されたクエリはありません</p>
                     </div>
-                  ))}
+                  ) : (
+                    savedQueries.map((query) => (
+                      <div 
+                        key={query.id} 
+                        className="flex items-center justify-between p-3 bg-muted rounded border border-border hover:bg-muted/80 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm text-foreground truncate">
+                            {query.name}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="secondary" className="text-xs">
+                              {query.conditions.length}条件
+                            </Badge>
+                            <div className="flex items-center text-xs text-muted-foreground">
+                              <Calendar className="w-3 h-3 mr-1" />
+                              {new Date(query.createdAt).toLocaleDateString('ja-JP')}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleLoadQuery(query)}
+                            className="h-8 px-2 text-xs"
+                          >
+                            <Download className="w-3 h-3 mr-1" />
+                            読込
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteQuery(query.id)}
+                            className="h-8 px-2 text-xs text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

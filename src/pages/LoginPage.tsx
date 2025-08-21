@@ -28,11 +28,12 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     try {
       const saved = localStorage.getItem('kintone-credentials');
       if (saved) {
-        const { subdomain, username, remember } = JSON.parse(saved);
+        const { subdomain, username, password, remember } = JSON.parse(saved);
         setFormData(prev => ({
           ...prev,
           subdomain: subdomain || '',
-          username: username || ''
+          username: username || '',
+          password: password || ''
         }));
         setRememberCredentials(remember || false);
       }
@@ -70,12 +71,13 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       const result = await (window as any).kintoneAPI.login(formData);
       
       if (result.success) {
-        // 認証成功時に認証情報を保存（パスワードは保存しない）
+        // 認証成功時に認証情報を保存
         if (rememberCredentials) {
           try {
             localStorage.setItem('kintone-credentials', JSON.stringify({
               subdomain: formData.subdomain,
               username: formData.username,
+              password: formData.password,
               remember: true
             }));
           } catch (error) {
@@ -112,21 +114,30 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         <ToggleTheme />
       </div>
       
-      <Card className="w-full max-w-md border-border shadow-lg">
-        <CardHeader className="space-y-2 text-center">
-          <CardTitle className="text-2xl font-semibold">
-            Kintone Query Creator
-          </CardTitle>
-          <CardDescription>
-            Kintoneアカウントでログインしてください
-          </CardDescription>
+      <Card className="w-full max-w-md border-border shadow-lg backdrop-blur-sm bg-card/95">
+        <CardHeader className="space-y-4 text-center">
+          <div className="flex justify-center">
+            <div className="w-12 h-12 bg-gradient-to-br from-slate-500 to-slate-600 rounded-lg flex items-center justify-center">
+              <Lock className="w-6 h-6 text-white" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <CardTitle className="text-2xl font-bold text-foreground">
+              Kintone Query Creator
+            </CardTitle>
+            <CardDescription>
+              Kintoneアカウントでログインしてください
+            </CardDescription>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="flex items-center space-x-2 p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                <span>{error}</span>
+              <div className="flex items-center space-x-3 p-4 text-sm bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/20 dark:to-orange-950/20 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
+                <div className="w-6 h-6 bg-gradient-to-r from-slate-500 to-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="h-3 w-3 text-white" />
+                </div>
+                <span className="text-red-700 dark:text-red-300">{error}</span>
               </div>
             )}
             
@@ -142,7 +153,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   placeholder="your-company"
                   value={formData.subdomain}
                   onChange={handleChange('subdomain')}
-                  className="pl-10 pr-20"
+                  className="pl-10 pr-20 focus-visible:ring-slate-500 focus-visible:border-slate-500"
                   required
                 />
                 <div className="absolute right-3 top-3 text-sm text-muted-foreground">
@@ -166,7 +177,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   placeholder="ログインID"
                   value={formData.username}
                   onChange={handleChange('username')}
-                  className="pl-10"
+                  className="pl-10 focus-visible:ring-slate-500 focus-visible:border-slate-500"
                   required
                 />
               </div>
@@ -184,7 +195,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   placeholder="パスワード"
                   value={formData.password}
                   onChange={handleChange('password')}
-                  className="pl-10"
+                  className="pl-10 focus-visible:ring-slate-500 focus-visible:border-slate-500"
                   required
                 />
               </div>
@@ -196,43 +207,22 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                 id="remember"
                 checked={rememberCredentials}
                 onCheckedChange={(checked: boolean) => setRememberCredentials(checked)}
+                className="data-[state=checked]:bg-slate-600 data-[state=checked]:border-slate-600 focus-visible:ring-slate-500"
               />
               <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">
-                サブドメインとログインIDを保存する
+                認証情報を保存する
               </Label>
             </div>
 
             <Button 
               type="submit" 
-              className="w-full" 
+              className="w-full bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white shadow-md hover:shadow-lg transition-all duration-200" 
               disabled={isLoading}
               size="lg"
             >
               {isLoading ? 'ログイン中...' : 'ログイン'}
             </Button>
           </form>
-
-          {/* DevTools Control */}
-          <div className="flex justify-center">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => (window as any).electronWindow?.toggleDevTools()}
-              className="text-xs"
-            >
-              <Settings className="h-3 w-3 mr-1" />
-              DevTools
-            </Button>
-          </div>
-
-          <div className="text-center text-xs text-muted-foreground space-y-1">
-            <p>パスワード認証でKintone APIに接続します</p>
-            <p>パスワードは保存されません</p>
-            <p className="text-primary">
-              CORS回避のためElectronのネットワーク機能を使用
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

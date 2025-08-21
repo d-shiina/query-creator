@@ -121,12 +121,19 @@ export function exposeKintoneAPI() {
         }
         
         const responseData = response.json();
+        console.log('Apps list response:', JSON.stringify(responseData, null, 2));
+        
         const apps = responseData.apps.map((app: any) => ({
           appId: app.appId,
           name: app.name,
           description: app.description || '',
+          // 追加で取得できる可能性のある情報
+          creator: app.creator,
+          modifier: app.modifier,
+          createdAt: app.createdAt,
+          modifiedAt: app.modifiedAt
         }));
-        
+
         return { success: true, data: apps };
       } catch (error) {
         return {
@@ -160,6 +167,44 @@ export function exposeKintoneAPI() {
         return {
           success: false,
           error: error instanceof Error ? error.message : 'フィールド一覧の取得に失敗しました'
+        };
+      }
+    },
+
+    getAppInfo: async (auth: KintoneAuth, appId: string) => {
+      try {
+        const response = await makeKintoneRequest(auth, `app.json?id=${appId}`);
+        
+        if (!response.ok) {
+          const errorData = response.json();
+          return {
+            success: false,
+            error: errorData.message || `${response.status} ${response.statusText}`
+          };
+        }
+        
+        const responseData = response.json();
+        console.log('App info response data:', JSON.stringify(responseData, null, 2));
+        
+        return {
+          success: true,
+          data: {
+            appId: responseData.appId,
+            code: responseData.code,
+            name: responseData.name,
+            description: responseData.description,
+            spaceId: responseData.spaceId,
+            threadId: responseData.threadId,
+            createdAt: responseData.createdAt,
+            modifiedAt: responseData.modifiedAt,
+            creator: responseData.creator,
+            modifier: responseData.modifier
+          }
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'アプリ情報の取得に失敗しました'
         };
       }
     },

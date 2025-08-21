@@ -8,11 +8,21 @@ export interface KintoneAuth {
 
 export interface KintoneApp {
   appId: string;
+  code?: string;
   name: string;
   description?: string;
   isFavorite?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  modifiedAt?: string;
+  creator?: {
+    code: string;
+    name: string;
+  };
+  modifier?: {
+    code: string;
+    name: string;
+  };
 }
 
 export interface KintoneField {
@@ -71,4 +81,9 @@ export interface KintoneQuery {
 export interface AppFilter {
   searchTerm: string;
   showFavoritesOnly: boolean;
+  appId: string;
+  appName: string;
+  appCode: string;
+  creator: string;
+  updatedDate: string;
 }
