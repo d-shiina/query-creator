@@ -6,6 +6,7 @@ async function makeKintoneLoginRequest(
   auth: KintoneAuth,
   endpoint: string,
   method: string = "GET",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any,
 ) {
   const baseUrl = `https://${auth.subdomain}.cybozu.com`;
@@ -18,6 +19,7 @@ async function makeKintoneLoginRequest(
   console.log("Making Kintone login request to:", url);
   console.log("Auth credentials (Base64):", credentials);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new Promise<any>((resolve, reject) => {
     // ログイン確認では最小限のヘッダーのみ使用
     const headers: Record<string, string> = {
@@ -52,7 +54,7 @@ async function makeKintoneLoginRequest(
           json: () => {
             try {
               return Promise.resolve(JSON.parse(responseData));
-            } catch (error) {
+            } catch {
               return Promise.reject(new Error("Invalid JSON response"));
             }
           },
@@ -82,6 +84,7 @@ async function makeKintoneRequest(
   auth: KintoneAuth,
   endpoint: string,
   method: string = "GET",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any,
 ) {
   const baseUrl = `https://${auth.subdomain}.cybozu.com`;
@@ -91,6 +94,7 @@ async function makeKintoneRequest(
   const authString = `${auth.username}:${auth.password}`;
   const credentials = Buffer.from(authString, "utf8").toString("base64");
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new Promise<any>((resolve, reject) => {
     const headers: Record<string, string> = {
       "X-Cybozu-Authorization": credentials,
@@ -122,7 +126,7 @@ async function makeKintoneRequest(
           json: () => {
             try {
               return Promise.resolve(JSON.parse(responseData));
-            } catch (error) {
+            } catch {
               return Promise.reject(new Error("Invalid JSON response"));
             }
           },
@@ -220,6 +224,7 @@ export function setupKintoneAPI() {
       );
 
       // レスポンスデータをKintoneApp型に変換
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const apps: KintoneApp[] = responseData.apps.map((app: any) => ({
         appId: app.appId || app.id,
         name: app.name,
@@ -279,6 +284,7 @@ export function setupKintoneAPI() {
         // レスポンスデータをKintoneField型に変換
         const fields: KintoneField[] = Object.entries(
           responseData.properties || {},
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ).map(([code, field]: [string, any]) => ({
           code,
           label: field.label,

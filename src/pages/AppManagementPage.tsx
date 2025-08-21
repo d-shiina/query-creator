@@ -24,8 +24,6 @@ import { KintoneApp, AppFilter, KintoneAuth } from "@/types/kintone";
 import {
   Search,
   Star,
-  Settings,
-  Play,
   Loader2,
   Info,
   Calendar,
@@ -36,7 +34,6 @@ import {
   Save,
 } from "lucide-react";
 import {
-  getFavoriteApps,
   addToFavorites,
   removeFromFavorites,
   isAppFavorite,
@@ -58,7 +55,9 @@ export default function AppManagementPage({
   const [apps, setApps] = useState<KintoneApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
-  const [selectedAppInfo, setSelectedAppInfo] = useState<any>(null);
+  const [selectedAppInfo, setSelectedAppInfo] = useState<KintoneApp | null>(
+    null,
+  );
   const [appInfoLoading, setAppInfoLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [filter, setFilter] = useState<AppFilter>({
@@ -70,7 +69,6 @@ export default function AppManagementPage({
     creator: "",
     updatedDate: "",
   });
-  const [queryCountUpdate, setQueryCountUpdate] = useState(0); // クエリ数更新トリガー
 
   // アプリ一覧を取得
   useEffect(() => {
@@ -79,11 +77,13 @@ export default function AppManagementPage({
         setLoading(true);
         setError("");
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = await (window as any).kintoneAPI.getApps(auth);
 
         if (result.success && result.data && result.data.apps) {
           console.log("Apps API response:", result.data);
           // ブックマーク状態を設定
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const appsWithFavorites = result.data.apps.map((app: any) => {
             console.log(`App ${app.appId} creator:`, app.creator);
             console.log(`App ${app.appId} modifier:`, app.modifier);
@@ -119,12 +119,12 @@ export default function AppManagementPage({
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key && e.key.startsWith("kintone_saved_queries_")) {
-        setQueryCountUpdate((prev) => prev + 1);
+        // Query count update logic can be added here if needed
       }
     };
 
     const handleCustomStorageChange = () => {
-      setQueryCountUpdate((prev) => prev + 1);
+      // Query count update logic can be added here if needed
     };
 
     window.addEventListener("storage", handleStorageChange);

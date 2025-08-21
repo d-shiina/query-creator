@@ -31,24 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
-
-interface KintoneAuth {
-  subdomain: string;
-  username: string;
-  password: string;
-}
-
-interface KintoneApp {
-  appId: string;
-  name: string;
-  description: string;
-}
-
-interface KintoneField {
-  code: string;
-  label: string;
-  type: string;
-}
+import { KintoneAuth, KintoneApp, KintoneField } from "@/types/kintone";
 
 interface QueryCondition {
   field: string;
@@ -101,28 +84,43 @@ export default function QueryGeneratorPage({
   const [limit, setLimit] = useState<number>();
   const [offset, setOffset] = useState<number>();
   const [executing, setExecuting] = useState(false);
-  const [queryResult, setQueryResult] = useState<any>(null);
+  const [queryResult, setQueryResult] = useState<{
+    records: Record<string, unknown>[];
+  } | null>(null);
   const [activeResultTab, setActiveResultTab] = useState("table");
 
   // Saved queries
-  const { savedQueries, saveQuery, deleteQuery } = useQueryGenerator(app.appId);
+  const { savedQueries, deleteQuery } = useQueryGenerator(app.appId);
 
   // Format field value for display
-  const formatFieldValue = (fieldData: any): string => {
+  const formatFieldValue = (fieldData: unknown): string => {
     if (!fieldData) return "";
 
     // オブジェクトの場合、valueプロパティをチェック
-    if (typeof fieldData === "object" && fieldData.value !== undefined) {
-      const { value } = fieldData;
+    if (
+      typeof fieldData === "object" &&
+      fieldData !== null &&
+      "value" in fieldData
+    ) {
+      const data = fieldData as { value: unknown; type?: string };
+      const { value } = data;
 
       // ファイルフィールドの場合
-      if (fieldData.type === "FILE" && Array.isArray(value)) {
-        return value.map((file: any) => file.name || "").join(", ");
+      if (data.type === "FILE" && Array.isArray(value)) {
+        return value
+          .map((file: { name?: string }) => file.name || "")
+          .join(", ");
       }
 
       // ユーザー選択フィールドの場合
-      if (Array.isArray(value) && value.length > 0 && value[0].name) {
-        return value.map((user: any) => user.name).join(", ");
+      if (
+        Array.isArray(value) &&
+        value.length > 0 &&
+        typeof value[0] === "object" &&
+        value[0] !== null &&
+        "name" in value[0]
+      ) {
+        return value.map((user: { name: string }) => user.name).join(", ");
       }
 
       // その他のオブジェクト
@@ -154,6 +152,7 @@ export default function QueryGeneratorPage({
         setLoading(true);
         setError("");
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!(window as any).kintoneAPI) {
           console.error("window.kintoneAPI is not available");
           setError(
@@ -162,6 +161,7 @@ export default function QueryGeneratorPage({
           return;
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = await (window as any).kintoneAPI.getAppFields(
           auth,
           app.appId,
@@ -194,6 +194,7 @@ export default function QueryGeneratorPage({
   }, [conditions, orderBy, limit, offset]);
 
   // Handlers
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleLoadQuery = (savedQuery: any) => {
     setConditions(savedQuery.conditions);
     setOrderBy(savedQuery.orderBy);
@@ -279,6 +280,7 @@ export default function QueryGeneratorPage({
       setExecuting(true);
       setError("");
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (window as any).kintoneAPI.executeQuery(
         auth,
         app.appId,
@@ -527,6 +529,7 @@ export default function QueryGeneratorPage({
                                 value={condition.operator}
                                 onValueChange={(value) =>
                                   updateCondition(index, {
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                     operator: value as any,
                                   })
                                 }
@@ -765,6 +768,7 @@ export default function QueryGeneratorPage({
                               <tbody>
                                 {queryResult.records
                                   .slice(0, 10)
+                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                   .map((record: any, index: number) => (
                                     <tr
                                       key={index}
@@ -773,6 +777,7 @@ export default function QueryGeneratorPage({
                                       {Object.entries(record).map(
                                         ([fieldCode, fieldData]: [
                                           string,
+                                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                           any,
                                         ]) => (
                                           <td
