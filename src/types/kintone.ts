@@ -33,9 +33,17 @@ export interface KintoneField {
   label: string;
   type: KintoneFieldType;
   options?: string[];
+  required?: boolean;
+  unique?: boolean;
 }
 
 export type KintoneFieldType =
+  | "RECORD_NUMBER"
+  | "__ID__"
+  | "CREATOR"
+  | "CREATED_TIME"
+  | "MODIFIER"
+  | "UPDATED_TIME"
   | "SINGLE_LINE_TEXT"
   | "MULTI_LINE_TEXT"
   | "RICH_TEXT"
@@ -53,6 +61,10 @@ export type KintoneFieldType =
   | "GROUP_SELECT"
   | "FILE"
   | "LINK"
+  | "STATUS"
+  | "STATUS_ASSIGNEE"
+  | "CATEGORY"
+  | "REFERENCE_TABLE"
   | "SUBTABLE";
 
 export interface QueryCondition {

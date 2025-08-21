@@ -22,6 +22,14 @@ import { CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -51,6 +59,7 @@ import {
   KintoneApp,
   KintoneField,
   QueryCondition,
+  QueryOperator,
 } from "@/types/kintone";
 
 interface QueryGeneratorPageProps {
@@ -73,14 +82,342 @@ const operators = [
   { value: "not in", label: "のいずれでもない (not in)" },
   { value: "like", label: "を含む (like)" },
   { value: "not like", label: "を含まない (not like)" },
+  { value: "is", label: "が空 (is)" },
+  { value: "is not", label: "が空でない (is not)" },
 ];
 
-const orderByOptions = [
+// フィールドタイプごとの利用可能な演算子
+const fieldTypeOperators: Record<string, string[]> = {
+  RECORD_NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
+  __ID__: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
+  CREATOR: ["in", "not in"],
+  CREATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
+  MODIFIER: ["in", "not in"],
+  UPDATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
+  SINGLE_LINE_TEXT: ["=", "!=", "in", "not in", "like", "not like"],
+  LINK: ["=", "!=", "in", "not in", "like", "not like"],
+  NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
+  CALC: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
+  MULTI_LINE_TEXT: ["like", "not like", "is", "is not"],
+  RICH_TEXT: ["like", "not like"],
+  CHECK_BOX: ["in", "not in"],
+  RADIO_BUTTON: ["in", "not in"],
+  DROP_DOWN: ["in", "not in"],
+  MULTI_SELECT: ["in", "not in"],
+  FILE: ["like", "not like"],
+  DATE: ["=", "!=", ">", "<", ">=", "<="],
+  TIME: ["=", "!=", ">", "<", ">=", "<="],
+  DATETIME: ["=", "!=", ">", "<", ">=", "<="],
+  USER_SELECT: ["in", "not in"],
+  ORGANIZATION_SELECT: ["in", "not in"],
+  GROUP_SELECT: ["in", "not in"],
+  STATUS: ["=", "!=", "in", "not in"],
+  STATUS_ASSIGNEE: ["in", "not in"],
+  CATEGORY: ["=", "!=", "in", "not in"],
+  REFERENCE_TABLE: ["like", "not like"],
+};
+
+// フィールドタイプごとの利用可能な関数
+const fieldTypeFunctions: Record<
+  string,
+  { value: string; label: string; description: string }[]
+> = {
+  CREATOR: [
+    {
+      value: "LOGINUSER()",
+      label: "ログインユーザー",
+      description: "APIを実行したユーザー",
+    },
+  ],
+  MODIFIER: [
+    {
+      value: "LOGINUSER()",
+      label: "ログインユーザー",
+      description: "APIを実行したユーザー",
+    },
+  ],
+  STATUS_ASSIGNEE: [
+    {
+      value: "LOGINUSER()",
+      label: "ログインユーザー",
+      description: "APIを実行したユーザー",
+    },
+  ],
+  USER_SELECT: [
+    {
+      value: "LOGINUSER()",
+      label: "ログインユーザー",
+      description: "APIを実行したユーザー",
+    },
+  ],
+  ORGANIZATION_SELECT: [
+    {
+      value: "PRIMARY_ORGANIZATION()",
+      label: "優先組織",
+      description: "APIを実行したユーザーの優先する組織",
+    },
+  ],
+  CREATED_TIME: [
+    { value: "NOW()", label: "現在日時", description: "APIを実行した日時" },
+    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
+    {
+      value: "YESTERDAY()",
+      label: "昨日",
+      description: "APIを実行した日の前日",
+    },
+    {
+      value: "TOMORROW()",
+      label: "明日",
+      description: "APIを実行した日の翌日",
+    },
+    {
+      value: "FROM_TODAY(1, DAYS)",
+      label: "今日から1日後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, WEEKS)",
+      label: "今日から1週間後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, MONTHS)",
+      label: "今日から1ヶ月後",
+      description: "APIを実行した日から起算した期間",
+    },
+    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
+    {
+      value: "LAST_WEEK()",
+      label: "先週",
+      description: "APIを実行した週の前週",
+    },
+    {
+      value: "NEXT_WEEK()",
+      label: "来週",
+      description: "APIを実行した週の翌週",
+    },
+    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
+    {
+      value: "LAST_MONTH()",
+      label: "先月",
+      description: "APIを実行した月の前月",
+    },
+    {
+      value: "NEXT_MONTH()",
+      label: "来月",
+      description: "APIを実行した月の翌月",
+    },
+    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
+    {
+      value: "LAST_YEAR()",
+      label: "昨年",
+      description: "APIを実行した年の前年",
+    },
+    {
+      value: "NEXT_YEAR()",
+      label: "来年",
+      description: "APIを実行した年の翌年",
+    },
+  ],
+  UPDATED_TIME: [
+    { value: "NOW()", label: "現在日時", description: "APIを実行した日時" },
+    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
+    {
+      value: "YESTERDAY()",
+      label: "昨日",
+      description: "APIを実行した日の前日",
+    },
+    {
+      value: "TOMORROW()",
+      label: "明日",
+      description: "APIを実行した日の翌日",
+    },
+    {
+      value: "FROM_TODAY(1, DAYS)",
+      label: "今日から1日後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, WEEKS)",
+      label: "今日から1週間後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, MONTHS)",
+      label: "今日から1ヶ月後",
+      description: "APIを実行した日から起算した期間",
+    },
+    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
+    {
+      value: "LAST_WEEK()",
+      label: "先週",
+      description: "APIを実行した週の前週",
+    },
+    {
+      value: "NEXT_WEEK()",
+      label: "来週",
+      description: "APIを実行した週の翌週",
+    },
+    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
+    {
+      value: "LAST_MONTH()",
+      label: "先月",
+      description: "APIを実行した月の前月",
+    },
+    {
+      value: "NEXT_MONTH()",
+      label: "来月",
+      description: "APIを実行した月の翌月",
+    },
+    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
+    {
+      value: "LAST_YEAR()",
+      label: "昨年",
+      description: "APIを実行した年の前年",
+    },
+    {
+      value: "NEXT_YEAR()",
+      label: "来年",
+      description: "APIを実行した年の翌年",
+    },
+  ],
+  DATE: [
+    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
+    {
+      value: "YESTERDAY()",
+      label: "昨日",
+      description: "APIを実行した日の前日",
+    },
+    {
+      value: "TOMORROW()",
+      label: "明日",
+      description: "APIを実行した日の翌日",
+    },
+    {
+      value: "FROM_TODAY(1, DAYS)",
+      label: "今日から1日後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, WEEKS)",
+      label: "今日から1週間後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, MONTHS)",
+      label: "今日から1ヶ月後",
+      description: "APIを実行した日から起算した期間",
+    },
+    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
+    {
+      value: "LAST_WEEK()",
+      label: "先週",
+      description: "APIを実行した週の前週",
+    },
+    {
+      value: "NEXT_WEEK()",
+      label: "来週",
+      description: "APIを実行した週の翌週",
+    },
+    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
+    {
+      value: "LAST_MONTH()",
+      label: "先月",
+      description: "APIを実行した月の前月",
+    },
+    {
+      value: "NEXT_MONTH()",
+      label: "来月",
+      description: "APIを実行した月の翌月",
+    },
+    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
+    {
+      value: "LAST_YEAR()",
+      label: "昨年",
+      description: "APIを実行した年の前年",
+    },
+    {
+      value: "NEXT_YEAR()",
+      label: "来年",
+      description: "APIを実行した年の翌年",
+    },
+  ],
+  DATETIME: [
+    { value: "NOW()", label: "現在日時", description: "APIを実行した日時" },
+    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
+    {
+      value: "YESTERDAY()",
+      label: "昨日",
+      description: "APIを実行した日の前日",
+    },
+    {
+      value: "TOMORROW()",
+      label: "明日",
+      description: "APIを実行した日の翌日",
+    },
+    {
+      value: "FROM_TODAY(1, DAYS)",
+      label: "今日から1日後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, WEEKS)",
+      label: "今日から1週間後",
+      description: "APIを実行した日から起算した期間",
+    },
+    {
+      value: "FROM_TODAY(1, MONTHS)",
+      label: "今日から1ヶ月後",
+      description: "APIを実行した日から起算した期間",
+    },
+    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
+    {
+      value: "LAST_WEEK()",
+      label: "先週",
+      description: "APIを実行した週の前週",
+    },
+    {
+      value: "NEXT_WEEK()",
+      label: "来週",
+      description: "APIを実行した週の翌週",
+    },
+    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
+    {
+      value: "LAST_MONTH()",
+      label: "先月",
+      description: "APIを実行した月の前月",
+    },
+    {
+      value: "NEXT_MONTH()",
+      label: "来月",
+      description: "APIを実行した月の翌月",
+    },
+    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
+    {
+      value: "LAST_YEAR()",
+      label: "昨年",
+      description: "APIを実行した年の前年",
+    },
+    {
+      value: "NEXT_YEAR()",
+      label: "来年",
+      description: "APIを実行した年の翌年",
+    },
+  ],
+};
+
+// 並び替えフィールドオプション
+const sortFieldOptions = [
   { value: "none", label: "並び替えなし" },
-  { value: "$id asc", label: "レコード番号（昇順）" },
-  { value: "$id desc", label: "レコード番号（降順）" },
-  { value: "作成日時 asc", label: "作成日時（昇順）" },
-  { value: "作成日時 desc", label: "作成日時（降順）" },
+  { value: "$id", label: "レコード番号" },
+  { value: "作成日時", label: "作成日時" },
+  { value: "更新日時", label: "更新日時" },
+];
+
+// ソート方向オプション
+const sortDirectionOptions = [
+  { value: "asc", label: "昇順" },
+  { value: "desc", label: "降順" },
 ];
 
 export default function QueryGeneratorPage({
@@ -103,6 +440,8 @@ export default function QueryGeneratorPage({
     [key: number]: boolean;
   }>({});
   const [orderBy, setOrderBy] = useState("none");
+  const [sortField, setSortField] = useState("none");
+  const [sortDirection, setSortDirection] = useState("asc");
   const [limit, setLimit] = useState<number>();
   const [offset, setOffset] = useState<number>();
   const [executing, setExecuting] = useState(false);
@@ -192,6 +531,69 @@ export default function QueryGeneratorPage({
       message: errorMsg,
       suggestion: `・入力内容を確認してから再実行してください\n・問題が継続する場合は管理者にお問い合わせください`,
     };
+  };
+
+  // フィールドタイプに基づいて利用可能な演算子を取得
+  const getAvailableOperators = (fieldCode: string) => {
+    const field = fields.find((f) => f.code === fieldCode);
+    console.log("getAvailableOperators - fieldCode:", fieldCode);
+    console.log("getAvailableOperators - field found:", field);
+
+    if (!field) {
+      console.log(
+        "getAvailableOperators - field not found, returning all operators",
+      );
+      return operators;
+    }
+
+    console.log("getAvailableOperators - field.type:", field.type);
+    let availableOperatorValues = fieldTypeOperators[field.type] || [];
+
+    // フィールドタイプが見つからない場合、デフォルトの演算子を返す
+    if (availableOperatorValues.length === 0) {
+      console.log(
+        "getAvailableOperators - no operators found for type, using default",
+      );
+      availableOperatorValues = ["=", "!=", "in", "not in"];
+    }
+
+    console.log(
+      "getAvailableOperators - availableOperatorValues:",
+      availableOperatorValues,
+    );
+
+    const filteredOperators = operators.filter((op) =>
+      availableOperatorValues.includes(op.value),
+    );
+    console.log(
+      "getAvailableOperators - filtered operators:",
+      filteredOperators,
+    );
+
+    return filteredOperators;
+  };
+
+  // フィールドタイプに基づいて利用可能な関数を取得
+  const getAvailableFunctions = (fieldCode: string) => {
+    const field = fields.find((f) => f.code === fieldCode);
+    console.log("getAvailableFunctions - fieldCode:", fieldCode);
+    console.log("getAvailableFunctions - field found:", field);
+
+    if (!field) {
+      console.log(
+        "getAvailableFunctions - field not found, returning empty array",
+      );
+      return [];
+    }
+
+    console.log("getAvailableFunctions - field.type:", field.type);
+    const availableFunctions = fieldTypeFunctions[field.type] || [];
+    console.log(
+      "getAvailableFunctions - available functions:",
+      availableFunctions,
+    );
+
+    return availableFunctions;
   };
 
   // Load editing query if editingQueryId is provided
@@ -291,6 +693,7 @@ export default function QueryGeneratorPage({
 
         if (result.success && result.data && result.data.fields) {
           console.log("Fields loaded:", result.data.fields.length);
+          console.log("First few fields:", result.data.fields.slice(0, 3));
           setFields(result.data.fields);
         } else {
           console.error("Failed to fetch fields:", result.error);
@@ -353,20 +756,62 @@ export default function QueryGeneratorPage({
       const operator = condition.operator;
       let value = condition.value;
 
-      // 値をクォートで囲む（数値フィールド以外）
+      console.log("Query generation debug:");
+      console.log("  field:", field);
+      console.log("  operator:", operator);
+      console.log("  value:", value);
+
+      // kintone関数かどうかをチェック
+      const kintoneRegex = /^[A-Z_]+\([^)]*\)$/;
+      const knownFunctions = [
+        "LOGINUSER()",
+        "TODAY()",
+        "NOW()",
+        "YESTERDAY()",
+        "TOMORROW()",
+        "THIS_WEEK()",
+        "LAST_WEEK()",
+        "NEXT_WEEK()",
+        "THIS_MONTH()",
+        "LAST_MONTH()",
+        "NEXT_MONTH()",
+        "THIS_YEAR()",
+        "LAST_YEAR()",
+        "NEXT_YEAR()",
+        "PRIMARY_ORGANIZATION()",
+      ];
+
+      const trimmedValue = value.trim();
+      const isKintoneFunction =
+        kintoneRegex.test(trimmedValue) ||
+        knownFunctions.includes(trimmedValue) ||
+        /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue);
+      console.log("  isKintoneFunction:", isKintoneFunction);
+
+      // 値をクォートで囲む（数値フィールドとkintone関数以外）
       const fieldInfo = fields.find((f) => f.code === field);
+      console.log("  fieldInfo:", fieldInfo);
+      console.log("  fieldType:", fieldInfo?.type);
+
       if (
+        !isKintoneFunction &&
         fieldInfo &&
         fieldInfo.type !== "NUMBER" &&
         fieldInfo.type !== "CALC"
       ) {
         value = `"${value}"`;
+        console.log("  value quoted:", value);
+      } else {
+        console.log("  value not quoted:", value);
       }
 
       query += `${field} ${operator} ${value}`;
     });
 
-    if (orderBy && orderBy !== "none") {
+    if (sortField && sortField !== "none") {
+      query += ` order by ${sortField} ${sortDirection}`;
+    } else if (orderBy && orderBy !== "none") {
+      // 後方互換性のため既存のorderByも確認
       query += ` order by ${orderBy}`;
     }
 
@@ -654,8 +1099,24 @@ export default function QueryGeneratorPage({
                                               key={field.code}
                                               value={field.label}
                                               onSelect={() => {
+                                                const availableOps =
+                                                  fieldTypeOperators[
+                                                    field.type
+                                                  ] || [];
+                                                const currentOp =
+                                                  condition.operator;
+                                                const newOperator =
+                                                  availableOps.includes(
+                                                    currentOp,
+                                                  )
+                                                    ? currentOp
+                                                    : availableOps[0] || "=";
+
                                                 updateCondition(index, {
                                                   field: field.code,
+                                                  operator:
+                                                    newOperator as QueryOperator,
+                                                  value: "", // フィールド変更時に値もクリア
                                                 });
                                                 setFieldComboboxOpen(
                                                   (prev) => ({
@@ -695,28 +1156,94 @@ export default function QueryGeneratorPage({
                                     <SelectValue className="truncate" />
                                   </SelectTrigger>
                                   <SelectContent className="min-w-[200px]">
-                                    {operators.map((op) => (
-                                      <SelectItem
-                                        key={op.value}
-                                        value={op.value}
-                                        className="whitespace-nowrap"
-                                      >
-                                        {op.label}
-                                      </SelectItem>
-                                    ))}
+                                    {getAvailableOperators(condition.field).map(
+                                      (op) => (
+                                        <SelectItem
+                                          key={op.value}
+                                          value={op.value}
+                                          className="whitespace-nowrap"
+                                        >
+                                          {op.label}
+                                        </SelectItem>
+                                      ),
+                                    )}
                                   </SelectContent>
                                 </Select>
                               </div>
                               <div className="md:col-span-5">
-                                <Input
-                                  value={condition.value}
-                                  onChange={(e) =>
-                                    updateCondition(index, {
-                                      value: e.target.value,
-                                    })
-                                  }
-                                  placeholder="値を入力"
-                                />
+                                <div className="flex gap-2">
+                                  <Input
+                                    value={condition.value}
+                                    onChange={(e) =>
+                                      updateCondition(index, {
+                                        value: e.target.value,
+                                      })
+                                    }
+                                    placeholder="値を入力"
+                                    className="flex-1"
+                                  />
+                                  {condition.field &&
+                                    getAvailableFunctions(condition.field)
+                                      .length > 0 && (
+                                      <Dialog>
+                                        <DialogTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="shrink-0 px-3"
+                                            title="関数を選択"
+                                          >
+                                            f(x)
+                                          </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="sm:max-w-md">
+                                          <DialogHeader>
+                                            <DialogTitle>
+                                              関数を選択
+                                            </DialogTitle>
+                                            <DialogDescription>
+                                              利用可能な関数から選択してください
+                                            </DialogDescription>
+                                          </DialogHeader>
+                                          <div className="max-h-60 space-y-2 overflow-y-auto">
+                                            {getAvailableFunctions(
+                                              condition.field,
+                                            ).length > 0 ? (
+                                              getAvailableFunctions(
+                                                condition.field,
+                                              ).map((func) => (
+                                                <div
+                                                  key={func.value}
+                                                  className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
+                                                  onClick={() => {
+                                                    updateCondition(index, {
+                                                      value: func.value,
+                                                    });
+                                                  }}
+                                                >
+                                                  <div className="flex-1">
+                                                    <div className="text-sm font-medium">
+                                                      {func.label}
+                                                    </div>
+                                                    <div className="text-muted-foreground text-xs">
+                                                      {func.description}
+                                                    </div>
+                                                    <div className="mt-1 font-mono text-xs text-blue-600">
+                                                      {func.value}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className="text-muted-foreground p-4 text-center">
+                                                このフィールドタイプでは利用可能な関数はありません
+                                              </div>
+                                            )}
+                                          </div>
+                                        </DialogContent>
+                                      </Dialog>
+                                    )}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -745,29 +1272,63 @@ export default function QueryGeneratorPage({
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div>
-                        <Label
-                          htmlFor="orderBy"
-                          className="mb-2 block text-sm font-medium"
-                        >
-                          並び替え
-                        </Label>
-                        <Select value={orderBy} onValueChange={setOrderBy}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue className="truncate" />
-                          </SelectTrigger>
-                          <SelectContent className="min-w-[220px]">
-                            {orderByOptions.map((option) => (
-                              <SelectItem
-                                key={option.value}
-                                value={option.value}
-                                className="whitespace-nowrap"
-                              >
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor="sortField"
+                            className="mb-2 block text-sm font-medium"
+                          >
+                            並び替えフィールド
+                          </Label>
+                          <Select
+                            value={sortField}
+                            onValueChange={setSortField}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue className="truncate" />
+                            </SelectTrigger>
+                            <SelectContent className="min-w-[180px]">
+                              {sortFieldOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                  className="whitespace-nowrap"
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label
+                            htmlFor="sortDirection"
+                            className="mb-2 block text-sm font-medium"
+                          >
+                            並び順
+                          </Label>
+                          <Select
+                            value={sortDirection}
+                            onValueChange={setSortDirection}
+                            disabled={sortField === "none"}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue className="truncate" />
+                            </SelectTrigger>
+                            <SelectContent className="min-w-[120px]">
+                              {sortDirectionOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                  className="whitespace-nowrap"
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
@@ -1022,8 +1583,17 @@ export default function QueryGeneratorPage({
 
                           <TabsContent value="table" className="space-y-4">
                             {queryResult.records.length > 0 ? (
-                              <div className="scrollbar-thin max-h-96 overflow-x-auto">
-                                <table className="w-full border-collapse text-sm">
+                              <div
+                                className="scrollbar-thin max-h-96 overflow-x-auto"
+                                style={{ direction: "ltr" }}
+                              >
+                                <table
+                                  className="w-full border-collapse text-sm"
+                                  style={{
+                                    writingMode: "horizontal-tb",
+                                    textOrientation: "mixed",
+                                  }}
+                                >
                                   <thead>
                                     <tr className="bg-muted/50 border-b">
                                       {Object.keys(queryResult.records[0]).map(
@@ -1031,6 +1601,9 @@ export default function QueryGeneratorPage({
                                           <th
                                             key={fieldCode}
                                             className="border-r p-2 text-left font-medium"
+                                            style={{
+                                              writingMode: "horizontal-tb",
+                                            }}
                                           >
                                             {fields.find(
                                               (f) => f.code === fieldCode,
@@ -1058,6 +1631,9 @@ export default function QueryGeneratorPage({
                                               <td
                                                 key={fieldCode}
                                                 className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
+                                                style={{
+                                                  writingMode: "horizontal-tb",
+                                                }}
                                               >
                                                 {formatFieldValue(fieldData)}
                                               </td>

@@ -6,7 +6,6 @@ async function makeKintoneLoginRequest(
   auth: KintoneAuth,
   endpoint: string,
   method: string = "GET",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any,
 ) {
   const baseUrl = `https://${auth.subdomain}.cybozu.com`;
@@ -19,11 +18,11 @@ async function makeKintoneLoginRequest(
   console.log("Making Kintone login request to:", url);
   console.log("Auth credentials (Base64):", credentials);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new Promise<any>((resolve, reject) => {
-    // ログイン確認では最小限のヘッダーのみ使用
     const headers: Record<string, string> = {
       "X-Cybozu-Authorization": credentials,
+      "Content-Type": "application/json",
+      Accept: "application/json",
     };
 
     console.log("Login request headers:", headers);
@@ -54,7 +53,7 @@ async function makeKintoneLoginRequest(
           json: () => {
             try {
               return Promise.resolve(JSON.parse(responseData));
-            } catch {
+            } catch (error) {
               return Promise.reject(new Error("Invalid JSON response"));
             }
           },
@@ -84,7 +83,6 @@ async function makeKintoneRequest(
   auth: KintoneAuth,
   endpoint: string,
   method: string = "GET",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any,
 ) {
   const baseUrl = `https://${auth.subdomain}.cybozu.com`;
@@ -94,7 +92,6 @@ async function makeKintoneRequest(
   const authString = `${auth.username}:${auth.password}`;
   const credentials = Buffer.from(authString, "utf8").toString("base64");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new Promise<any>((resolve, reject) => {
     const headers: Record<string, string> = {
       "X-Cybozu-Authorization": credentials,
@@ -126,7 +123,7 @@ async function makeKintoneRequest(
           json: () => {
             try {
               return Promise.resolve(JSON.parse(responseData));
-            } catch {
+            } catch (error) {
               return Promise.reject(new Error("Invalid JSON response"));
             }
           },
@@ -224,7 +221,6 @@ export function setupKintoneAPI() {
       );
 
       // レスポンスデータをKintoneApp型に変換
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const apps: KintoneApp[] = responseData.apps.map((app: any) => ({
         appId: app.appId || app.id,
         name: app.name,
@@ -249,6 +245,58 @@ export function setupKintoneAPI() {
       };
     }
   });
+
+  // 単一アプリのAPI使用状況取得
+  ipcMain.handle(
+    "kintone:getAppApiUsage",
+    async (event, auth: KintoneAuth, appId: string) => {
+      try {
+        console.log("=== Getting API usage for app:", appId, "===");
+
+        const response = await makeKintoneRequest(
+          auth,
+          `apps/statistics.json?ids=${appId}`,
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Failed to get API usage:", response.status, errorText);
+          return {
+            success: false,
+            error: `API使用状況の取得に失敗しました (${response.status}): ${errorText}`,
+          };
+        }
+
+        const responseData = await response.json();
+        console.log("API usage response:", responseData);
+
+        // 対象のアプリを探す
+        const targetApp = responseData.apps.find(
+          (app: any) => app.id === appId,
+        );
+
+        if (!targetApp) {
+          return {
+            success: false,
+            error: "指定されたアプリのAPI使用状況が見つかりませんでした",
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            dailyRequestCount: targetApp.dailyRequestCount || 0,
+          },
+        };
+      } catch (error) {
+        console.error("Exception in getAppApiUsage:", error);
+        return {
+          success: false,
+          error: `API使用状況取得エラー: ${error instanceof Error ? error.message : "不明なエラー"}`,
+        };
+      }
+    },
+  );
 
   // アプリのフィールド情報取得
   ipcMain.handle(
@@ -284,48 +332,14 @@ export function setupKintoneAPI() {
         // レスポンスデータをKintoneField型に変換
         const fields: KintoneField[] = Object.entries(
           responseData.properties || {},
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ).map(([code, field]: [string, any]) => {
-          console.log(`Field ${code}:`, field); // デバッグ用
-          return {
-            code,
-            label: field.label,
-            type: field.type,
-            required: field.required || false,
-            unique: field.unique || false,
-            options: field.options || [],
-          };
-        });
-
-        // 標準フィールドを手動で追加（APIレスポンスに含まれていない場合）
-        const systemFields: KintoneField[] = [
-          { code: "$id", label: "レコード番号", type: "RECORD_NUMBER" },
-          { code: "$revision", label: "リビジョン", type: "__ID__" },
-          { code: "Created_by", label: "作成者", type: "CREATOR" },
-          { code: "Created_datetime", label: "作成日時", type: "CREATED_TIME" },
-          { code: "Updated_by", label: "更新者", type: "MODIFIER" },
-          { code: "Updated_datetime", label: "更新日時", type: "UPDATED_TIME" },
-        ];
-
-        console.log("Adding system fields...");
-        // 標準フィールドがまだ存在しない場合は追加
-        systemFields.forEach((systemField) => {
-          const exists = fields.some((f) => f.code === systemField.code);
-          console.log(`System field ${systemField.code} exists: ${exists}`);
-          if (!exists) {
-            fields.unshift(systemField);
-            console.log(`Added system field: ${systemField.code}`);
-          }
-        });
-
-        console.log(
-          `Total fields after system field addition: ${fields.length}`,
-        );
-
-        console.log(
-          "Processed fields:",
-          fields.map((f) => ({ code: f.code, type: f.type, label: f.label })),
-        );
+        ).map(([code, field]: [string, any]) => ({
+          code,
+          label: field.label,
+          type: field.type,
+          required: field.required || false,
+          unique: field.unique || false,
+          options: field.options || [],
+        }));
 
         return {
           success: true,
