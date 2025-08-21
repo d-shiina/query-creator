@@ -37,6 +37,30 @@ export function exposeKintoneAPI() {
       }
     },
 
+    getAppApiUsage: async (auth: KintoneAuth, appId: string) => {
+      try {
+        console.log(
+          "Preload: Calling main process getAppApiUsage for app:",
+          appId,
+        );
+        const result = await ipcRenderer.invoke(
+          "kintone:getAppApiUsage",
+          auth,
+          appId,
+        );
+        return result;
+      } catch (error) {
+        console.error("Preload: getAppApiUsage error:", error);
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "API使用状況取得エラーが発生しました",
+        };
+      }
+    },
+
     getAppFields: async (auth: KintoneAuth, appId: string) => {
       try {
         console.log(

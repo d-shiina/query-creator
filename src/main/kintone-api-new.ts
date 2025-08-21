@@ -19,9 +19,10 @@ async function makeKintoneLoginRequest(
   console.log("Auth credentials (Base64):", credentials);
 
   return new Promise<any>((resolve, reject) => {
-    // ログイン確認では最小限のヘッダーのみ使用
     const headers: Record<string, string> = {
       "X-Cybozu-Authorization": credentials,
+      "Content-Type": "application/json",
+      Accept: "application/json",
     };
 
     console.log("Login request headers:", headers);
@@ -244,6 +245,58 @@ export function setupKintoneAPI() {
       };
     }
   });
+
+  // 単一アプリのAPI使用状況取得
+  ipcMain.handle(
+    "kintone:getAppApiUsage",
+    async (event, auth: KintoneAuth, appId: string) => {
+      try {
+        console.log("=== Getting API usage for app:", appId, "===");
+
+        const response = await makeKintoneRequest(
+          auth,
+          `apps/statistics.json?ids=${appId}`,
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Failed to get API usage:", response.status, errorText);
+          return {
+            success: false,
+            error: `API使用状況の取得に失敗しました (${response.status}): ${errorText}`,
+          };
+        }
+
+        const responseData = await response.json();
+        console.log("API usage response:", responseData);
+
+        // 対象のアプリを探す
+        const targetApp = responseData.apps.find(
+          (app: any) => app.id === appId,
+        );
+
+        if (!targetApp) {
+          return {
+            success: false,
+            error: "指定されたアプリのAPI使用状況が見つかりませんでした",
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            dailyRequestCount: targetApp.dailyRequestCount || 0,
+          },
+        };
+      } catch (error) {
+        console.error("Exception in getAppApiUsage:", error);
+        return {
+          success: false,
+          error: `API使用状況取得エラー: ${error instanceof Error ? error.message : "不明なエラー"}`,
+        };
+      }
+    },
+  );
 
   // アプリのフィールド情報取得
   ipcMain.handle(

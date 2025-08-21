@@ -15,6 +15,7 @@ export interface KintoneApp {
   createdAt?: string;
   updatedAt?: string;
   modifiedAt?: string;
+  usedApiCount?: number; // API使用回数
   creator?: {
     code: string;
     name: string;
@@ -32,44 +33,44 @@ export interface KintoneField {
   options?: string[];
 }
 
-export type KintoneFieldType = 
-  | 'SINGLE_LINE_TEXT'
-  | 'MULTI_LINE_TEXT'
-  | 'RICH_TEXT'
-  | 'NUMBER'
-  | 'CALC'
-  | 'RADIO_BUTTON'
-  | 'CHECK_BOX'
-  | 'MULTI_SELECT'
-  | 'DROP_DOWN'
-  | 'DATE'
-  | 'TIME'
-  | 'DATETIME'
-  | 'USER_SELECT'
-  | 'ORGANIZATION_SELECT'
-  | 'GROUP_SELECT'
-  | 'FILE'
-  | 'LINK'
-  | 'SUBTABLE';
+export type KintoneFieldType =
+  | "SINGLE_LINE_TEXT"
+  | "MULTI_LINE_TEXT"
+  | "RICH_TEXT"
+  | "NUMBER"
+  | "CALC"
+  | "RADIO_BUTTON"
+  | "CHECK_BOX"
+  | "MULTI_SELECT"
+  | "DROP_DOWN"
+  | "DATE"
+  | "TIME"
+  | "DATETIME"
+  | "USER_SELECT"
+  | "ORGANIZATION_SELECT"
+  | "GROUP_SELECT"
+  | "FILE"
+  | "LINK"
+  | "SUBTABLE";
 
 export interface QueryCondition {
   field: string;
   operator: QueryOperator;
   value: string;
-  logicalOperator?: 'and' | 'or';
+  logicalOperator?: "and" | "or";
 }
 
-export type QueryOperator = 
-  | '='
-  | '!='
-  | '>'
-  | '<'
-  | '>='
-  | '<='
-  | 'in'
-  | 'not in'
-  | 'like'
-  | 'not like';
+export type QueryOperator =
+  | "="
+  | "!="
+  | ">"
+  | "<"
+  | ">="
+  | "<="
+  | "in"
+  | "not in"
+  | "like"
+  | "not like";
 
 export interface KintoneQuery {
   conditions: QueryCondition[];
