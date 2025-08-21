@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from "react";
 import {
-  ArrowLeft,
   Database,
   Settings,
   Code,
   Copy,
   Play,
   Loader2,
-  Download,
-  Trash2,
-  Calendar,
   Plus,
   Minus,
   Save,
+  ChevronRight,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,23 +28,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import ToggleTheme from "@/components/ToggleTheme";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
-import { KintoneAuth, KintoneApp, KintoneField } from "@/types/kintone";
-
-interface QueryCondition {
-  field: string;
-  operator: string;
-  value: string;
-  logicalOperator: "and" | "or";
-}
+import {
+  KintoneAuth,
+  KintoneApp,
+  KintoneField,
+  QueryCondition,
+} from "@/types/kintone";
 
 interface QueryGeneratorPageProps {
   auth: KintoneAuth;
   app: KintoneApp;
   onBack: () => void;
+  onBackToAppList?: () => void; // アプリ一覧に戻る関数
+  onLogout: () => void;
+  editingQueryId?: string; // 編集中のクエリID（オプショナル）
 }
 
 const operators = [
@@ -71,6 +87,9 @@ export default function QueryGeneratorPage({
   auth,
   app,
   onBack,
+  onBackToAppList,
+  onLogout,
+  editingQueryId,
 }: QueryGeneratorPageProps) {
   // Main states
   const [loading, setLoading] = useState(true);
@@ -80,17 +99,119 @@ export default function QueryGeneratorPage({
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
   ]);
+  const [fieldComboboxOpen, setFieldComboboxOpen] = useState<{
+    [key: number]: boolean;
+  }>({});
   const [orderBy, setOrderBy] = useState("none");
   const [limit, setLimit] = useState<number>();
   const [offset, setOffset] = useState<number>();
   const [executing, setExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<{
     records: Record<string, unknown>[];
+    error?: string;
+    formattedError?: { title: string; message: string; suggestion?: string };
   } | null>(null);
   const [activeResultTab, setActiveResultTab] = useState("table");
 
   // Saved queries
-  const { savedQueries, deleteQuery } = useQueryGenerator(app.appId);
+  const { savedQueries, saveQuery } = useQueryGenerator(app.appId);
+  const [currentQueryName, setCurrentQueryName] = useState(""); // 現在編集中のクエリ名
+  const [isEditMode, setIsEditMode] = useState(false); // 編集モードかどうか
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState(""); // 保存成功メッセージ
+
+  // エラーメッセージを親切なメッセージに変換する関数
+  const formatErrorMessage = (
+    errorMsg: string,
+  ): { title: string; message: string; suggestion?: string } => {
+    try {
+      // JSON形式のエラーを解析
+      const jsonMatch = errorMsg.match(/\{.*\}/);
+      if (jsonMatch) {
+        const errorObj = JSON.parse(jsonMatch[0]);
+
+        switch (errorObj.code) {
+          case "GAIA_IL26": {
+            // ユーザーが見つからない場合
+            const userCodeMatch =
+              errorObj.message.match(/ユーザー（code：(.+?)）/);
+            const userCode = userCodeMatch ? userCodeMatch[1] : "不明";
+            return {
+              title: "ユーザーが見つかりません",
+              message: `指定されたユーザー「${userCode}」は存在しないか、権限がありません。`,
+              suggestion: `・ユーザーコードの入力値を確認してください\n・該当ユーザーがシステムに登録されているか確認してください\n・入力値を「"」（ダブルクォート）で囲んでみてください`,
+            };
+          }
+
+          case "GAIA_IL23":
+            return {
+              title: "フィールドが見つかりません",
+              message: "指定されたフィールドが存在しません。",
+              suggestion: `・フィールドコードが正しいか確認してください\n・フィールドがアプリに存在するか確認してください`,
+            };
+
+          case "GAIA_IL22":
+            return {
+              title: "クエリの構文エラー",
+              message: "クエリの記述に誤りがあります。",
+              suggestion: `・演算子や値の記述を確認してください\n・特殊文字が含まれる場合は「"」（ダブルクォート）で囲んでください`,
+            };
+
+          default:
+            return {
+              title: "クエリ実行エラー",
+              message:
+                errorObj.message || "クエリの実行中にエラーが発生しました。",
+              suggestion: "・入力内容を確認してから再実行してください",
+            };
+        }
+      }
+    } catch {
+      // JSON解析に失敗した場合
+    }
+
+    // その他のエラーメッセージの処理
+    if (errorMsg.includes("400")) {
+      return {
+        title: "リクエストエラー",
+        message: "クエリの内容に問題があります。",
+        suggestion: `・検索条件の値や演算子を確認してください\n・特殊文字を含む値は「"」（ダブルクォート）で囲んでください`,
+      };
+    }
+
+    if (errorMsg.includes("401") || errorMsg.includes("403")) {
+      return {
+        title: "認証エラー",
+        message: "アクセス権限がありません。",
+        suggestion: `・ログイン情報を確認してください\n・アプリへのアクセス権限があるか確認してください`,
+      };
+    }
+
+    // デフォルトのエラーメッセージ
+    return {
+      title: "エラーが発生しました",
+      message: errorMsg,
+      suggestion: `・入力内容を確認してから再実行してください\n・問題が継続する場合は管理者にお問い合わせください`,
+    };
+  };
+
+  // Load editing query if editingQueryId is provided
+  useEffect(() => {
+    if (editingQueryId && savedQueries.length > 0) {
+      const queryToEdit = savedQueries.find((q) => q.id === editingQueryId);
+      if (queryToEdit) {
+        setConditions(queryToEdit.conditions);
+        setOrderBy(queryToEdit.orderBy);
+        setLimit(queryToEdit.limit);
+        setOffset(queryToEdit.offset);
+        setCurrentQueryName(queryToEdit.name);
+        setIsEditMode(true);
+      }
+    } else {
+      // 新規作成モード
+      setIsEditMode(false);
+      setCurrentQueryName("");
+    }
+  }, [editingQueryId, savedQueries]);
 
   // Format field value for display
   const formatFieldValue = (fieldData: unknown): string => {
@@ -194,20 +315,6 @@ export default function QueryGeneratorPage({
   }, [conditions, orderBy, limit, offset]);
 
   // Handlers
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleLoadQuery = (savedQuery: any) => {
-    setConditions(savedQuery.conditions);
-    setOrderBy(savedQuery.orderBy);
-    setLimit(savedQuery.limit);
-    setOffset(savedQuery.offset);
-  };
-
-  const handleDeleteQuery = (queryId: string) => {
-    if (confirm("このクエリを削除しますか？")) {
-      deleteQuery(queryId);
-    }
-  };
-
   const addCondition = () => {
     setConditions([
       ...conditions,
@@ -246,9 +353,13 @@ export default function QueryGeneratorPage({
       const operator = condition.operator;
       let value = condition.value;
 
-      // 値をクォートで囲む（数値以外）
+      // 値をクォートで囲む（数値フィールド以外）
       const fieldInfo = fields.find((f) => f.code === field);
-      if (fieldInfo && fieldInfo.type !== "NUMBER") {
+      if (
+        fieldInfo &&
+        fieldInfo.type !== "NUMBER" &&
+        fieldInfo.type !== "CALC"
+      ) {
         value = `"${value}"`;
       }
 
@@ -279,6 +390,7 @@ export default function QueryGeneratorPage({
     try {
       setExecuting(true);
       setError("");
+      setQueryResult(null); // 前の結果をクリア
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (window as any).kintoneAPI.executeQuery(
@@ -290,15 +402,61 @@ export default function QueryGeneratorPage({
       if (result.success) {
         setQueryResult(result.data);
       } else {
-        setError(result.error || "クエリの実行に失敗しました");
+        // エラーを実行結果として表示
+        const formattedError = formatErrorMessage(
+          result.error || "クエリの実行に失敗しました",
+        );
+        setQueryResult({
+          records: [],
+          error: result.error || "クエリの実行に失敗しました",
+          formattedError: formattedError,
+        });
       }
     } catch (err) {
       console.error("Error executing query:", err);
-      setError(
-        `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`,
-      );
+      // エラーを実行結果として表示
+      const errorMessage = `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`;
+      const formattedError = formatErrorMessage(errorMessage);
+      setQueryResult({
+        records: [],
+        error: errorMessage,
+        formattedError: formattedError,
+      });
     } finally {
       setExecuting(false);
+    }
+  };
+
+  const handleSaveQuery = () => {
+    if (!generatedQuery || !currentQueryName.trim()) {
+      alert("クエリ名とクエリ内容が必要です");
+      return;
+    }
+
+    try {
+      saveQuery(
+        currentQueryName.trim(),
+        conditions,
+        orderBy,
+        generatedQuery,
+        limit,
+        offset,
+        editingQueryId, // 編集中のクエリIDを渡す
+      );
+
+      if (isEditMode) {
+        setSaveSuccessMessage("クエリを更新しました");
+      } else {
+        setSaveSuccessMessage("クエリを保存しました");
+      }
+
+      // 3秒後にメッセージを非表示にする
+      setTimeout(() => {
+        setSaveSuccessMessage("");
+      }, 3000);
+    } catch (error) {
+      console.error("Error saving query:", error);
+      alert("クエリの保存に失敗しました");
     }
   };
 
@@ -314,507 +472,677 @@ export default function QueryGeneratorPage({
   }
 
   return (
-    <div className="bg-background min-h-screen">
+    <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
       <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 border-b backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-6">
-            <div className="flex items-center space-x-6">
-              <Button
-                variant="ghost"
-                onClick={onBack}
-                className="flex items-center space-x-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span>戻る</span>
-              </Button>
-
-              <div className="border-border/60 border-l pl-6">
-                <div className="flex items-center space-x-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-600">
-                    <Code className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-foreground text-lg font-semibold">
-                      {app.name}
-                    </h1>
-                    <div className="text-muted-foreground flex items-center space-x-2 text-sm">
-                      <Database className="h-3 w-3" />
-                      <span>アプリID: {app.appId}</span>
-                      <span className="text-muted-foreground/60">•</span>
-                      <Settings className="h-3 w-3" />
-                      <span className="text-muted-foreground">クエリ生成</span>
-                    </div>
-                  </div>
+            <div className="flex items-center space-x-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-600">
+                <Code className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <h1 className="text-foreground text-lg font-semibold">
+                  {app.name}
+                </h1>
+                <div className="text-muted-foreground flex items-center space-x-2 text-sm">
+                  <Database className="h-3 w-3" />
+                  <span>アプリID: {app.appId}</span>
+                  <span className="text-muted-foreground/60">•</span>
+                  <Settings className="h-3 w-3" />
+                  <span className="text-muted-foreground">
+                    {isEditMode ? "クエリ編集" : "新規作成"}
+                  </span>
                 </div>
               </div>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <ToggleTheme />
+              <Button
+                variant="outline"
+                onClick={onLogout}
+                className="hover:bg-muted/60 transition-colors"
+              >
+                ログアウト
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Breadcrumb */}
-        <nav className="mb-6">
-          <ol className="flex items-center space-x-2 text-sm">
-            <li>
-              <button
-                onClick={onBack}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                アプリ管理
-              </button>
-            </li>
-            <li className="text-muted-foreground">›</li>
-            <li>
-              <span className="text-muted-foreground">クエリ生成</span>
-            </li>
-          </ol>
-        </nav>
+      <div className="flex-1 overflow-auto">
+        <div className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 lg:px-8">
+          {/* Breadcrumb */}
+          <nav className="mb-6">
+            <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
+              <li>
+                <button
+                  onClick={onBackToAppList}
+                  className="hover:text-foreground transition-colors"
+                >
+                  アプリ一覧
+                </button>
+              </li>
+              <li>
+                <ChevronRight className="h-4 w-4" />
+              </li>
+              <li className="text-foreground font-medium">{app.name}</li>
+              <li>
+                <ChevronRight className="h-4 w-4" />
+              </li>
+              <li>
+                <button
+                  onClick={onBack}
+                  className="hover:text-foreground transition-colors"
+                >
+                  クエリ管理
+                </button>
+              </li>
+              <li>
+                <ChevronRight className="h-4 w-4" />
+              </li>
+              <li className="text-foreground font-medium">
+                {isEditMode ? "クエリ編集" : "新規作成"}
+              </li>
+            </ol>
+          </nav>
 
-        {error && (
-          <div className="bg-destructive/10 border-destructive/20 mb-6 rounded-lg border p-4">
-            <p className="text-destructive">{error}</p>
-          </div>
-        )}
+          {error && (
+            <div className="bg-destructive/10 border-destructive/20 mb-6 rounded-lg border p-4">
+              <p className="text-destructive">{error}</p>
+            </div>
+          )}
 
-        <div className="space-y-6">
-          {/* Saved Queries - Full Width */}
-          <Card>
-            <CardHeader>
-              <CardTitle>保存済みクエリ</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="scrollbar-hover max-h-64 space-y-2 overflow-y-auto">
-                {savedQueries.length === 0 ? (
-                  <div className="text-muted-foreground py-6 text-center">
-                    <Save className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                    <p className="text-sm">保存されたクエリはありません</p>
-                  </div>
-                ) : (
-                  savedQueries.map((query) => (
-                    <div
-                      key={query.id}
-                      className="bg-muted border-border hover:bg-muted/80 flex items-center justify-between rounded border p-3 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-foreground truncate text-sm font-medium">
-                          {query.name}
-                        </div>
-                        <div className="mt-1 flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">
-                            {query.conditions.length}条件
-                          </Badge>
-                          <div className="text-muted-foreground flex items-center text-xs">
-                            <Calendar className="mr-1 h-3 w-3" />
-                            {new Date(query.createdAt).toLocaleDateString(
-                              "ja-JP",
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="ml-2 flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleLoadQuery(query)}
-                          className="h-8 px-2 text-xs"
+          <div className="space-y-6">
+            {/* Main Layout: Query Builder + Results */}
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+              {/* Left: Query Builder */}
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>検索条件</CardTitle>
+                    <CardDescription>
+                      フィールドと条件を指定してください
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {conditions.map((condition, index) => (
+                        <div
+                          key={index}
+                          className="bg-muted/20 rounded-lg border p-4"
                         >
-                          <Download className="mr-1 h-3 w-3" />
-                          読込
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteQuery(query.id)}
-                          className="text-destructive hover:text-destructive h-8 px-2 text-xs"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                          <div>
+                            <div className="mb-3 flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <Badge variant="outline" className="text-xs">
+                                  条件 {index + 1}
+                                </Badge>
+                                {index > 0 && (
+                                  <Select
+                                    value={condition.logicalOperator}
+                                    onValueChange={(value: "and" | "or") =>
+                                      updateCondition(index, {
+                                        logicalOperator: value,
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="h-7 w-20 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="and">AND</SelectItem>
+                                      <SelectItem value="or">OR</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeCondition(index)}
+                                className="h-7 w-7 p-0"
+                                disabled={conditions.length === 1}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                            </div>
 
-          {/* Main Layout: Query Builder + Results */}
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-            {/* Left: Query Builder */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>検索条件</CardTitle>
-                  <CardDescription>
-                    フィールドと条件を指定してください
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {conditions.map((condition, index) => (
-                      <div
-                        key={index}
-                        className="bg-muted/20 rounded-lg border p-4"
-                      >
-                        <div>
-                          <div className="mb-3 flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <Badge variant="outline" className="text-xs">
-                                条件 {index + 1}
-                              </Badge>
-                              {index > 0 && (
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+                              <div className="md:col-span-4">
+                                <Popover
+                                  open={fieldComboboxOpen[index] || false}
+                                  onOpenChange={(open) =>
+                                    setFieldComboboxOpen((prev) => ({
+                                      ...prev,
+                                      [index]: open,
+                                    }))
+                                  }
+                                >
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      role="combobox"
+                                      aria-expanded={
+                                        fieldComboboxOpen[index] || false
+                                      }
+                                      className="w-full justify-between"
+                                    >
+                                      <span className="truncate">
+                                        {condition.field
+                                          ? fields.find(
+                                              (field) =>
+                                                field.code === condition.field,
+                                            )?.label
+                                          : "フィールドを選択"}
+                                      </span>
+                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[300px] p-0">
+                                    <Command>
+                                      <CommandInput placeholder="フィールドを検索..." />
+                                      <CommandList>
+                                        <CommandEmpty>
+                                          フィールドが見つかりません。
+                                        </CommandEmpty>
+                                        <CommandGroup>
+                                          {fields.map((field) => (
+                                            <CommandItem
+                                              key={field.code}
+                                              value={field.label}
+                                              onSelect={() => {
+                                                updateCondition(index, {
+                                                  field: field.code,
+                                                });
+                                                setFieldComboboxOpen(
+                                                  (prev) => ({
+                                                    ...prev,
+                                                    [index]: false,
+                                                  }),
+                                                );
+                                              }}
+                                            >
+                                              <Check
+                                                className={`mr-2 h-4 w-4 ${
+                                                  condition.field === field.code
+                                                    ? "opacity-100"
+                                                    : "opacity-0"
+                                                }`}
+                                              />
+                                              {field.label}
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                              <div className="md:col-span-3">
                                 <Select
-                                  value={condition.logicalOperator}
-                                  onValueChange={(value: "and" | "or") =>
+                                  value={condition.operator}
+                                  onValueChange={(value) =>
                                     updateCondition(index, {
-                                      logicalOperator: value,
+                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                      operator: value as any,
                                     })
                                   }
                                 >
-                                  <SelectTrigger className="h-7 w-16 text-xs">
-                                    <SelectValue />
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue className="truncate" />
                                   </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="and">AND</SelectItem>
-                                    <SelectItem value="or">OR</SelectItem>
+                                  <SelectContent className="min-w-[200px]">
+                                    {operators.map((op) => (
+                                      <SelectItem
+                                        key={op.value}
+                                        value={op.value}
+                                        className="whitespace-nowrap"
+                                      >
+                                        {op.label}
+                                      </SelectItem>
+                                    ))}
                                   </SelectContent>
                                 </Select>
-                              )}
+                              </div>
+                              <div className="md:col-span-5">
+                                <Input
+                                  value={condition.value}
+                                  onChange={(e) =>
+                                    updateCondition(index, {
+                                      value: e.target.value,
+                                    })
+                                  }
+                                  placeholder="値を入力"
+                                />
+                              </div>
                             </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button
+                        variant="outline"
+                        onClick={addCondition}
+                        className="w-full"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        条件を追加
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Sort and Limit Options */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>並び替え・制限</CardTitle>
+                    <CardDescription>
+                      クエリの並び替えと取得件数を設定
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div>
+                        <Label
+                          htmlFor="orderBy"
+                          className="mb-2 block text-sm font-medium"
+                        >
+                          並び替え
+                        </Label>
+                        <Select value={orderBy} onValueChange={setOrderBy}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue className="truncate" />
+                          </SelectTrigger>
+                          <SelectContent className="min-w-[220px]">
+                            {orderByOptions.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                                className="whitespace-nowrap"
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor="limit"
+                            className="mb-2 block text-sm font-medium"
+                          >
+                            取得件数 (limit)
+                          </Label>
+                          <Input
+                            id="limit"
+                            type="number"
+                            value={limit || ""}
+                            placeholder="例: 100"
+                            onChange={(e) =>
+                              setLimit(
+                                e.target.value
+                                  ? Number(e.target.value)
+                                  : undefined,
+                              )
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label
+                            htmlFor="offset"
+                            className="mb-2 block text-sm font-medium"
+                          >
+                            スキップ件数 (offset)
+                          </Label>
+                          <Input
+                            id="offset"
+                            type="number"
+                            value={offset || ""}
+                            placeholder="例: 0"
+                            onChange={(e) =>
+                              setOffset(
+                                e.target.value
+                                  ? Number(e.target.value)
+                                  : undefined,
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Right: Generated Query and Results */}
+              <div className="space-y-6">
+                <Card className="h-fit">
+                  <CardHeader>
+                    <CardTitle>生成されたクエリ</CardTitle>
+                    <CardDescription>
+                      Kintone REST APIで使用するクエリが表示されます
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {generatedQuery ? (
+                      <Tabs defaultValue="query" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="query">クエリ文字列</TabsTrigger>
+                          <TabsTrigger value="api">APIプレビュー</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="query" className="space-y-4">
+                          <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">
+                            <code className="text-foreground text-sm">
+                              {generatedQuery}
+                            </code>
+                          </div>
+                          <div className="flex items-center space-x-2">
                             <Button
-                              variant="ghost"
+                              onClick={() =>
+                                navigator.clipboard.writeText(generatedQuery)
+                              }
+                              variant="outline"
                               size="sm"
-                              onClick={() => removeCondition(index)}
-                              className="h-7 w-7 p-0"
-                              disabled={conditions.length === 1}
                             >
-                              <Minus className="h-3 w-3" />
+                              <Copy className="mr-2 h-4 w-4" />
+                              コピー
+                            </Button>
+                            <Button
+                              onClick={executeQuery}
+                              size="sm"
+                              disabled={executing}
+                              className="bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+                            >
+                              {executing ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Play className="mr-2 h-4 w-4" />
+                              )}
+                              {executing ? "実行中..." : "実行"}
                             </Button>
                           </div>
+                        </TabsContent>
+                        <TabsContent value="api" className="space-y-4">
+                          <div className="bg-muted scrollbar-hover max-h-80 overflow-y-auto rounded-lg p-4">
+                            <div className="space-y-6">
+                              {/* URL Section */}
+                              <div className="space-y-2">
+                                <div className="text-foreground border-b pb-1 text-sm font-medium">
+                                  リクエストURL
+                                </div>
+                                <div className="bg-background rounded p-3">
+                                  <code className="text-sm break-all">
+                                    https://{auth.subdomain}
+                                    .cybozu.com/k/v1/records.json
+                                  </code>
+                                </div>
+                              </div>
 
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-                            <div className="md:col-span-4">
-                              <Select
-                                value={condition.field}
-                                onValueChange={(value) =>
-                                  updateCondition(index, { field: value })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="フィールドを選択" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {fields.map((field) => (
-                                    <SelectItem
-                                      key={field.code}
-                                      value={field.code}
-                                    >
+                              {/* Headers Section */}
+                              <div className="space-y-2">
+                                <div className="text-foreground border-b pb-1 text-sm font-medium">
+                                  リクエストヘッダー
+                                </div>
+                                <div className="bg-background space-y-2 rounded p-3">
+                                  <div className="flex">
+                                    <span className="w-32 font-mono text-xs text-blue-600">
+                                      Content-Type:
+                                    </span>
+                                    <span className="font-mono text-xs">
+                                      application/json
+                                    </span>
+                                  </div>
+                                  <div className="flex">
+                                    <span className="w-32 font-mono text-xs text-blue-600">
+                                      X-Cybozu-Authorization:
+                                    </span>
+                                    <span className="text-muted-foreground font-mono text-xs">
+                                      [Base64 encoded credentials]
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Parameters Section */}
+                              <div className="space-y-2">
+                                <div className="text-foreground border-b pb-1 text-sm font-medium">
+                                  リクエストパラメータ
+                                </div>
+                                <div className="bg-background space-y-3 rounded p-3">
+                                  <div className="grid grid-cols-1 gap-3">
+                                    <div className="flex flex-col">
+                                      <label className="mb-1 font-mono text-xs text-blue-600">
+                                        app:
+                                      </label>
+                                      <code className="bg-muted rounded p-2 text-xs">
+                                        {app.appId}
+                                      </code>
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <label className="mb-1 font-mono text-xs text-blue-600">
+                                        query:
+                                      </label>
+                                      <code className="bg-muted min-h-[2rem] rounded p-2 text-xs whitespace-pre-wrap">
+                                        {generatedQuery || "（条件なし）"}
+                                      </code>
+                                    </div>
+                                    {limit && (
                                       <div className="flex flex-col">
-                                        <span className="font-medium">
-                                          {field.label}
-                                        </span>
-                                        <span className="text-muted-foreground text-xs">
-                                          {field.code} ({field.type})
-                                        </span>
+                                        <label className="mb-1 font-mono text-xs text-blue-600">
+                                          size:
+                                        </label>
+                                        <code className="bg-muted rounded p-2 text-xs">
+                                          {limit}
+                                        </code>
                                       </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="md:col-span-3">
-                              <Select
-                                value={condition.operator}
-                                onValueChange={(value) =>
-                                  updateCondition(index, {
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    operator: value as any,
-                                  })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {operators.map((op) => (
-                                    <SelectItem key={op.value} value={op.value}>
-                                      {op.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="md:col-span-5">
-                              <Input
-                                value={condition.value}
-                                onChange={(e) =>
-                                  updateCondition(index, {
-                                    value: e.target.value,
-                                  })
-                                }
-                                placeholder="値を入力"
-                              />
+                                    )}
+                                    {offset && (
+                                      <div className="flex flex-col">
+                                        <label className="mb-1 font-mono text-xs text-blue-600">
+                                          offset:
+                                        </label>
+                                        <code className="bg-muted rounded p-2 text-xs">
+                                          {offset}
+                                        </code>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
-
-                    <Button
-                      variant="outline"
-                      onClick={addCondition}
-                      className="w-full"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      条件を追加
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Sort and Limit Options */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>並び替え・制限</CardTitle>
-                  <CardDescription>
-                    クエリの並び替えと取得件数を設定
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <Label
-                        htmlFor="orderBy"
-                        className="mb-2 block text-sm font-medium"
-                      >
-                        並び替え
-                      </Label>
-                      <Select value={orderBy} onValueChange={setOrderBy}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {orderByOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label
-                          htmlFor="limit"
-                          className="mb-2 block text-sm font-medium"
-                        >
-                          取得件数 (limit)
-                        </Label>
-                        <Input
-                          id="limit"
-                          type="number"
-                          value={limit || ""}
-                          placeholder="例: 100"
-                          onChange={(e) =>
-                            setLimit(
-                              e.target.value
-                                ? Number(e.target.value)
-                                : undefined,
-                            )
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label
-                          htmlFor="offset"
-                          className="mb-2 block text-sm font-medium"
-                        >
-                          スキップ件数 (offset)
-                        </Label>
-                        <Input
-                          id="offset"
-                          type="number"
-                          value={offset || ""}
-                          placeholder="例: 0"
-                          onChange={(e) =>
-                            setOffset(
-                              e.target.value
-                                ? Number(e.target.value)
-                                : undefined,
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Right: Generated Query and Results */}
-            <div className="space-y-6">
-              <Card className="h-fit">
-                <CardHeader>
-                  <CardTitle>生成されたクエリ</CardTitle>
-                  <CardDescription>
-                    Kintone REST APIで使用するクエリが表示されます
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {generatedQuery ? (
-                      <>
-                        <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">
-                          <code className="text-foreground text-sm">
-                            {generatedQuery}
-                          </code>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            onClick={() =>
-                              navigator.clipboard.writeText(generatedQuery)
-                            }
-                            variant="outline"
-                            size="sm"
-                          >
-                            <Copy className="mr-2 h-4 w-4" />
-                            コピー
-                          </Button>
-                          <Button
-                            onClick={executeQuery}
-                            size="sm"
-                            disabled={executing}
-                          >
-                            {executing ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <Play className="mr-2 h-4 w-4" />
-                            )}
-                            {executing ? "実行中..." : "実行"}
-                          </Button>
-                        </div>
-                      </>
+                        </TabsContent>
+                      </Tabs>
                     ) : (
                       <p className="text-muted-foreground text-center">
                         条件を設定してクエリを生成してください
                       </p>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              {/* Query Results */}
-              {queryResult && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>実行結果</CardTitle>
-                    <CardDescription>
-                      {queryResult.records?.length || 0}
-                      件のレコードが見つかりました
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Tabs
-                      value={activeResultTab}
-                      onValueChange={setActiveResultTab}
-                      className="w-full"
-                    >
-                      <TabsList className="bg-muted relative grid w-full grid-cols-2 overflow-hidden rounded-lg border-0 p-1">
-                        <TabsTrigger
-                          value="table"
-                          className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
+                {/* Query Results */}
+                {queryResult && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>実行結果</CardTitle>
+                      <CardDescription>
+                        {queryResult.error
+                          ? "クエリの実行中にエラーが発生しました"
+                          : `${queryResult.records?.length || 0}件のレコードが見つかりました`}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {queryResult.error ? (
+                        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/20">
+                          <div className="mb-2 flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                            <h3 className="font-medium text-red-800 dark:text-red-200">
+                              エラー
+                            </h3>
+                          </div>
+                          <p className="text-sm text-red-700 dark:text-red-300">
+                            {queryResult.formattedError?.message ||
+                              queryResult.error}
+                          </p>
+                        </div>
+                      ) : (
+                        <Tabs
+                          value={activeResultTab}
+                          onValueChange={setActiveResultTab}
+                          className="w-full"
                         >
-                          テーブル表示
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="json"
-                          className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
-                        >
-                          JSON表示
-                        </TabsTrigger>
-                        {/* スライド背景 */}
-                        <div
-                          className={`bg-background border-border absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] rounded-md border shadow-md transition-transform duration-300 ease-out ${
-                            activeResultTab === "json"
-                              ? "translate-x-full"
-                              : "translate-x-0"
-                          }`}
-                        />
-                      </TabsList>
+                          <TabsList className="bg-muted relative grid w-full grid-cols-2 overflow-hidden rounded-lg border-0 p-1">
+                            <TabsTrigger
+                              value="table"
+                              className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
+                            >
+                              テーブル表示
+                            </TabsTrigger>
+                            <TabsTrigger
+                              value="json"
+                              className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
+                            >
+                              JSON表示
+                            </TabsTrigger>
+                            {/* スライド背景 */}
+                            <div
+                              className={`bg-background border-border absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] rounded-md border shadow-md transition-transform duration-300 ease-out ${
+                                activeResultTab === "json"
+                                  ? "translate-x-full"
+                                  : "translate-x-0"
+                              }`}
+                            />
+                          </TabsList>
 
-                      <TabsContent value="table" className="space-y-4">
-                        {queryResult.records.length > 0 ? (
-                          <div className="scrollbar-thin max-h-96 overflow-x-auto">
-                            <table className="w-full border-collapse text-sm">
-                              <thead>
-                                <tr className="bg-muted/50 border-b">
-                                  {Object.keys(queryResult.records[0]).map(
-                                    (fieldCode) => (
-                                      <th
-                                        key={fieldCode}
-                                        className="border-r p-2 text-left font-medium"
-                                      >
-                                        {fields.find(
-                                          (f) => f.code === fieldCode,
-                                        )?.label || fieldCode}
-                                      </th>
-                                    ),
-                                  )}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {queryResult.records
-                                  .slice(0, 10)
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  .map((record: any, index: number) => (
-                                    <tr
-                                      key={index}
-                                      className="hover:bg-muted/30 border-b"
-                                    >
-                                      {Object.entries(record).map(
-                                        ([fieldCode, fieldData]: [
-                                          string,
-                                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                          any,
-                                        ]) => (
-                                          <td
+                          <TabsContent value="table" className="space-y-4">
+                            {queryResult.records.length > 0 ? (
+                              <div className="scrollbar-thin max-h-96 overflow-x-auto">
+                                <table className="w-full border-collapse text-sm">
+                                  <thead>
+                                    <tr className="bg-muted/50 border-b">
+                                      {Object.keys(queryResult.records[0]).map(
+                                        (fieldCode) => (
+                                          <th
                                             key={fieldCode}
-                                            className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
+                                            className="border-r p-2 text-left font-medium"
                                           >
-                                            {formatFieldValue(fieldData)}
-                                          </td>
+                                            {fields.find(
+                                              (f) => f.code === fieldCode,
+                                            )?.label || fieldCode}
+                                          </th>
                                         ),
                                       )}
                                     </tr>
-                                  ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <p className="text-muted-foreground py-8 text-center">
-                            レコードがありません
-                          </p>
-                        )}
-                      </TabsContent>
+                                  </thead>
+                                  <tbody>
+                                    {queryResult.records
+                                      .slice(0, 10)
+                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                      .map((record: any, index: number) => (
+                                        <tr
+                                          key={index}
+                                          className="hover:bg-muted/30 border-b"
+                                        >
+                                          {Object.entries(record).map(
+                                            ([fieldCode, fieldData]: [
+                                              string,
+                                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                              any,
+                                            ]) => (
+                                              <td
+                                                key={fieldCode}
+                                                className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
+                                              >
+                                                {formatFieldValue(fieldData)}
+                                              </td>
+                                            ),
+                                          )}
+                                        </tr>
+                                      ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <p className="text-muted-foreground py-8 text-center">
+                                レコードがありません
+                              </p>
+                            )}
+                          </TabsContent>
 
-                      <TabsContent value="json" className="space-y-4">
-                        <div className="bg-muted scrollbar-hover border-border max-h-96 overflow-y-auto rounded-lg border p-4">
-                          <pre className="text-foreground text-xs">
-                            {JSON.stringify(queryResult.records, null, 2)}
-                          </pre>
-                        </div>
-                      </TabsContent>
-                    </Tabs>
-                  </CardContent>
-                </Card>
-              )}
+                          <TabsContent value="json" className="space-y-4">
+                            <div className="scrollbar-hover border-border max-h-96 overflow-y-auto rounded-lg border">
+                              <SyntaxHighlighter
+                                language="json"
+                                style={tomorrow}
+                                customStyle={{
+                                  margin: 0,
+                                  borderRadius: "0.5rem",
+                                  fontSize: "0.75rem",
+                                  lineHeight: "1rem",
+                                }}
+                                wrapLongLines={true}
+                              >
+                                {JSON.stringify(queryResult.records, null, 2)}
+                              </SyntaxHighlighter>
+                            </div>
+                          </TabsContent>
+                        </Tabs>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Fixed Footer for Query Save */}
+      <footer className="border-border/40 bg-background/95 supports-[backdrop-filter]:bg-background/80 fixed right-0 bottom-0 left-0 z-40 border-t backdrop-blur-xl">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div className="text-muted-foreground flex items-center space-x-4 text-sm">
+              <span>クエリ: {generatedQuery ? "生成済み" : "未生成"}</span>
+              {generatedQuery && (
+                <span className="bg-muted/50 rounded-md px-2 py-1 font-mono text-xs">
+                  {generatedQuery.length > 50
+                    ? `${generatedQuery.substring(0, 50)}...`
+                    : generatedQuery}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <Input
+                placeholder="クエリ名を入力..."
+                value={currentQueryName}
+                onChange={(e) => setCurrentQueryName(e.target.value)}
+                className="w-64"
+              />
+              <Button
+                onClick={handleSaveQuery}
+                disabled={!generatedQuery || !currentQueryName.trim()}
+                className="gap-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                {isEditMode ? "更新" : "保存"}
+              </Button>
+              {saveSuccessMessage && (
+                <div className="animate-in fade-in-0 slide-in-from-right-1 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800 duration-300">
+                  <Check className="h-4 w-4" />
+                  {saveSuccessMessage}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

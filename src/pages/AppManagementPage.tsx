@@ -20,6 +20,8 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import ToggleTheme from "@/components/ToggleTheme";
 import AppDataTable from "@/components/AppDataTable";
+import QuerySelectionPage from "./QuerySelectionPage";
+import QueryGeneratorPage from "./QueryGeneratorPage";
 import { KintoneApp, AppFilter, KintoneAuth } from "@/types/kintone";
 import {
   Search,
@@ -30,7 +32,7 @@ import {
   User,
   Grid3X3,
   Table2,
-  Code,
+  Code2,
   Save,
 } from "lucide-react";
 import {
@@ -60,6 +62,13 @@ export default function AppManagementPage({
   );
   const [appInfoLoading, setAppInfoLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [currentView, setCurrentView] = useState<
+    "apps" | "querySelection" | "queryGenerator"
+  >("apps");
+  const [selectedApp, setSelectedApp] = useState<KintoneApp | null>(null);
+  const [editingQueryId, setEditingQueryId] = useState<string | undefined>(
+    undefined,
+  );
   const [filter, setFilter] = useState<AppFilter>({
     searchTerm: "", // 後方互換性のため残す
     showFavoritesOnly: false,
@@ -92,6 +101,8 @@ export default function AppManagementPage({
               code: app.code,
               name: app.name,
               description: app.description,
+              spaceId: app.spaceId,
+              threadId: app.threadId,
               createdAt: app.createdAt,
               modifiedAt: app.modifiedAt,
               creator: app.creator,
@@ -171,6 +182,8 @@ export default function AppManagementPage({
           name: existingApp.name,
           description: existingApp.description,
           code: existingApp.code,
+          spaceId: existingApp.spaceId,
+          threadId: existingApp.threadId,
           creator: existingApp.creator,
           modifier: existingApp.modifier,
           createdAt: existingApp.createdAt,
@@ -275,6 +288,72 @@ export default function AppManagementPage({
     return matchesSearch && matchesFavorite;
   });
 
+  // Navigation handlers
+  const handleAppSelect = (app: KintoneApp) => {
+    console.log("handleAppSelect called with app:", app);
+    setSelectedApp(app);
+    setCurrentView("querySelection");
+    console.log("currentView set to querySelection");
+  };
+
+  const handleBackToApps = () => {
+    setCurrentView("apps");
+    setSelectedApp(null);
+    setEditingQueryId(undefined);
+  };
+
+  const handleCreateNewQuery = () => {
+    setEditingQueryId(undefined);
+    setCurrentView("queryGenerator");
+  };
+
+  const handleEditQuery = (queryId: string) => {
+    setEditingQueryId(queryId);
+    setCurrentView("queryGenerator");
+  };
+
+  const handleBackToQuerySelection = () => {
+    setCurrentView("querySelection");
+    setEditingQueryId(undefined);
+  };
+
+  // Render different views based on currentView
+  console.log("Current state:", {
+    currentView,
+    selectedApp: selectedApp?.name,
+    editingQueryId,
+  });
+
+  if (currentView === "querySelection" && selectedApp) {
+    console.log("Rendering QuerySelectionPage");
+    return (
+      <QuerySelectionPage
+        auth={auth}
+        app={selectedApp}
+        onBack={handleBackToApps}
+        onCreateNew={handleCreateNewQuery}
+        onEditQuery={handleEditQuery}
+        onLogout={onLogout}
+      />
+    );
+  }
+
+  if (currentView === "queryGenerator" && selectedApp) {
+    console.log("Rendering QueryGeneratorPage");
+    return (
+      <QueryGeneratorPage
+        auth={auth}
+        app={selectedApp}
+        onBack={handleBackToQuerySelection}
+        onBackToAppList={handleBackToApps}
+        editingQueryId={editingQueryId}
+        onLogout={onLogout}
+      />
+    );
+  }
+
+  console.log("Rendering default AppManagementPage");
+
   return (
     <div className="bg-background min-h-screen">
       {/* ヘッダー */}
@@ -296,7 +375,7 @@ export default function AppManagementPage({
                     </span>
                     <span className="text-muted-foreground/60">•</span>
                     <span className="bg-muted/50 rounded-md px-2 py-0.5 font-mono text-xs">
-                      {filteredApps.length} アプリ
+                      {apps.length} アプリ
                     </span>
                   </div>
                 </div>
@@ -552,11 +631,11 @@ export default function AppManagementPage({
                       {/* アクションボタン */}
                       <div className="mt-auto flex gap-2">
                         <Button
-                          onClick={() => onSelectApp(app)}
+                          onClick={() => handleAppSelect(app)}
                           className="flex-1 bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
                           size="sm"
                         >
-                          <Code className="mr-2 h-4 w-4" />
+                          <Code2 className="mr-2 h-4 w-4" />
                           クエリ生成
                         </Button>
                         <Dialog
@@ -683,7 +762,7 @@ export default function AppManagementPage({
                                           <p className="text-sm font-medium">
                                             {(selectedAppInfo.creator?.name &&
                                               selectedAppInfo.creator.name.trim()) ||
-                                              "情報なし"}
+                                              "-"}
                                           </p>
                                           {selectedAppInfo.creator?.code &&
                                             selectedAppInfo.creator.code.trim() && (
@@ -699,7 +778,7 @@ export default function AppManagementPage({
                                                 ? new Date(
                                                     selectedAppInfo.createdAt,
                                                   ).toLocaleString("ja-JP")
-                                                : "情報なし"}
+                                                : "-"}
                                             </p>
                                           </div>
                                         </div>
@@ -717,7 +796,7 @@ export default function AppManagementPage({
                                           <p className="text-sm font-medium">
                                             {(selectedAppInfo.modifier?.name &&
                                               selectedAppInfo.modifier.name.trim()) ||
-                                              "情報なし"}
+                                              "-"}
                                           </p>
                                           {selectedAppInfo.modifier?.code &&
                                             selectedAppInfo.modifier.code.trim() && (
@@ -733,7 +812,7 @@ export default function AppManagementPage({
                                                 ? new Date(
                                                     selectedAppInfo.modifiedAt,
                                                   ).toLocaleString("ja-JP")
-                                                : "情報なし"}
+                                                : "-"}
                                             </p>
                                           </div>
                                         </div>
@@ -754,7 +833,7 @@ export default function AppManagementPage({
               <AppDataTable
                 apps={filteredApps}
                 auth={auth}
-                onSelectApp={onSelectApp}
+                onSelectApp={handleAppSelect}
                 onToggleFavorite={toggleFavorite}
               />
             )}

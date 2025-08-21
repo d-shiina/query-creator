@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { QueryCondition } from '@/types/kintone';
+import { useState, useEffect } from "react";
+import { QueryCondition } from "@/types/kintone";
 
 interface SavedQuery {
   id: string;
@@ -8,13 +8,22 @@ interface SavedQuery {
   orderBy: string;
   limit?: number;
   offset?: number;
+  generatedQuery: string;
   createdAt: string;
   appId: string;
 }
 
 interface UseQueryGeneratorReturn {
   savedQueries: SavedQuery[];
-  saveQuery: (name: string, conditions: QueryCondition[], orderBy: string, limit?: number, offset?: number) => void;
+  saveQuery: (
+    name: string,
+    conditions: QueryCondition[],
+    orderBy: string,
+    generatedQuery: string,
+    limit?: number,
+    offset?: number,
+    editingId?: string,
+  ) => void;
   loadQuery: (query: SavedQuery) => void;
   deleteQuery: (queryId: string) => void;
   generateStorageKey: (appId: string) => string;
@@ -31,7 +40,7 @@ export const getQueryCount = (appId: string): number => {
     }
     return 0;
   } catch (error) {
-    console.error('Error getting query count:', error);
+    console.error("Error getting query count:", error);
     return 0;
   }
 };
@@ -40,7 +49,8 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [initialized, setInitialized] = useState(false);
 
-  const generateStorageKey = (appId: string) => `kintone_saved_queries_${appId}`;
+  const generateStorageKey = (appId: string) =>
+    `kintone_saved_queries_${appId}`;
 
   // Load saved queries from localStorage on mount
   useEffect(() => {
@@ -51,7 +61,7 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
         const parsedQueries = JSON.parse(saved);
         setSavedQueries(parsedQueries);
       } catch (error) {
-        console.error('Error loading saved queries:', error);
+        console.error("Error loading saved queries:", error);
         setSavedQueries([]);
       }
     } else {
@@ -63,37 +73,67 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
   // Save queries to localStorage whenever savedQueries changes (but not on initial load)
   useEffect(() => {
     if (!initialized) return; // Don't save during initial load
-    
+
     const storageKey = generateStorageKey(appId);
     localStorage.setItem(storageKey, JSON.stringify(savedQueries));
     // Trigger custom event to notify other components
-    window.dispatchEvent(new CustomEvent('localStorageUpdate', { 
-      detail: { key: storageKey, value: savedQueries } 
-    }));
+    window.dispatchEvent(
+      new CustomEvent("localStorageUpdate", {
+        detail: { key: storageKey, value: savedQueries },
+      }),
+    );
   }, [savedQueries, appId, initialized]);
 
-  const saveQuery = (name: string, conditions: QueryCondition[], orderBy: string, limit?: number, offset?: number) => {
-    const newQuery: SavedQuery = {
-      id: Date.now().toString(),
+  const saveQuery = (
+    name: string,
+    conditions: QueryCondition[],
+    orderBy: string,
+    generatedQuery: string,
+    limit?: number,
+    offset?: number,
+    editingId?: string, // 編集中のクエリID
+  ) => {
+    const queryData = {
       name,
-      conditions: conditions.filter(c => c.field && c.operator && c.value), // Only save valid conditions
+      conditions: conditions.filter((c) => c.field && c.operator && c.value), // Only save valid conditions
       orderBy,
       limit,
       offset,
-      createdAt: new Date().toISOString(),
+      generatedQuery,
       appId,
     };
 
-    setSavedQueries(prev => [newQuery, ...prev]);
+    if (editingId) {
+      // 上書き保存（既存のクエリを更新）
+      setSavedQueries((prev) =>
+        prev.map((q) =>
+          q.id === editingId
+            ? {
+                ...queryData,
+                id: editingId,
+                createdAt: q.createdAt, // 作成日は保持
+              }
+            : q,
+        ),
+      );
+    } else {
+      // 新規保存
+      const newQuery: SavedQuery = {
+        ...queryData,
+        id: Date.now().toString(),
+        createdAt: new Date().toISOString(),
+      };
+      setSavedQueries((prev) => [newQuery, ...prev]);
+    }
   };
 
-  const loadQuery = (query: SavedQuery) => {
+  const loadQuery = () => {
     // This will be handled in the parent component
     // Return the query data for parent to use
   };
 
   const deleteQuery = (queryId: string) => {
-    setSavedQueries(prev => prev.filter(q => q.id !== queryId));
+    setSavedQueries((prev) => prev.filter((q) => q.id !== queryId));
   };
 
   return {

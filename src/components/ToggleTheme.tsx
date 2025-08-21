@@ -5,34 +5,49 @@ import { getCurrentTheme, setTheme } from "@/helpers/theme_helpers";
 import { ThemeMode } from "@/types/theme-mode";
 
 export default function ToggleTheme() {
-  const [currentTheme, setCurrentTheme] = useState<ThemeMode>('system');
+  const [currentTheme, setCurrentTheme] = useState<ThemeMode>("system");
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
     const updateTheme = async () => {
-      const { local, system } = await getCurrentTheme();
-      const activeTheme = local || 'system';
+      const { local } = await getCurrentTheme();
+      const activeTheme = local || "system";
       setCurrentTheme(activeTheme);
-      
+
       // 現在のダークモード状態を確認
-      const isCurrentlyDark = document.documentElement.classList.contains('dark');
+      let isCurrentlyDark = document.documentElement.classList.contains("dark");
+
+      // systemテーマの場合は、システムの実際の設定を取得
+      if (activeTheme === "system") {
+        const systemIsDark = await window.themeMode.current();
+        isCurrentlyDark = systemIsDark === "dark";
+      }
+
       setIsDark(isCurrentlyDark);
     };
-    
+
     updateTheme();
   }, []);
 
   const handleToggle = async () => {
-    const nextTheme: ThemeMode = isDark ? 'light' : 'dark';
+    let nextTheme: ThemeMode;
+
+    // システムテーマの場合は、現在の表示状態に基づいて次のテーマを決定
+    if (currentTheme === "system") {
+      nextTheme = isDark ? "light" : "dark";
+    } else {
+      nextTheme = isDark ? "light" : "dark";
+    }
+
     await setTheme(nextTheme);
     setCurrentTheme(nextTheme);
     setIsDark(!isDark);
   };
 
   return (
-    <Button 
-      onClick={handleToggle} 
-      variant="outline" 
+    <Button
+      onClick={handleToggle}
+      variant="outline"
       size="icon"
       className="border-border hover:bg-accent hover:text-accent-foreground"
     >

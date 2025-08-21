@@ -11,6 +11,8 @@ export interface KintoneApp {
   code?: string;
   name: string;
   description?: string;
+  spaceId?: string | null;
+  threadId?: string | null;
   isFavorite?: boolean;
   createdAt?: string;
   updatedAt?: string;
