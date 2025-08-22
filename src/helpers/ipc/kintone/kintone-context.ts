@@ -85,5 +85,22 @@ export function exposeKintoneAPI() {
         };
       }
     },
+
+    getUsers: async (auth: KintoneAuth) => {
+      try {
+        console.log("Preload: Calling main process getUsers");
+        const result = await ipcRenderer.invoke("kintone:getUsers", auth);
+        return result;
+      } catch (error) {
+        console.error("Preload: getUsers error:", error);
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "ユーザー一覧取得エラーが発生しました",
+        };
+      }
+    },
   });
 }

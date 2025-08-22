@@ -4,7 +4,12 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
-import { KintoneAuth, KintoneApp, KintoneField } from "./types/kintone";
+import {
+  KintoneAuth,
+  KintoneApp,
+  KintoneField,
+  KintoneUser,
+} from "./types/kintone";
 
 // Preload types
 interface ThemeModeContext {
@@ -25,9 +30,25 @@ interface ElectronWindow {
 
 interface KintoneAPIContext {
   login: (auth: KintoneAuth) => Promise<{ success: boolean; error?: string }>;
-  getApps: (auth: KintoneAuth) => Promise<{ success: boolean; data?: KintoneApp[]; error?: string }>;
-  getAppFields: (auth: KintoneAuth, appId: string) => Promise<{ success: boolean; data?: KintoneField[]; error?: string }>;
-  executeQuery: (auth: KintoneAuth, appId: string, query: string) => Promise<{ success: boolean; data?: { records: any[]; totalCount: number }; error?: string }>;
+  getApps: (
+    auth: KintoneAuth,
+  ) => Promise<{ success: boolean; data?: KintoneApp[]; error?: string }>;
+  getAppFields: (
+    auth: KintoneAuth,
+    appId: string,
+  ) => Promise<{ success: boolean; data?: KintoneField[]; error?: string }>;
+  executeQuery: (
+    auth: KintoneAuth,
+    appId: string,
+    query: string,
+  ) => Promise<{
+    success: boolean;
+    data?: { records: any[]; totalCount: number };
+    error?: string;
+  }>;
+  getUsers: (
+    auth: KintoneAuth,
+  ) => Promise<{ success: boolean; data?: KintoneUser[]; error?: string }>;
 }
 
 declare interface Window {

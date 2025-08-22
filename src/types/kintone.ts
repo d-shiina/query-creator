@@ -71,6 +71,7 @@ export interface QueryCondition {
   field: string;
   operator: QueryOperator;
   value: string;
+  values?: string[]; // in/not in オペレーター用の複数値
   logicalOperator?: "and" | "or";
 }
 
@@ -101,4 +102,10 @@ export interface AppFilter {
   appCode: string;
   creator: string;
   updatedDate: string;
+}
+
+export interface KintoneUser {
+  code: string;
+  name: string;
+  email: string;
 }

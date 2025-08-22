@@ -150,6 +150,72 @@ async function makeKintoneRequest(
   });
 }
 
+// User API専用のKintone API呼び出し関数（/v1/エンドポイント用）
+async function makeKintoneUserRequest(
+  auth: KintoneAuth,
+  endpoint: string,
+  method: string = "GET",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: any,
+) {
+  const baseUrl = `https://${auth.subdomain}.cybozu.com`;
+  const url = `${baseUrl}/v1/${endpoint}`;
+
+  // パスワード認証用のBase64エンコード
+  const authString = `${auth.username}:${auth.password}`;
+  const credentials = Buffer.from(authString, "utf8").toString("base64");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new Promise<any>((resolve, reject) => {
+    const headers: Record<string, string> = {
+      "X-Cybozu-Authorization": credentials,
+    };
+
+    const request = net.request({
+      method,
+      url: url,
+      headers,
+    });
+
+    let responseData = "";
+
+    request.on("response", (response) => {
+      response.on("data", (chunk) => {
+        responseData += chunk.toString();
+      });
+
+      response.on("end", () => {
+        const result = {
+          ok: response.statusCode >= 200 && response.statusCode < 300,
+          status: response.statusCode,
+          statusText: response.statusMessage || "",
+          json: () => {
+            try {
+              return Promise.resolve(JSON.parse(responseData));
+            } catch {
+              return Promise.reject(new Error("Invalid JSON response"));
+            }
+          },
+          text: () => Promise.resolve(responseData),
+        };
+
+        resolve(result);
+      });
+    });
+
+    request.on("error", (error) => {
+      reject(error);
+    });
+
+    if (data && method !== "GET") {
+      const bodyData = JSON.stringify(data);
+      request.write(bodyData);
+    }
+
+    request.end();
+  });
+}
+
 // IPC handlers
 export function setupKintoneAPI() {
   // ログイン認証（シンプルな認証）
@@ -384,4 +450,45 @@ export function setupKintoneAPI() {
       }
     },
   );
+
+  // ユーザー一覧取得
+  ipcMain.handle("kintone:getUsers", async (event, auth: KintoneAuth) => {
+    try {
+      console.log("=== Getting users from kintone ===");
+
+      // User API用のエンドポイント（/v1/users.json）を使用
+      const response = await makeKintoneUserRequest(auth, "users.json");
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to get users:", response.status, errorText);
+        return {
+          success: false,
+          error: `ユーザー一覧の取得に失敗しました (${response.status}): ${errorText}`,
+        };
+      }
+
+      const responseData = await response.json();
+      console.log(
+        "Users API response received, user count:",
+        responseData.users?.length || 0,
+      );
+
+      // レスポンスデータをフォーマット
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const users = responseData.users.map((user: any) => ({
+        code: user.code,
+        name: user.name,
+        email: user.email,
+      }));
+
+      return { success: true, data: users };
+    } catch (error) {
+      console.error("Exception in getUsers:", error);
+      return {
+        success: false,
+        error: `ユーザー一覧取得エラー: ${error instanceof Error ? error.message : "不明なエラー"}`,
+      };
+    }
+  });
 }

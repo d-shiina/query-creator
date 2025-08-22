@@ -58,9 +58,19 @@ import {
   KintoneAuth,
   KintoneApp,
   KintoneField,
+  KintoneUser,
   QueryCondition,
   QueryOperator,
 } from "@/types/kintone";
+
+// Window拡張（kintoneAPI型定義）
+interface WindowWithKintoneAPI extends Window {
+  kintoneAPI: {
+    getUsers: (
+      auth: KintoneAuth,
+    ) => Promise<{ success: boolean; data?: KintoneUser[]; error?: string }>;
+  };
+}
 
 interface QueryGeneratorPageProps {
   auth: KintoneAuth;
@@ -456,7 +466,30 @@ export default function QueryGeneratorPage({
   const { savedQueries, saveQuery } = useQueryGenerator(app.appId);
   const [currentQueryName, setCurrentQueryName] = useState(""); // 現在編集中のクエリ名
   const [isEditMode, setIsEditMode] = useState(false); // 編集モードかどうか
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState(""); // 保存成功メッセージ
+  const [functionDialogOpen, setFunctionDialogOpen] = useState<{
+    [key: number]: boolean;
+  }>({}); // 関数ダイアログの状態管理
+  const [customQuery, setCustomQuery] = useState(""); // カスタムクエリ入力用
+  const [customQueryResult, setCustomQueryResult] = useState<{
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    records: any[];
+    error?: string;
+    formattedError?: {
+      title: string;
+      message: string;
+      suggestion?: string;
+    };
+  } | null>(null); // カスタムクエリ実行結果
+
+  // コピーアニメーション用の状態
+  const [copyAnimating, setCopyAnimating] = useState(false);
+  // 保存アニメーション用の状態
+  const [saveAnimating, setSaveAnimating] = useState(false);
+  // ユーザー一覧の状態
+  const [users, setUsers] = useState<
+    Array<{ code: string; name: string; email: string }>
+  >([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
 
   // エラーメッセージを親切なメッセージに変換する関数
   const formatErrorMessage = (
@@ -738,7 +771,17 @@ export default function QueryGeneratorPage({
   };
 
   const generateQuery = () => {
-    const validConditions = conditions.filter((c) => c.field && c.value);
+    const validConditions = conditions.filter((c) => {
+      if (c.operator === "in" || c.operator === "not in") {
+        return (
+          c.field &&
+          c.values &&
+          c.values.length > 0 &&
+          c.values.some((v) => v.trim())
+        );
+      }
+      return c.field && c.value;
+    });
 
     if (validConditions.length === 0) {
       setGeneratedQuery("");
@@ -754,7 +797,17 @@ export default function QueryGeneratorPage({
 
       const field = condition.field;
       const operator = condition.operator;
-      let value = condition.value;
+
+      // in/not in オペレーターの場合は values 配列を使用
+      let value: string;
+      if (operator === "in" || operator === "not in") {
+        const validValues = (condition.values || []).filter((v) => v.trim());
+        if (validValues.length === 0) return;
+
+        value = `(${validValues.map((v) => `"${v.replace(/"/g, '\\"')}"`).join(",")})`;
+      } else {
+        value = condition.value;
+      }
 
       console.log("Query generation debug:");
       console.log("  field:", field);
@@ -788,24 +841,47 @@ export default function QueryGeneratorPage({
         /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue);
       console.log("  isKintoneFunction:", isKintoneFunction);
 
-      // 値をクォートで囲む（数値フィールドとkintone関数以外）
-      const fieldInfo = fields.find((f) => f.code === field);
+      // 値をクォートで囲む（数値フィールド、レコード番号、kintone関数以外）
+      let fieldInfo = fields.find((f) => f.code === field);
+      let displayFieldName = field;
+
+      // 日本語のフィールド名（ラベル）での検索も試す
+      if (!fieldInfo) {
+        fieldInfo = fields.find((f) => f.label === field);
+        displayFieldName = field; // ラベルの場合はそのまま使用
+      } else {
+        // コードで見つかった場合は、ラベルがあればラベルを使用
+        displayFieldName = fieldInfo.label || field;
+      }
+
+      console.log("  field:", field);
+      console.log("  displayFieldName:", displayFieldName);
       console.log("  fieldInfo:", fieldInfo);
       console.log("  fieldType:", fieldInfo?.type);
 
-      if (
-        !isKintoneFunction &&
-        fieldInfo &&
-        fieldInfo.type !== "NUMBER" &&
-        fieldInfo.type !== "CALC"
-      ) {
-        value = `"${value}"`;
-        console.log("  value quoted:", value);
+      // kintoneの特殊フィールド（$id等）も数値として扱う
+      const isNumericField =
+        fieldInfo?.type === "NUMBER" ||
+        fieldInfo?.type === "CALC" ||
+        fieldInfo?.type === "RECORD_NUMBER" ||
+        fieldInfo?.type === "__ID__" ||
+        field === "$id" || // レコード番号
+        field === "$revision" || // リビジョン
+        field === "レコード番号"; // 日本語表記のレコード番号
+
+      // in/not in オペレーターの場合は既に適切な形式になっている
+      const isInOperator = operator === "in" || operator === "not in";
+
+      if (!isKintoneFunction && !isNumericField && !isInOperator) {
+        // 通常の値の処理
+        const escapedValue = value.replace(/"/g, '\\"');
+        value = `"${escapedValue}"`;
+        console.log("  value quoted and escaped:", value);
       } else {
         console.log("  value not quoted:", value);
       }
 
-      query += `${field} ${operator} ${value}`;
+      query += `${displayFieldName} ${operator} ${value}`;
     });
 
     if (sortField && sortField !== "none") {
@@ -872,13 +948,62 @@ export default function QueryGeneratorPage({
     }
   };
 
-  const handleSaveQuery = () => {
+  // カスタムクエリ実行関数
+  const executeCustomQuery = async () => {
+    if (!customQuery.trim()) {
+      alert("クエリを入力してください");
+      return;
+    }
+
+    try {
+      setExecuting(true);
+      setError("");
+      setCustomQueryResult(null); // 前の結果をクリア
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (window as any).kintoneAPI.executeQuery(
+        auth,
+        app.appId,
+        customQuery,
+      );
+
+      if (result.success) {
+        setCustomQueryResult(result.data);
+      } else {
+        // エラーを実行結果として表示
+        const formattedError = formatErrorMessage(
+          result.error || "クエリの実行に失敗しました",
+        );
+        setCustomQueryResult({
+          records: [],
+          error: result.error || "クエリの実行に失敗しました",
+          formattedError: formattedError,
+        });
+      }
+    } catch (err) {
+      console.error("Error executing custom query:", err);
+      // エラーを実行結果として表示
+      const errorMessage = `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`;
+      const formattedError = formatErrorMessage(errorMessage);
+      setCustomQueryResult({
+        records: [],
+        error: errorMessage,
+        formattedError: formattedError,
+      });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleSaveQuery = async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
       alert("クエリ名とクエリ内容が必要です");
       return;
     }
 
     try {
+      setSaveAnimating(true);
+
       saveQuery(
         currentQueryName.trim(),
         conditions,
@@ -889,22 +1014,51 @@ export default function QueryGeneratorPage({
         editingQueryId, // 編集中のクエリIDを渡す
       );
 
-      if (isEditMode) {
-        setSaveSuccessMessage("クエリを更新しました");
-      } else {
-        setSaveSuccessMessage("クエリを保存しました");
-      }
-
-      // 3秒後にメッセージを非表示にする
+      // アニメーション終了
       setTimeout(() => {
-        setSaveSuccessMessage("");
-      }, 3000);
+        setSaveAnimating(false);
+      }, 1200);
     } catch (error) {
       console.error("Error saving query:", error);
+      setSaveAnimating(false);
       alert("クエリの保存に失敗しました");
     }
   };
 
+  // ユーザー一覧を取得する関数
+  const fetchUsers = async () => {
+    if (usersLoaded || users.length > 0) return; // 既に取得済みの場合はスキップ
+
+    if (!auth || !auth.subdomain || !auth.username) {
+      console.error("Auth information is missing:", auth);
+      return;
+    }
+
+    console.log("Fetching users with auth:", {
+      subdomain: auth.subdomain,
+      username: auth.username,
+    });
+
+    try {
+      setUsersLoaded(true); // 取得開始時点で状態を更新（重複呼び出し防止）
+      const result = await (window as WindowWithKintoneAPI).kintoneAPI.getUsers(
+        auth,
+      );
+      console.log("getUsers result:", result);
+
+      if (result.success && result.data) {
+        setUsers(result.data);
+        console.log("Users loaded successfully:", result.data.length, "users");
+        if (result.data.length > 0) {
+          console.log("First user example:", result.data[0]);
+        }
+      } else {
+        console.error("Failed to fetch users:", result.error);
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };
   if (loading) {
     return (
       <div className="bg-background flex min-h-screen items-center justify-center">
@@ -1172,20 +1326,241 @@ export default function QueryGeneratorPage({
                               </div>
                               <div className="md:col-span-5">
                                 <div className="flex gap-2">
-                                  <Input
-                                    value={condition.value}
-                                    onChange={(e) =>
-                                      updateCondition(index, {
-                                        value: e.target.value,
-                                      })
-                                    }
-                                    placeholder="値を入力"
-                                    className="flex-1"
-                                  />
+                                  {/* in/not in オペレーターの場合は複数値入力 */}
+                                  {condition.operator === "in" ||
+                                  condition.operator === "not in" ? (
+                                    <div className="flex-1 space-y-2">
+                                      {(condition.values || [""]).map(
+                                        (value, valueIndex) => (
+                                          <div
+                                            key={valueIndex}
+                                            className="flex gap-2"
+                                          >
+                                            {/* ユーザーフィールドの場合はComboboxで選択 */}
+                                            {(() => {
+                                              const fieldInfo = fields.find(
+                                                (f) =>
+                                                  f.code === condition.field ||
+                                                  f.label === condition.field,
+                                              );
+                                              const isUserField =
+                                                fieldInfo?.type === "CREATOR" ||
+                                                fieldInfo?.type === "MODIFIER";
+
+                                              if (isUserField) {
+                                                // 初回のみユーザー一覧を取得
+                                                if (
+                                                  !usersLoaded &&
+                                                  users.length === 0
+                                                ) {
+                                                  fetchUsers();
+                                                }
+
+                                                return (
+                                                  <Popover>
+                                                    <PopoverTrigger asChild>
+                                                      <Button
+                                                        variant="outline"
+                                                        role="combobox"
+                                                        className="flex-1 justify-between"
+                                                      >
+                                                        {value ||
+                                                          (usersLoaded
+                                                            ? "ユーザーを選択..."
+                                                            : "ユーザー読み込み中...")}
+                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                      </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[400px] p-0">
+                                                      <Command>
+                                                        <CommandInput placeholder="ユーザーを検索..." />
+                                                        <CommandList>
+                                                          <CommandEmpty>
+                                                            {usersLoaded
+                                                              ? "ユーザーが見つかりません"
+                                                              : "ユーザー読み込み中..."}
+                                                          </CommandEmpty>
+                                                          <CommandGroup>
+                                                            {users.map(
+                                                              (user) => (
+                                                                <CommandItem
+                                                                  key={
+                                                                    user.code
+                                                                  }
+                                                                  value={
+                                                                    user.code
+                                                                  }
+                                                                  onSelect={() => {
+                                                                    const newValues =
+                                                                      [
+                                                                        ...(condition.values || [
+                                                                          "",
+                                                                        ]),
+                                                                      ];
+                                                                    newValues[
+                                                                      valueIndex
+                                                                    ] =
+                                                                      user.code;
+                                                                    updateCondition(
+                                                                      index,
+                                                                      {
+                                                                        values:
+                                                                          newValues,
+                                                                      },
+                                                                    );
+                                                                  }}
+                                                                >
+                                                                  <div className="flex flex-col">
+                                                                    <span className="font-medium">
+                                                                      {
+                                                                        user.name
+                                                                      }
+                                                                    </span>
+                                                                    <span className="text-muted-foreground text-sm">
+                                                                      {
+                                                                        user.code
+                                                                      }{" "}
+                                                                      (
+                                                                      {
+                                                                        user.email
+                                                                      }
+                                                                      )
+                                                                    </span>
+                                                                  </div>
+                                                                </CommandItem>
+                                                              ),
+                                                            )}
+                                                          </CommandGroup>
+                                                        </CommandList>
+                                                      </Command>
+                                                    </PopoverContent>
+                                                  </Popover>
+                                                );
+                                              }
+
+                                              // 通常の入力フィールド
+                                              return (
+                                                <Input
+                                                  value={value}
+                                                  onChange={(e) => {
+                                                    const newValues = [
+                                                      ...(condition.values || [
+                                                        "",
+                                                      ]),
+                                                    ];
+                                                    newValues[valueIndex] =
+                                                      e.target.value;
+                                                    updateCondition(index, {
+                                                      values: newValues,
+                                                    });
+                                                  }}
+                                                  placeholder={(() => {
+                                                    if (
+                                                      fieldInfo?.type ===
+                                                        "NUMBER" ||
+                                                      fieldInfo?.type === "CALC"
+                                                    ) {
+                                                      return "数値 (例: 123)";
+                                                    }
+                                                    return "値を入力";
+                                                  })()}
+                                                  className="flex-1"
+                                                />
+                                              );
+                                            })()}
+                                            {(condition.values || [""]).length >
+                                              1 && (
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                  const newValues = [
+                                                    ...(condition.values || [
+                                                      "",
+                                                    ]),
+                                                  ];
+                                                  newValues.splice(
+                                                    valueIndex,
+                                                    1,
+                                                  );
+                                                  updateCondition(index, {
+                                                    values: newValues,
+                                                  });
+                                                }}
+                                                className="px-3"
+                                              >
+                                                <Minus className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                          </div>
+                                        ),
+                                      )}
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          const newValues = [
+                                            ...(condition.values || [""]),
+                                            "",
+                                          ];
+                                          updateCondition(index, {
+                                            values: newValues,
+                                          });
+                                        }}
+                                        className="w-full"
+                                      >
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        値を追加
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    /* 通常の単一値入力 */
+                                    <Input
+                                      value={condition.value}
+                                      onChange={(e) =>
+                                        updateCondition(index, {
+                                          value: e.target.value,
+                                        })
+                                      }
+                                      placeholder={(() => {
+                                        const fieldInfo = fields.find(
+                                          (f) =>
+                                            f.code === condition.field ||
+                                            f.label === condition.field,
+                                        );
+                                        if (
+                                          fieldInfo?.type === "CREATOR" ||
+                                          fieldInfo?.type === "MODIFIER"
+                                        ) {
+                                          return "ユーザーコードを入力 (例: hashizume-kento)";
+                                        }
+                                        if (
+                                          fieldInfo?.type === "NUMBER" ||
+                                          fieldInfo?.type === "CALC"
+                                        ) {
+                                          return "数値を入力 (例: 123)";
+                                        }
+                                        return "値を入力";
+                                      })()}
+                                      className="flex-1"
+                                    />
+                                  )}
                                   {condition.field &&
                                     getAvailableFunctions(condition.field)
                                       .length > 0 && (
-                                      <Dialog>
+                                      <Dialog
+                                        open={
+                                          functionDialogOpen[index] || false
+                                        }
+                                        onOpenChange={(open) =>
+                                          setFunctionDialogOpen((prev) => ({
+                                            ...prev,
+                                            [index]: open,
+                                          }))
+                                        }
+                                      >
                                         <DialogTrigger asChild>
                                           <Button
                                             variant="outline"
@@ -1219,6 +1594,12 @@ export default function QueryGeneratorPage({
                                                     updateCondition(index, {
                                                       value: func.value,
                                                     });
+                                                    setFunctionDialogOpen(
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        [index]: false,
+                                                      }),
+                                                    );
                                                   }}
                                                 >
                                                   <div className="flex-1">
@@ -1342,12 +1723,17 @@ export default function QueryGeneratorPage({
                           <Input
                             id="limit"
                             type="number"
+                            min="1"
+                            max="500"
                             value={limit || ""}
                             placeholder="例: 100"
                             onChange={(e) =>
                               setLimit(
                                 e.target.value
-                                  ? Number(e.target.value)
+                                  ? Math.max(
+                                      1,
+                                      Math.min(500, Number(e.target.value)),
+                                    )
                                   : undefined,
                               )
                             }
@@ -1363,12 +1749,13 @@ export default function QueryGeneratorPage({
                           <Input
                             id="offset"
                             type="number"
+                            min="0"
                             value={offset || ""}
                             placeholder="例: 0"
                             onChange={(e) =>
                               setOffset(
                                 e.target.value
-                                  ? Number(e.target.value)
+                                  ? Math.max(0, Number(e.target.value))
                                   : undefined,
                               )
                             }
@@ -1398,26 +1785,62 @@ export default function QueryGeneratorPage({
                         </TabsList>
                         <TabsContent value="query" className="space-y-4">
                           <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">
-                            <code className="text-foreground text-sm">
-                              {generatedQuery}
+                            <code className="text-foreground text-sm whitespace-pre-wrap">
+                              {JSON.stringify(generatedQuery).slice(1, -1)}
                             </code>
                           </div>
                           <div className="flex items-center space-x-2">
                             <Button
-                              onClick={() =>
-                                navigator.clipboard.writeText(generatedQuery)
-                              }
+                              onClick={async () => {
+                                setCopyAnimating(true);
+                                await navigator.clipboard.writeText(
+                                  JSON.stringify(generatedQuery).slice(1, -1),
+                                );
+                                setTimeout(() => setCopyAnimating(false), 1200);
+                              }}
                               variant="outline"
                               size="sm"
+                              className={`relative w-[120px] overflow-hidden transition-all duration-300 ${
+                                copyAnimating
+                                  ? "border-green-500 bg-green-500 text-white shadow-lg"
+                                  : "hover:bg-gray-50"
+                              }`}
                             >
-                              <Copy className="mr-2 h-4 w-4" />
-                              コピー
+                              {/* 波紋効果 */}
+                              {copyAnimating && (
+                                <>
+                                  <div className="absolute inset-0 animate-ping rounded bg-green-400 opacity-75" />
+                                  <div className="absolute inset-0 animate-pulse rounded bg-green-300 opacity-50" />
+                                </>
+                              )}
+
+                              {/* アイコンとテキスト */}
+                              <div className="relative flex items-center justify-center">
+                                <div
+                                  className={`mr-2 transition-transform duration-300 ${
+                                    copyAnimating ? "scale-110 rotate-12" : ""
+                                  }`}
+                                >
+                                  {copyAnimating ? (
+                                    <Check className="h-4 w-4" />
+                                  ) : (
+                                    <Copy className="h-4 w-4" />
+                                  )}
+                                </div>
+                                <span
+                                  className={`transition-all duration-300 ${
+                                    copyAnimating ? "font-medium" : ""
+                                  }`}
+                                >
+                                  {copyAnimating ? "完了!" : "コピー"}
+                                </span>
+                              </div>
                             </Button>
                             <Button
                               onClick={executeQuery}
                               size="sm"
                               disabled={executing}
-                              className="bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+                              className="w-[100px] bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
                             >
                               {executing ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1467,6 +1890,62 @@ export default function QueryGeneratorPage({
                                     </span>
                                   </div>
                                 </div>
+                              </div>
+
+                              {/* JSON Request Body Section */}
+                              <div className="space-y-2">
+                                <div className="text-foreground border-b pb-1 text-sm font-medium">
+                                  JSONリクエストボディ
+                                </div>
+                                <div className="bg-background rounded p-3">
+                                  <pre className="overflow-x-auto text-xs whitespace-pre">
+                                    <code>
+                                      {JSON.stringify(
+                                        {
+                                          app: app.appId,
+                                          ...(generatedQuery && {
+                                            query: generatedQuery,
+                                          }),
+                                          ...(limit && {
+                                            size: parseInt(limit.toString()),
+                                          }),
+                                          ...(offset && {
+                                            offset: parseInt(offset.toString()),
+                                          }),
+                                        },
+                                        null,
+                                        2,
+                                      )}
+                                    </code>
+                                  </pre>
+                                </div>
+                                <Button
+                                  onClick={() =>
+                                    navigator.clipboard.writeText(
+                                      JSON.stringify(
+                                        {
+                                          app: app.appId,
+                                          ...(generatedQuery && {
+                                            query: generatedQuery,
+                                          }),
+                                          ...(limit && {
+                                            size: parseInt(limit.toString()),
+                                          }),
+                                          ...(offset && {
+                                            offset: parseInt(offset.toString()),
+                                          }),
+                                        },
+                                        null,
+                                        2,
+                                      ),
+                                    )
+                                  }
+                                  variant="outline"
+                                  size="sm"
+                                >
+                                  <Copy className="mr-2 h-4 w-4" />
+                                  JSONコピー
+                                </Button>
                               </div>
 
                               {/* Parameters Section */}
@@ -1675,6 +2154,141 @@ export default function QueryGeneratorPage({
                 )}
               </div>
             </div>
+
+            {/* Custom Query Section */}
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>カスタムクエリ実行</CardTitle>
+                  <CardDescription>
+                    独自のクエリを入力して直接実行できます
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="custom-query">クエリを入力</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="custom-query"
+                        placeholder="例: フィールド名 = '値' or 作成者 in LOGINUSER()"
+                        value={customQuery}
+                        onChange={(e) => setCustomQuery(e.target.value)}
+                        className="flex-1 font-mono text-sm"
+                      />
+                      <Button
+                        onClick={executeCustomQuery}
+                        disabled={executing || !customQuery.trim()}
+                        className="w-[80px] gap-2"
+                      >
+                        {executing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                        実行
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Custom Query Results */}
+                  {customQueryResult && (
+                    <div className="space-y-4">
+                      <div className="border-t pt-4">
+                        <h3 className="mb-2 font-medium">実行結果</h3>
+                        {customQueryResult.error ? (
+                          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/20">
+                            <div className="mb-2 flex items-center gap-2">
+                              <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                              <h4 className="font-medium text-red-800 dark:text-red-200">
+                                エラー
+                              </h4>
+                            </div>
+                            <p className="text-sm text-red-700 dark:text-red-300">
+                              {customQueryResult.formattedError?.message ||
+                                customQueryResult.error}
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-muted-foreground mb-2 text-sm">
+                              {customQueryResult.records?.length || 0}
+                              件のレコードが見つかりました
+                            </p>
+                            {customQueryResult.records.length > 0 ? (
+                              <div
+                                className="scrollbar-thin max-h-96 overflow-x-auto"
+                                style={{ direction: "ltr" }}
+                              >
+                                <table
+                                  className="w-full border-collapse text-sm"
+                                  style={{
+                                    writingMode: "horizontal-tb",
+                                    textOrientation: "mixed",
+                                  }}
+                                >
+                                  <thead>
+                                    <tr className="bg-muted/50 border-b">
+                                      {Object.keys(
+                                        customQueryResult.records[0],
+                                      ).map((fieldCode) => (
+                                        <th
+                                          key={fieldCode}
+                                          className="border-r p-2 text-left font-medium"
+                                          style={{
+                                            writingMode: "horizontal-tb",
+                                          }}
+                                        >
+                                          {fields.find(
+                                            (f) => f.code === fieldCode,
+                                          )?.label || fieldCode}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {customQueryResult.records
+                                      .slice(0, 10)
+                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                      .map((record: any, index: number) => (
+                                        <tr
+                                          key={index}
+                                          className="hover:bg-muted/30 border-b"
+                                        >
+                                          {Object.entries(record).map(
+                                            ([fieldCode, fieldData]: [
+                                              string,
+                                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                              any,
+                                            ]) => (
+                                              <td
+                                                key={fieldCode}
+                                                className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
+                                                style={{
+                                                  writingMode: "horizontal-tb",
+                                                }}
+                                              >
+                                                {formatFieldValue(fieldData)}
+                                              </td>
+                                            ),
+                                          )}
+                                        </tr>
+                                      ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <p className="text-muted-foreground py-8 text-center">
+                                レコードがありません
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>
@@ -1704,17 +2318,42 @@ export default function QueryGeneratorPage({
               <Button
                 onClick={handleSaveQuery}
                 disabled={!generatedQuery || !currentQueryName.trim()}
-                className="gap-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+                className={`relative w-[80px] gap-2 overflow-hidden shadow-md transition-all duration-300 ${
+                  saveAnimating
+                    ? "border-green-500 bg-green-500 text-white shadow-lg"
+                    : "bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+                }`}
               >
-                <Save className="h-4 w-4" />
-                {isEditMode ? "更新" : "保存"}
-              </Button>
-              {saveSuccessMessage && (
-                <div className="animate-in fade-in-0 slide-in-from-right-1 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800 duration-300">
-                  <Check className="h-4 w-4" />
-                  {saveSuccessMessage}
+                {/* 波紋効果 */}
+                {saveAnimating && (
+                  <>
+                    <div className="absolute inset-0 animate-ping rounded bg-green-400 opacity-75" />
+                    <div className="absolute inset-0 animate-pulse rounded bg-green-300 opacity-50" />
+                  </>
+                )}
+
+                {/* アイコンとテキスト */}
+                <div className="relative flex items-center justify-center">
+                  <div
+                    className={`mr-2 transition-transform duration-300 ${
+                      saveAnimating ? "scale-110 rotate-12" : ""
+                    }`}
+                  >
+                    {saveAnimating ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                  </div>
+                  <span
+                    className={`transition-all duration-300 ${
+                      saveAnimating ? "font-medium" : ""
+                    }`}
+                  >
+                    {saveAnimating ? "完了!" : isEditMode ? "更新" : "保存"}
+                  </span>
                 </div>
-              )}
+              </Button>
             </div>
           </div>
         </div>
