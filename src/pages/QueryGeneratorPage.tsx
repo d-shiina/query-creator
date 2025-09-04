@@ -1251,7 +1251,7 @@ export default function QueryGeneratorPage({
                                           {fields.map((field) => (
                                             <CommandItem
                                               key={field.code}
-                                              value={field.label}
+                                              value={field.code}
                                               onSelect={() => {
                                                 const availableOps =
                                                   fieldTypeOperators[
@@ -1287,7 +1287,12 @@ export default function QueryGeneratorPage({
                                                     : "opacity-0"
                                                 }`}
                                               />
-                                              {field.label}
+                                              <div className="flex flex-col">
+                                                <span>{field.label}</span>
+                                                <span className="text-muted-foreground text-xs leading-tight">
+                                                  {field.code}
+                                                </span>
+                                              </div>
                                             </CommandItem>
                                           ))}
                                         </CommandGroup>
