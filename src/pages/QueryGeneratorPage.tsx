@@ -16,9 +16,13 @@ import {
   AlertCircle,
   User,
   Calculator,
+  CalendarIcon,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { format } from "date-fns";
+import { ja } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +59,7 @@ import {
 } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
@@ -150,56 +155,50 @@ const operators = [
 ];
 
 const fieldTypeOperators: Record<string, string[]> = {
+  // レコード番号・$id
   RECORD_NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
   __ID__: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
+
+  // システムフィールド（ユーザー系）
   CREATOR: ["in", "not in"],
-  CREATED_TIME: [
-    "=",
-    "!=",
-    ">",
-    "<",
-    ">=",
-    "<=",
-    "in",
-    "not in",
-    "is",
-    "is not",
-  ],
   MODIFIER: ["in", "not in"],
-  UPDATED_TIME: [
-    "=",
-    "!=",
-    ">",
-    "<",
-    ">=",
-    "<=",
-    "in",
-    "not in",
-    "is",
-    "is not",
-  ],
+
+  // システムフィールド（日時系）
+  CREATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
+  UPDATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
+
+  // テキスト系
   SINGLE_LINE_TEXT: ["=", "!=", "in", "not in", "like", "not like"],
   LINK: ["=", "!=", "in", "not in", "like", "not like"],
-  NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
-  CALC: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
   MULTI_LINE_TEXT: ["like", "not like", "is", "is not"],
   RICH_TEXT: ["like", "not like"],
+
+  // 数値系
+  NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
+  CALC: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
+
+  // 選択系
   CHECK_BOX: ["in", "not in"],
   RADIO_BUTTON: ["in", "not in"],
   DROP_DOWN: ["in", "not in"],
   MULTI_SELECT: ["in", "not in"],
-  FILE: ["like", "not like"],
-  // 修正：日付フィールドにin, not in, is, is notを追加
-  DATE: ["=", "!=", ">", "<", ">=", "<=", "in", "not in", "is", "is not"],
-  TIME: ["=", "!=", ">", "<", ">=", "<=", "in", "not in", "is", "is not"],
-  DATETIME: ["=", "!=", ">", "<", ">=", "<=", "in", "not in", "is", "is not"],
+
+  // 添付ファイル
+  FILE: ["like", "not like", "is", "is not"],
+
+  // 日付・時刻系
+  DATE: ["=", "!=", ">", "<", ">=", "<="],
+  TIME: ["=", "!=", ">", "<", ">=", "<="],
+  DATETIME: ["=", "!=", ">", "<", ">=", "<="],
+
+  // ユーザー・組織選択
   USER_SELECT: ["in", "not in"],
   ORGANIZATION_SELECT: ["in", "not in"],
   GROUP_SELECT: ["in", "not in"],
+
+  // ステータス
   STATUS: ["=", "!=", "in", "not in"],
   STATUS_ASSIGNEE: ["in", "not in"],
-  CATEGORY: ["=", "!=", "in", "not in"],
-  REFERENCE_TABLE: ["like", "not like"],
 };
 
 const fieldTypeFunctions: Record<
@@ -696,9 +695,25 @@ const queryUtils = {
 
     let query = "";
 
-    // kintone関数を判定するヘルパー関数
-    const isKintoneFunction = (value: string): boolean => {
-      const trimmedValue = value.trim();
+    validConditions.forEach((condition, index) => {
+      if (index > 0 && condition.logicalOperator) {
+        query += ` ${condition.logicalOperator} `;
+      }
+
+      const field = condition.field;
+      const operator = condition.operator;
+
+      let value: string;
+      if (operator === "in" || operator === "not in") {
+        const validValues = (condition.values || []).filter((v) => v.trim());
+        if (validValues.length === 0) return;
+        value = `(${validValues.map((v) => `"${v.replace(/"/g, '\\"')}"`).join(",")})`;
+      } else if (operator === "is" || operator === "is not") {
+        value = "null";
+      } else {
+        value = condition.value;
+      }
+
       const kintoneRegex = /^[A-Z_]+\([^)]*\)$/;
       const knownFunctions = [
         "LOGINUSER()",
@@ -718,36 +733,12 @@ const queryUtils = {
         "PRIMARY_ORGANIZATION()",
       ];
 
-      return (
+      const trimmedValue = value.trim();
+      const isKintoneFunction =
         kintoneRegex.test(trimmedValue) ||
         knownFunctions.includes(trimmedValue) ||
-        /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue)
-      );
-    };
+        /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue);
 
-    // 数値フィールドかどうかを判定するヘルパー関数
-    const isNumericField = (
-      field: string,
-      fieldInfo?: KintoneField,
-    ): boolean => {
-      return (
-        fieldInfo?.type === "NUMBER" ||
-        fieldInfo?.type === "CALC" ||
-        fieldInfo?.type === "RECORD_NUMBER" ||
-        fieldInfo?.type === "__ID__" ||
-        field === "$id" ||
-        field === "$revision" ||
-        field === "レコード番号"
-      );
-    };
-
-    validConditions.forEach((condition, index) => {
-      if (index > 0 && condition.logicalOperator) {
-        query += ` ${condition.logicalOperator} `;
-      }
-
-      const field = condition.field;
-      const operator = condition.operator;
       const fieldInfo = fields.find((f) => f.code === field);
 
       // システムフィールドの場合は日本語のフィールド名を使用
@@ -782,54 +773,29 @@ const queryUtils = {
         displayFieldName = field;
       }
 
-      // 値の処理
-      let processedValue: string;
+      const isNumericField =
+        fieldInfo?.type === "NUMBER" ||
+        fieldInfo?.type === "CALC" ||
+        fieldInfo?.type === "RECORD_NUMBER" ||
+        fieldInfo?.type === "__ID__" ||
+        field === "$id" ||
+        field === "$revision" ||
+        field === "レコード番号";
 
-      if (operator === "in" || operator === "not in") {
-        // in/not in演算子の場合
-        const validValues = (condition.values || []).filter((v) => v.trim());
-        if (validValues.length === 0) return;
+      const isInOperator = operator === "in" || operator === "not in";
+      const isNullOperator = operator === "is" || operator === "is not";
 
-        const processedValues = validValues.map((v) => {
-          const trimmedValue = v.trim();
-
-          // 関数の場合はエスケープしない
-          if (isKintoneFunction(trimmedValue)) {
-            return trimmedValue;
-          }
-
-          // 数値フィールドの場合はエスケープしない
-          if (isNumericField(field, fieldInfo)) {
-            return trimmedValue;
-          }
-
-          // その他の場合はダブルクォートで囲む
-          return `"${trimmedValue.replace(/"/g, '\\"')}"`;
-        });
-
-        processedValue = `(${processedValues.join(",")})`;
-      } else if (operator === "is" || operator === "is not") {
-        // is/is not演算子の場合
-        processedValue = "null";
-      } else {
-        // その他の演算子の場合
-        const trimmedValue = condition.value.trim();
-
-        // 関数の場合はエスケープしない
-        if (isKintoneFunction(trimmedValue)) {
-          processedValue = trimmedValue;
-        }
-        // 数値フィールドの場合はエスケープしない
-        else if (isNumericField(field, fieldInfo)) {
-          processedValue = trimmedValue;
-        }
-        // その他の場合はダブルクォートで囲む
-        else {
-          processedValue = `"${trimmedValue.replace(/"/g, '\\"')}"`;
-        }
+      if (
+        !isKintoneFunction &&
+        !isNumericField &&
+        !isInOperator &&
+        !isNullOperator
+      ) {
+        const escapedValue = value.replace(/"/g, '\\"');
+        value = `"${escapedValue}"`;
       }
 
-      query += `${displayFieldName} ${operator} ${processedValue}`;
+      query += `${displayFieldName} ${operator} ${value}`;
     });
 
     if (options.sortField && options.sortField !== "none") {
@@ -846,6 +812,123 @@ const queryUtils = {
 
     return query;
   },
+};
+
+// DatePicker コンポーネント
+const DatePicker: React.FC<{
+  date: Date | undefined;
+  onDateChange: (date: Date | undefined) => void;
+  placeholder?: string;
+  className?: string;
+}> = ({ date, onDateChange, placeholder = "日付を選択", className }) => {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            "w-full justify-start text-left font-normal",
+            !date && "text-muted-foreground",
+            className,
+          )}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {date ? format(date, "yyyy-MM-dd", { locale: ja }) : placeholder}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[340px] p-0">
+        <CalendarComponent
+          mode="single"
+          selected={date}
+          onSelect={onDateChange}
+          locale={ja}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// DateTimePicker コンポーネント
+const DateTimePicker: React.FC<{
+  date: Date | undefined;
+  onDateChange: (date: Date | undefined) => void;
+  placeholder?: string;
+  className?: string;
+}> = ({ date, onDateChange, placeholder = "日時を選択", className }) => {
+  const [timeValue, setTimeValue] = useState("");
+
+  useEffect(() => {
+    if (date) {
+      setTimeValue(format(date, "HH:mm"));
+    }
+  }, [date]);
+
+  const handleDateSelect = (selectedDate: Date | undefined) => {
+    if (selectedDate) {
+      const [hours, minutes] = timeValue.split(":").map(Number);
+      if (!isNaN(hours) && !isNaN(minutes)) {
+        selectedDate.setHours(hours, minutes);
+      }
+      onDateChange(selectedDate);
+    } else {
+      onDateChange(undefined);
+    }
+  };
+
+  const handleTimeChange = (time: string) => {
+    setTimeValue(time);
+    if (date) {
+      const [hours, minutes] = time.split(":").map(Number);
+      if (!isNaN(hours) && !isNaN(minutes)) {
+        const newDate = new Date(date);
+        newDate.setHours(hours, minutes);
+        onDateChange(newDate);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal",
+              !date && "text-muted-foreground",
+              className,
+            )}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {date
+              ? format(date, "yyyy-MM-dd HH:mm", { locale: ja })
+              : placeholder}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0">
+          <CalendarComponent
+            mode="single"
+            selected={date}
+            onSelect={handleDateSelect}
+            initialFocus
+            locale={ja}
+          />
+          <div className="border-t p-3">
+            <Label htmlFor="time" className="text-sm font-medium">
+              時刻
+            </Label>
+            <Input
+              id="time"
+              type="time"
+              value={timeValue}
+              onChange={(e) => handleTimeChange(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
 };
 
 // コンポーネント定義
@@ -938,8 +1021,15 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
 
   const isUserField =
     fieldInfo?.type === "CREATOR" || fieldInfo?.type === "MODIFIER";
+  const isDateField = fieldInfo?.type === "DATE";
+  const isDateTimeField =
+    fieldInfo?.type === "DATETIME" ||
+    fieldInfo?.type === "CREATED_TIME" ||
+    fieldInfo?.type === "UPDATED_TIME";
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
+  const isNullOperator =
+    condition.operator === "is" || condition.operator === "is not";
   const hasFunctions =
     condition.field && getAvailableFunctions(condition.field).length > 0;
 
@@ -950,18 +1040,47 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
     if (fieldInfo?.type === "NUMBER" || fieldInfo?.type === "CALC") {
       return "数値を入力 (例: 123)";
     }
-    if (
-      fieldInfo?.type === "DATETIME" ||
-      fieldInfo?.type === "CREATED_TIME" ||
-      fieldInfo?.type === "UPDATED_TIME"
-    ) {
+    if (isDateTimeField) {
       return '日時を入力 (例: "2024-07-10T08:00:00+09:00")';
     }
-    if (fieldInfo?.type === "DATE") {
+    if (isDateField) {
       return '日付を入力 (例: "2024-07-10")';
     }
     return "値を入力";
-  }, [fieldInfo, isUserField]);
+  }, [fieldInfo, isUserField, isDateField, isDateTimeField]);
+
+  // 日付ピッカーでの値変更ハンドラー
+  const handleDateChange = (date: Date | undefined, valueIndex?: number) => {
+    if (date) {
+      const formattedDate = format(date, "yyyy-MM-dd");
+      if (isInOperator && typeof valueIndex === "number") {
+        const newValues = [...(condition.values || [""])];
+        newValues[valueIndex] = formattedDate;
+        onUpdate(index, { values: newValues });
+      } else {
+        onUpdate(index, { value: formattedDate });
+        setLocalValue(formattedDate);
+      }
+    }
+  };
+
+  // 日時ピッカーでの値変更ハンドラー
+  const handleDateTimeChange = (
+    date: Date | undefined,
+    valueIndex?: number,
+  ) => {
+    if (date) {
+      const formattedDateTime = format(date, "yyyy-MM-dd'T'HH:mm:ssXXX");
+      if (isInOperator && typeof valueIndex === "number") {
+        const newValues = [...(condition.values || [""])];
+        newValues[valueIndex] = formattedDateTime;
+        onUpdate(index, { values: newValues });
+      } else {
+        onUpdate(index, { value: formattedDateTime });
+        setLocalValue(formattedDateTime);
+      }
+    }
+  };
 
   return (
     <div className="bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words">
@@ -1025,7 +1144,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0">
+              <PopoverContent className="w-[280px] p-0">
                 <Command>
                   <CommandInput placeholder="フィールドを検索..." />
                   <CommandList>
@@ -1101,28 +1220,258 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
         {/* 値入力エリア */}
-        <div className="space-y-3">
-          {isInOperator ? (
-            /* 複数値入力 */
-            <div className="space-y-2">
-              {(condition.values || [""]).map((value, valueIndex) => (
-                <div key={valueIndex} className="flex gap-2">
-                  {/* メイン入力フィールドとボタン群 */}
-                  <div className="relative flex flex-1">
+        {!isNullOperator && (
+          <div className="space-y-3">
+            {isInOperator ? (
+              /* 複数値入力 */
+              <div className="space-y-2">
+                {(condition.values || [""]).map((value, valueIndex) => (
+                  <div key={valueIndex} className="flex gap-2">
+                    {/* メイン入力フィールド */}
+                    <div className="flex-1 space-y-2">
+                      {isDateField ? (
+                        <DatePicker
+                          date={value ? new Date(value) : undefined}
+                          onDateChange={(date) =>
+                            handleDateChange(date, valueIndex)
+                          }
+                          placeholder="日付を選択"
+                        />
+                      ) : isDateTimeField ? (
+                        <DateTimePicker
+                          date={value ? new Date(value) : undefined}
+                          onDateChange={(date) =>
+                            handleDateTimeChange(date, valueIndex)
+                          }
+                          placeholder="日時を選択"
+                        />
+                      ) : (
+                        <div className="relative flex">
+                          <Input
+                            value={value}
+                            onChange={(e) => {
+                              const newValues = [...(condition.values || [""])];
+                              newValues[valueIndex] = e.target.value;
+                              onUpdate(index, { values: newValues });
+                            }}
+                            placeholder={getPlaceholder()}
+                            className={`flex-1 ${
+                              isUserField || hasFunctions ? "pr-20" : ""
+                            }`}
+                            aria-label={`値 ${valueIndex + 1}`}
+                          />
+
+                          {/* 右側のボタン群 */}
+                          {(isUserField || hasFunctions) && (
+                            <div className="absolute top-0 right-0 flex h-full">
+                              {/* ユーザー選択ボタン */}
+                              {isUserField && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
+                                      onClick={() => {
+                                        if (
+                                          !usersLoaded &&
+                                          users.length === 0
+                                        ) {
+                                          onFetchUsers();
+                                        }
+                                      }}
+                                      aria-label="ユーザーを選択"
+                                      title="ユーザーを選択"
+                                    >
+                                      <User className="text-muted-foreground h-3.5 w-3.5" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[400px] p-0">
+                                    <Command>
+                                      <CommandInput placeholder="ユーザーを検索..." />
+                                      <CommandList>
+                                        <CommandEmpty>
+                                          {usersLoaded
+                                            ? "ユーザーが見つかりません"
+                                            : "ユーザー読み込み中..."}
+                                        </CommandEmpty>
+                                        <CommandGroup>
+                                          {users.map((user) => (
+                                            <CommandItem
+                                              key={user.code}
+                                              value={user.code}
+                                              onSelect={() => {
+                                                const newValues = [
+                                                  ...(condition.values || [""]),
+                                                ];
+                                                newValues[valueIndex] =
+                                                  user.code;
+                                                onUpdate(index, {
+                                                  values: newValues,
+                                                });
+                                              }}
+                                            >
+                                              <div className="flex flex-col">
+                                                <span className="font-medium">
+                                                  {user.name}
+                                                </span>
+                                                <span className="text-muted-foreground text-sm">
+                                                  {user.code} ({user.email})
+                                                </span>
+                                              </div>
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+
+                              {/* 関数選択ボタン */}
+                              {hasFunctions && (
+                                <Dialog
+                                  open={functionDialogOpen}
+                                  onOpenChange={setFunctionDialogOpen}
+                                >
+                                  <DialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
+                                      title="関数を選択"
+                                      aria-label="関数を選択"
+                                    >
+                                      <Calculator className="text-muted-foreground h-3.5 w-3.5" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle>関数を選択</DialogTitle>
+                                      <DialogDescription>
+                                        利用可能な関数から選択してください
+                                      </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="max-h-60 space-y-2 overflow-y-auto">
+                                      {getAvailableFunctions(
+                                        condition.field,
+                                      ).map((func) => (
+                                        <div
+                                          key={func.value}
+                                          className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
+                                          onClick={() => {
+                                            const newValues = [
+                                              ...(condition.values || [""]),
+                                            ];
+                                            newValues[valueIndex] = func.value;
+                                            onUpdate(index, {
+                                              values: newValues,
+                                            });
+                                            setFunctionDialogOpen(false);
+                                          }}
+                                          role="button"
+                                          tabIndex={0}
+                                          onKeyDown={(e) => {
+                                            if (
+                                              e.key === "Enter" ||
+                                              e.key === " "
+                                            ) {
+                                              e.preventDefault();
+                                              const newValues = [
+                                                ...(condition.values || [""]),
+                                              ];
+                                              newValues[valueIndex] =
+                                                func.value;
+                                              onUpdate(index, {
+                                                values: newValues,
+                                              });
+                                              setFunctionDialogOpen(false);
+                                            }
+                                          }}
+                                        >
+                                          <div className="flex-1">
+                                            <div className="text-sm font-medium">
+                                              {func.label}
+                                            </div>
+                                            <div className="text-muted-foreground text-xs">
+                                              {func.description}
+                                            </div>
+                                            <div className="mt-1 font-mono text-xs text-blue-600">
+                                              {func.value}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 削除ボタン */}
+                    {(condition.values || [""]).length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newValues = [...(condition.values || [""])];
+                          newValues.splice(valueIndex, 1);
+                          onUpdate(index, { values: newValues });
+                        }}
+                        className="text-destructive hover:text-destructive h-10 w-10 p-0"
+                        aria-label={`値 ${valueIndex + 1} を削除`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const newValues = [...(condition.values || [""]), ""];
+                    onUpdate(index, { values: newValues });
+                  }}
+                  className="w-full"
+                  aria-label="値を追加"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  値を追加
+                </Button>
+              </div>
+            ) : (
+              /* 単一値入力 */
+              <div className="space-y-2">
+                {isDateField ? (
+                  <DatePicker
+                    date={localValue ? new Date(localValue) : undefined}
+                    onDateChange={handleDateChange}
+                    placeholder="日付を選択"
+                  />
+                ) : isDateTimeField ? (
+                  <DateTimePicker
+                    date={localValue ? new Date(localValue) : undefined}
+                    onDateChange={handleDateTimeChange}
+                    placeholder="日時を選択"
+                  />
+                ) : (
+                  <div className="relative flex">
                     <Input
-                      value={value}
-                      onChange={(e) => {
-                        const newValues = [...(condition.values || [""])];
-                        newValues[valueIndex] = e.target.value;
-                        onUpdate(index, { values: newValues });
-                      }}
+                      value={localValue}
+                      onChange={(e) => setLocalValue(e.target.value)}
                       placeholder={getPlaceholder()}
                       className={`flex-1 ${
-                        isUserField || hasFunctions
-                          ? "pr-20" // ボタンがある場合は右パディングを追加
-                          : ""
+                        isUserField || hasFunctions ? "pr-20" : ""
                       }`}
-                      aria-label={`値 ${valueIndex + 1}`}
+                      aria-label="値を入力"
                     />
 
                     {/* 右側のボタン群 */}
@@ -1147,7 +1496,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                 <User className="text-muted-foreground h-3.5 w-3.5" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[400px] p-0">
+                            <PopoverContent className="w-auto p-0">
                               <Command>
                                 <CommandInput placeholder="ユーザーを検索..." />
                                 <CommandList>
@@ -1162,13 +1511,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                         key={user.code}
                                         value={user.code}
                                         onSelect={() => {
-                                          const newValues = [
-                                            ...(condition.values || [""]),
-                                          ];
-                                          newValues[valueIndex] = user.code;
-                                          onUpdate(index, {
-                                            values: newValues,
-                                          });
+                                          onUpdate(index, { value: user.code });
+                                          setLocalValue(user.code);
                                         }}
                                       >
                                         <div className="flex flex-col">
@@ -1219,11 +1563,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                       key={func.value}
                                       className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
                                       onClick={() => {
-                                        const newValues = [
-                                          ...(condition.values || [""]),
-                                        ];
-                                        newValues[valueIndex] = func.value;
-                                        onUpdate(index, { values: newValues });
+                                        onUpdate(index, { value: func.value });
+                                        setLocalValue(func.value);
                                         setFunctionDialogOpen(false);
                                       }}
                                       role="button"
@@ -1234,13 +1575,10 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                           e.key === " "
                                         ) {
                                           e.preventDefault();
-                                          const newValues = [
-                                            ...(condition.values || [""]),
-                                          ];
-                                          newValues[valueIndex] = func.value;
                                           onUpdate(index, {
-                                            values: newValues,
+                                            value: func.value,
                                           });
+                                          setLocalValue(func.value);
                                           setFunctionDialogOpen(false);
                                         }
                                       }}
@@ -1266,184 +1604,11 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                       </div>
                     )}
                   </div>
-
-                  {/* 削除ボタン */}
-                  {(condition.values || [""]).length > 1 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const newValues = [...(condition.values || [""])];
-                        newValues.splice(valueIndex, 1);
-                        onUpdate(index, { values: newValues });
-                      }}
-                      className="text-destructive hover:text-destructive h-10 w-10 p-0"
-                      aria-label={`値 ${valueIndex + 1} を削除`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const newValues = [...(condition.values || [""]), ""];
-                  onUpdate(index, { values: newValues });
-                }}
-                className="w-full"
-                aria-label="値を追加"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                値を追加
-              </Button>
-            </div>
-          ) : (
-            /* 単一値入力 */
-            <div className="relative flex">
-              <Input
-                value={localValue}
-                onChange={(e) => setLocalValue(e.target.value)}
-                placeholder={getPlaceholder()}
-                className={`flex-1 ${
-                  isUserField || hasFunctions
-                    ? "pr-20" // ボタンがある場合は右パディングを追加
-                    : ""
-                }`}
-                aria-label="値を入力"
-              />
-
-              {/* 右側のボタン群 */}
-              {(isUserField || hasFunctions) && (
-                <div className="absolute top-0 right-0 flex h-full">
-                  {/* ユーザー選択ボタン */}
-                  {isUserField && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
-                          onClick={() => {
-                            if (!usersLoaded && users.length === 0) {
-                              onFetchUsers();
-                            }
-                          }}
-                          aria-label="ユーザーを選択"
-                          title="ユーザーを選択"
-                        >
-                          <User className="text-muted-foreground h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[400px] p-0">
-                        <Command>
-                          <CommandInput placeholder="ユーザーを検索..." />
-                          <CommandList>
-                            <CommandEmpty>
-                              {usersLoaded
-                                ? "ユーザーが見つかりません"
-                                : "ユーザー読み込み中..."}
-                            </CommandEmpty>
-                            <CommandGroup>
-                              {users.map((user) => (
-                                <CommandItem
-                                  key={user.code}
-                                  value={user.code}
-                                  onSelect={() => {
-                                    onUpdate(index, { value: user.code });
-                                    setLocalValue(user.code);
-                                  }}
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">
-                                      {user.name}
-                                    </span>
-                                    <span className="text-muted-foreground text-sm">
-                                      {user.code} ({user.email})
-                                    </span>
-                                  </div>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-
-                  {/* 関数選択ボタン */}
-                  {hasFunctions && (
-                    <Dialog
-                      open={functionDialogOpen}
-                      onOpenChange={setFunctionDialogOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
-                          title="関数を選択"
-                          aria-label="関数を選択"
-                        >
-                          <Calculator className="text-muted-foreground h-3.5 w-3.5" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>関数を選択</DialogTitle>
-                          <DialogDescription>
-                            利用可能な関数から選択してください
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="max-h-60 space-y-2 overflow-y-auto">
-                          {getAvailableFunctions(condition.field).map(
-                            (func) => (
-                              <div
-                                key={func.value}
-                                className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
-                                onClick={() => {
-                                  onUpdate(index, { value: func.value });
-                                  setLocalValue(func.value);
-                                  setFunctionDialogOpen(false);
-                                }}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    onUpdate(index, { value: func.value });
-                                    setLocalValue(func.value);
-                                    setFunctionDialogOpen(false);
-                                  }
-                                }}
-                              >
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium">
-                                    {func.label}
-                                  </div>
-                                  <div className="text-muted-foreground text-xs">
-                                    {func.description}
-                                  </div>
-                                  <div className="mt-1 font-mono text-xs text-blue-600">
-                                    {func.value}
-                                  </div>
-                                </div>
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1521,17 +1686,6 @@ export default function QueryGeneratorPage({
   const [usersLoaded, setUsersLoaded] = useState(false);
 
   const { savedQueries, saveQuery } = useQueryGenerator(app.appId);
-
-  // メモ化された値
-  const fieldOptions = useMemo(
-    () =>
-      fields.map((field) => ({
-        value: field.code,
-        label: field.label,
-        type: field.type,
-      })),
-    [fields],
-  );
 
   const queryOptions = useMemo(
     (): QueryOptions => ({

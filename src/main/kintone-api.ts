@@ -267,56 +267,73 @@ export function setupKintoneAPI() {
     }
   });
 
-  // アプリ一覧取得
-  ipcMain.handle("kintone:getApps", async (event, auth: KintoneAuth) => {
-    try {
-      console.log("=== Getting apps list ===");
+  // アプリ一覧取得（ページネーション対応）
+  ipcMain.handle(
+    "kintone:getApps",
+    async (
+      event,
+      auth: KintoneAuth,
+      options?: { offset?: number; limit?: number },
+    ) => {
+      try {
+        console.log("=== Getting apps list ===");
 
-      const response = await makeKintoneRequest(auth, "apps.json");
+        const { offset = 0, limit = 100 } = options || {};
+        console.log(`Requesting apps with offset: ${offset}, limit: ${limit}`);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Failed to get apps:", response.status, errorText);
+        // offsetとlimitパラメータを追加
+        let endpoint = `apps.json?limit=${limit}&offset=${offset}`;
+
+        const response = await makeKintoneRequest(auth, endpoint);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Failed to get apps:", response.status, errorText);
+          return {
+            success: false,
+            error: `アプリ一覧の取得に失敗しました (${response.status}): ${errorText}`,
+          };
+        }
+
+        const responseData = await response.json();
+        console.log(
+          `Apps response received, count: ${responseData.apps?.length || 0}, offset: ${offset}`,
+        );
+
+        // レスポンスデータをKintoneApp型に変換
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const apps: KintoneApp[] = responseData.apps.map((app: any) => ({
+          appId: app.appId || app.id,
+          code: app.code,
+          name: app.name,
+          description: app.description || "",
+          spaceId: app.spaceId,
+          threadId: app.threadId,
+          createdAt: app.createdAt,
+          modifiedAt: app.modifiedAt,
+          updatedAt: app.updatedAt,
+          creator: app.creator,
+          modifier: app.modifier,
+        }));
+
+        return {
+          success: true,
+          data: {
+            apps,
+            hasMore: apps.length === limit, // 取得件数がlimitと同じ場合、まだデータがある可能性
+          },
+        };
+      } catch (error) {
+        console.error("Exception in getApps:", error);
         return {
           success: false,
-          error: `アプリ一覧の取得に失敗しました (${response.status}): ${errorText}`,
+          error: `アプリ一覧取得エラー: ${error instanceof Error ? error.message : "不明なエラー"}`,
         };
       }
+    },
+  );
 
-      const responseData = await response.json();
-      console.log(
-        "Apps response received, count:",
-        responseData.apps?.length || 0,
-      );
-
-      // レスポンスデータをKintoneApp型に変換
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const apps: KintoneApp[] = responseData.apps.map((app: any) => ({
-        appId: app.appId || app.id,
-        name: app.name,
-        description: app.description || "",
-        spaceId: app.spaceId,
-        threadId: app.threadId,
-        createdAt: app.createdAt,
-        updatedAt: app.updatedAt,
-        creator: app.creator,
-        modifier: app.modifier,
-      }));
-
-      return {
-        success: true,
-        data: { apps },
-      };
-    } catch (error) {
-      console.error("Exception in getApps:", error);
-      return {
-        success: false,
-        error: `アプリ一覧取得エラー: ${error instanceof Error ? error.message : "不明なエラー"}`,
-      };
-    }
-  });
-
-  // アプリのフィールド情報取得
+  // アプリのフィールド情報取得（システムフィールド手動追加処理を削除）
   ipcMain.handle(
     "kintone:getAppFields",
     async (event, auth: KintoneAuth, appId: string) => {
@@ -363,33 +380,9 @@ export function setupKintoneAPI() {
           };
         });
 
-        // 標準フィールドを手動で追加（APIレスポンスに含まれていない場合）
-        const systemFields: KintoneField[] = [
-          { code: "$id", label: "レコード番号", type: "RECORD_NUMBER" },
-          { code: "$revision", label: "リビジョン", type: "__ID__" },
-          { code: "Created_by", label: "作成者", type: "CREATOR" },
-          { code: "Created_datetime", label: "作成日時", type: "CREATED_TIME" },
-          { code: "Updated_by", label: "更新者", type: "MODIFIER" },
-          { code: "Updated_datetime", label: "更新日時", type: "UPDATED_TIME" },
-        ];
-
-        console.log("Adding system fields...");
-        // 標準フィールドがまだ存在しない場合は追加
-        systemFields.forEach((systemField) => {
-          const exists = fields.some((f) => f.code === systemField.code);
-          console.log(`System field ${systemField.code} exists: ${exists}`);
-          if (!exists) {
-            fields.unshift(systemField);
-            console.log(`Added system field: ${systemField.code}`);
-          }
-        });
-
+        console.log(`Total fields: ${fields.length}`);
         console.log(
-          `Total fields after system field addition: ${fields.length}`,
-        );
-
-        console.log(
-          "Processed fields:",
+          "Fields:",
           fields.map((f) => ({ code: f.code, type: f.type, label: f.label })),
         );
 

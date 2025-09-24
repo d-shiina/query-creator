@@ -85,7 +85,9 @@ export type QueryOperator =
   | "in"
   | "not in"
   | "like"
-  | "not like";
+  | "not like"
+  | "is"
+  | "is not";
 
 export interface KintoneQuery {
   conditions: QueryCondition[];
