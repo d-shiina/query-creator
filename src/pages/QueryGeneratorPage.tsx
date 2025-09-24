@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Database,
   Settings,
@@ -7,11 +7,15 @@ import {
   Play,
   Loader2,
   Plus,
-  Minus,
+  Trash2,
   Save,
   ChevronRight,
   Check,
   ChevronsUpDown,
+  Calendar,
+  AlertCircle,
+  User,
+  Calculator,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -69,6 +73,23 @@ interface WindowWithKintoneAPI extends Window {
     getUsers: (
       auth: KintoneAuth,
     ) => Promise<{ success: boolean; data?: KintoneUser[]; error?: string }>;
+    getAppFields: (
+      auth: KintoneAuth,
+      appId: string,
+    ) => Promise<{
+      success: boolean;
+      data?: { fields: KintoneField[] };
+      error?: string;
+    }>;
+    executeQuery: (
+      auth: KintoneAuth,
+      appId: string,
+      query: string,
+    ) => Promise<{
+      success: boolean;
+      data?: { records: Record<string, unknown>[] };
+      error?: string;
+    }>;
   };
 }
 
@@ -76,11 +97,43 @@ interface QueryGeneratorPageProps {
   auth: KintoneAuth;
   app: KintoneApp;
   onBack: () => void;
-  onBackToAppList?: () => void; // アプリ一覧に戻る関数
+  onBackToAppList?: () => void;
   onLogout: () => void;
-  editingQueryId?: string; // 編集中のクエリID（オプショナル）
+  editingQueryId?: string;
 }
 
+interface QueryOptions {
+  sortField?: string;
+  sortDirection?: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface FormattedError {
+  title: string;
+  message: string;
+  suggestions?: string[];
+}
+
+interface QueryResult {
+  records: Record<string, unknown>[];
+  error?: string;
+  formattedError?: FormattedError;
+}
+
+interface ConditionInputProps {
+  condition: QueryCondition;
+  index: number;
+  onUpdate: (index: number, updates: Partial<QueryCondition>) => void;
+  onRemove: (index: number) => void;
+  fields: KintoneField[];
+  users: Array<{ code: string; name: string; email: string }>;
+  usersLoaded: boolean;
+  onFetchUsers: () => void;
+  canRemove: boolean;
+}
+
+// 定数定義
 const operators = [
   { value: "=", label: "等しい (=)" },
   { value: "!=", label: "等しくない (!=)" },
@@ -96,14 +149,35 @@ const operators = [
   { value: "is not", label: "が空でない (is not)" },
 ];
 
-// フィールドタイプごとの利用可能な演算子
 const fieldTypeOperators: Record<string, string[]> = {
   RECORD_NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
   __ID__: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
   CREATOR: ["in", "not in"],
-  CREATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
+  CREATED_TIME: [
+    "=",
+    "!=",
+    ">",
+    "<",
+    ">=",
+    "<=",
+    "in",
+    "not in",
+    "is",
+    "is not",
+  ],
   MODIFIER: ["in", "not in"],
-  UPDATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
+  UPDATED_TIME: [
+    "=",
+    "!=",
+    ">",
+    "<",
+    ">=",
+    "<=",
+    "in",
+    "not in",
+    "is",
+    "is not",
+  ],
   SINGLE_LINE_TEXT: ["=", "!=", "in", "not in", "like", "not like"],
   LINK: ["=", "!=", "in", "not in", "like", "not like"],
   NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
@@ -115,9 +189,10 @@ const fieldTypeOperators: Record<string, string[]> = {
   DROP_DOWN: ["in", "not in"],
   MULTI_SELECT: ["in", "not in"],
   FILE: ["like", "not like"],
-  DATE: ["=", "!=", ">", "<", ">=", "<="],
-  TIME: ["=", "!=", ">", "<", ">=", "<="],
-  DATETIME: ["=", "!=", ">", "<", ">=", "<="],
+  // 修正：日付フィールドにin, not in, is, is notを追加
+  DATE: ["=", "!=", ">", "<", ">=", "<=", "in", "not in", "is", "is not"],
+  TIME: ["=", "!=", ">", "<", ">=", "<=", "in", "not in", "is", "is not"],
+  DATETIME: ["=", "!=", ">", "<", ">=", "<=", "in", "not in", "is", "is not"],
   USER_SELECT: ["in", "not in"],
   ORGANIZATION_SELECT: ["in", "not in"],
   GROUP_SELECT: ["in", "not in"],
@@ -127,7 +202,6 @@ const fieldTypeOperators: Record<string, string[]> = {
   REFERENCE_TABLE: ["like", "not like"],
 };
 
-// フィールドタイプごとの利用可能な関数
 const fieldTypeFunctions: Record<
   string,
   { value: string; label: string; description: string }[]
@@ -416,243 +490,117 @@ const fieldTypeFunctions: Record<
   ],
 };
 
-// 並び替えフィールドオプション
 const sortFieldOptions = [
   { value: "none", label: "並び替えなし" },
-  { value: "$id", label: "レコード番号" },
+  { value: "レコード番号", label: "レコード番号" },
   { value: "作成日時", label: "作成日時" },
   { value: "更新日時", label: "更新日時" },
 ];
 
-// ソート方向オプション
 const sortDirectionOptions = [
   { value: "asc", label: "昇順" },
   { value: "desc", label: "降順" },
 ];
 
-export default function QueryGeneratorPage({
-  auth,
-  app,
-  onBack,
-  onBackToAppList,
-  onLogout,
-  editingQueryId,
-}: QueryGeneratorPageProps) {
-  // Main states
-  const [loading, setLoading] = useState(true);
-  const [fields, setFields] = useState<KintoneField[]>([]);
-  const [generatedQuery, setGeneratedQuery] = useState("");
-  const [error, setError] = useState<string>("");
-  const [conditions, setConditions] = useState<QueryCondition[]>([
-    { field: "", operator: "=", value: "", logicalOperator: "and" },
-  ]);
-  const [fieldComboboxOpen, setFieldComboboxOpen] = useState<{
-    [key: number]: boolean;
-  }>({});
-  const [orderBy, setOrderBy] = useState("none");
-  const [sortField, setSortField] = useState("none");
-  const [sortDirection, setSortDirection] = useState("asc");
-  const [limit, setLimit] = useState<number>();
-  const [offset, setOffset] = useState<number>();
-  const [executing, setExecuting] = useState(false);
-  const [queryResult, setQueryResult] = useState<{
-    records: Record<string, unknown>[];
-    error?: string;
-    formattedError?: { title: string; message: string; suggestion?: string };
-  } | null>(null);
-  const [activeResultTab, setActiveResultTab] = useState("table");
+// ユーティリティ関数
+const queryUtils = {
+  // エラーメッセージのフォーマット
+  formatErrorMessage: (errorMsg: string): FormattedError => {
+    const errorPatterns = [
+      {
+        pattern: /GAIA_IL26/,
+        title: "ユーザーが見つかりません",
+        getMessage: (msg: string) => {
+          const userCode = msg.match(/ユーザー（code：(.+?)）/)?.[1] || "不明";
+          return `指定されたユーザー「${userCode}」は存在しないか、権限がありません。`;
+        },
+        suggestions: [
+          "ユーザーコードの入力値を確認してください",
+          "該当ユーザーがシステムに登録されているか確認してください",
+          '入力値を「"」（ダブルクォート）で囲んでみてください',
+        ],
+      },
+      {
+        pattern: /GAIA_IL23/,
+        title: "フィールドが見つかりません",
+        getMessage: () => "指定されたフィールドが存在しません。",
+        suggestions: [
+          "フィールドコードが正しいか確認してください",
+          "フィールドがアプリに存在するか確認してください",
+        ],
+      },
+      {
+        pattern: /GAIA_IL22/,
+        title: "クエリの構文エラー",
+        getMessage: () => "クエリの記述に誤りがあります。",
+        suggestions: [
+          "演算子や値の記述を確認してください",
+          '特殊文字が含まれる場合は「"」（ダブルクォート）で囲んでください',
+        ],
+      },
+      {
+        pattern: /400/,
+        title: "リクエストエラー",
+        getMessage: () => "クエリの内容に問題があります。",
+        suggestions: [
+          "検索条件の値や演算子を確認してください",
+          '特殊文字を含む値は「"」（ダブルクォート）で囲んでください',
+        ],
+      },
+      {
+        pattern: /401|403/,
+        title: "認証エラー",
+        getMessage: () => "アクセス権限がありません。",
+        suggestions: [
+          "ログイン情報を確認してください",
+          "アプリへのアクセス権限があるか確認してください",
+        ],
+      },
+    ];
 
-  // Saved queries
-  const { savedQueries, saveQuery } = useQueryGenerator(app.appId);
-  const [currentQueryName, setCurrentQueryName] = useState(""); // 現在編集中のクエリ名
-  const [isEditMode, setIsEditMode] = useState(false); // 編集モードかどうか
-  const [functionDialogOpen, setFunctionDialogOpen] = useState<{
-    [key: number]: boolean;
-  }>({}); // 関数ダイアログの状態管理
-  const [customQuery, setCustomQuery] = useState(""); // カスタムクエリ入力用
-  const [customQueryResult, setCustomQueryResult] = useState<{
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    records: any[];
-    error?: string;
-    formattedError?: {
-      title: string;
-      message: string;
-      suggestion?: string;
-    };
-  } | null>(null); // カスタムクエリ実行結果
-
-  // コピーアニメーション用の状態
-  const [copyAnimating, setCopyAnimating] = useState(false);
-  // 保存アニメーション用の状態
-  const [saveAnimating, setSaveAnimating] = useState(false);
-  // ユーザー一覧の状態
-  const [users, setUsers] = useState<
-    Array<{ code: string; name: string; email: string }>
-  >([]);
-  const [usersLoaded, setUsersLoaded] = useState(false);
-
-  // エラーメッセージを親切なメッセージに変換する関数
-  const formatErrorMessage = (
-    errorMsg: string,
-  ): { title: string; message: string; suggestion?: string } => {
     try {
-      // JSON形式のエラーを解析
       const jsonMatch = errorMsg.match(/\{.*\}/);
       if (jsonMatch) {
         const errorObj = JSON.parse(jsonMatch[0]);
-
-        switch (errorObj.code) {
-          case "GAIA_IL26": {
-            // ユーザーが見つからない場合
-            const userCodeMatch =
-              errorObj.message.match(/ユーザー（code：(.+?)）/);
-            const userCode = userCodeMatch ? userCodeMatch[1] : "不明";
-            return {
-              title: "ユーザーが見つかりません",
-              message: `指定されたユーザー「${userCode}」は存在しないか、権限がありません。`,
-              suggestion: `・ユーザーコードの入力値を確認してください\n・該当ユーザーがシステムに登録されているか確認してください\n・入力値を「"」（ダブルクォート）で囲んでみてください`,
-            };
-          }
-
-          case "GAIA_IL23":
-            return {
-              title: "フィールドが見つかりません",
-              message: "指定されたフィールドが存在しません。",
-              suggestion: `・フィールドコードが正しいか確認してください\n・フィールドがアプリに存在するか確認してください`,
-            };
-
-          case "GAIA_IL22":
-            return {
-              title: "クエリの構文エラー",
-              message: "クエリの記述に誤りがあります。",
-              suggestion: `・演算子や値の記述を確認してください\n・特殊文字が含まれる場合は「"」（ダブルクォート）で囲んでください`,
-            };
-
-          default:
-            return {
-              title: "クエリ実行エラー",
-              message:
-                errorObj.message || "クエリの実行中にエラーが発生しました。",
-              suggestion: "・入力内容を確認してから再実行してください",
-            };
+        const pattern = errorPatterns.find((p) =>
+          p.pattern.test(errorObj.code),
+        );
+        if (pattern) {
+          return {
+            title: pattern.title,
+            message: pattern.getMessage(errorObj.message || errorMsg),
+            suggestions: pattern.suggestions,
+          };
         }
       }
     } catch {
-      // JSON解析に失敗した場合
+      // JSON解析失敗時は通常の処理を続行
     }
 
-    // その他のエラーメッセージの処理
-    if (errorMsg.includes("400")) {
-      return {
-        title: "リクエストエラー",
-        message: "クエリの内容に問題があります。",
-        suggestion: `・検索条件の値や演算子を確認してください\n・特殊文字を含む値は「"」（ダブルクォート）で囲んでください`,
-      };
+    for (const pattern of errorPatterns) {
+      if (pattern.pattern.test(errorMsg)) {
+        return {
+          title: pattern.title,
+          message: pattern.getMessage(errorMsg),
+          suggestions: pattern.suggestions,
+        };
+      }
     }
 
-    if (errorMsg.includes("401") || errorMsg.includes("403")) {
-      return {
-        title: "認証エラー",
-        message: "アクセス権限がありません。",
-        suggestion: `・ログイン情報を確認してください\n・アプリへのアクセス権限があるか確認してください`,
-      };
-    }
-
-    // デフォルトのエラーメッセージ
     return {
       title: "エラーが発生しました",
       message: errorMsg,
-      suggestion: `・入力内容を確認してから再実行してください\n・問題が継続する場合は管理者にお問い合わせください`,
+      suggestions: [
+        "入力内容を確認してから再実行してください",
+        "問題が継続する場合は管理者にお問い合わせください",
+      ],
     };
-  };
+  },
 
-  // フィールドタイプに基づいて利用可能な演算子を取得
-  const getAvailableOperators = (fieldCode: string) => {
-    const field = fields.find((f) => f.code === fieldCode);
-    console.log("getAvailableOperators - fieldCode:", fieldCode);
-    console.log("getAvailableOperators - field found:", field);
-
-    if (!field) {
-      console.log(
-        "getAvailableOperators - field not found, returning all operators",
-      );
-      return operators;
-    }
-
-    console.log("getAvailableOperators - field.type:", field.type);
-    let availableOperatorValues = fieldTypeOperators[field.type] || [];
-
-    // フィールドタイプが見つからない場合、デフォルトの演算子を返す
-    if (availableOperatorValues.length === 0) {
-      console.log(
-        "getAvailableOperators - no operators found for type, using default",
-      );
-      availableOperatorValues = ["=", "!=", "in", "not in"];
-    }
-
-    console.log(
-      "getAvailableOperators - availableOperatorValues:",
-      availableOperatorValues,
-    );
-
-    const filteredOperators = operators.filter((op) =>
-      availableOperatorValues.includes(op.value),
-    );
-    console.log(
-      "getAvailableOperators - filtered operators:",
-      filteredOperators,
-    );
-
-    return filteredOperators;
-  };
-
-  // フィールドタイプに基づいて利用可能な関数を取得
-  const getAvailableFunctions = (fieldCode: string) => {
-    const field = fields.find((f) => f.code === fieldCode);
-    console.log("getAvailableFunctions - fieldCode:", fieldCode);
-    console.log("getAvailableFunctions - field found:", field);
-
-    if (!field) {
-      console.log(
-        "getAvailableFunctions - field not found, returning empty array",
-      );
-      return [];
-    }
-
-    console.log("getAvailableFunctions - field.type:", field.type);
-    const availableFunctions = fieldTypeFunctions[field.type] || [];
-    console.log(
-      "getAvailableFunctions - available functions:",
-      availableFunctions,
-    );
-
-    return availableFunctions;
-  };
-
-  // Load editing query if editingQueryId is provided
-  useEffect(() => {
-    if (editingQueryId && savedQueries.length > 0) {
-      const queryToEdit = savedQueries.find((q) => q.id === editingQueryId);
-      if (queryToEdit) {
-        setConditions(queryToEdit.conditions);
-        setOrderBy(queryToEdit.orderBy);
-        setLimit(queryToEdit.limit);
-        setOffset(queryToEdit.offset);
-        setCurrentQueryName(queryToEdit.name);
-        setIsEditMode(true);
-      }
-    } else {
-      // 新規作成モード
-      setIsEditMode(false);
-      setCurrentQueryName("");
-    }
-  }, [editingQueryId, savedQueries]);
-
-  // Format field value for display
-  const formatFieldValue = (fieldData: unknown): string => {
+  // フィールド値のフォーマット
+  formatFieldValue: (fieldData: unknown): string => {
     if (!fieldData) return "";
 
-    // オブジェクトの場合、valueプロパティをチェック
     if (
       typeof fieldData === "object" &&
       fieldData !== null &&
@@ -661,14 +609,12 @@ export default function QueryGeneratorPage({
       const data = fieldData as { value: unknown; type?: string };
       const { value } = data;
 
-      // ファイルフィールドの場合
       if (data.type === "FILE" && Array.isArray(value)) {
         return value
           .map((file: { name?: string }) => file.name || "")
           .join(", ");
       }
 
-      // ユーザー選択フィールドの場合
       if (
         Array.isArray(value) &&
         value.length > 0 &&
@@ -679,7 +625,6 @@ export default function QueryGeneratorPage({
         return value.map((user: { name: string }) => user.name).join(", ");
       }
 
-      // その他のオブジェクト
       if (typeof value === "object") {
         return JSON.stringify(value);
       }
@@ -687,90 +632,50 @@ export default function QueryGeneratorPage({
       return String(value);
     }
 
-    // 配列の場合
     if (Array.isArray(fieldData)) {
       return fieldData.map((item) => String(item)).join(", ");
     }
 
-    // オブジェクトの場合
     if (typeof fieldData === "object") {
       return JSON.stringify(fieldData);
     }
 
     return String(fieldData);
-  };
+  },
 
-  // Load app fields
-  useEffect(() => {
-    const fetchFields = async () => {
-      try {
-        console.log("Fetching fields for app:", app.appId);
-        setLoading(true);
-        setError("");
+  // 条件のバリデーション
+  validateCondition: (condition: QueryCondition): string[] => {
+    const errors: string[] = [];
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!(window as any).kintoneAPI) {
-          console.error("window.kintoneAPI is not available");
-          setError(
-            "KintoneAPIが利用できません。アプリケーションを再起動してください。",
-          );
-          return;
-        }
+    if (!condition.field) {
+      errors.push("フィールドを選択してください");
+    }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await (window as any).kintoneAPI.getAppFields(
-          auth,
-          app.appId,
-        );
-        console.log("Fields result:", result);
-
-        if (result.success && result.data && result.data.fields) {
-          console.log("Fields loaded:", result.data.fields.length);
-          console.log("First few fields:", result.data.fields.slice(0, 3));
-          setFields(result.data.fields);
-        } else {
-          console.error("Failed to fetch fields:", result.error);
-          setError(result.error || "フィールドの取得に失敗しました");
-        }
-      } catch (err) {
-        console.error("Error fetching fields:", err);
-        setError(
-          `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`,
-        );
-      } finally {
-        setLoading(false);
+    if (condition.operator === "in" || condition.operator === "not in") {
+      if (
+        !condition.values ||
+        condition.values.length === 0 ||
+        !condition.values.some((v) => v.trim())
+      ) {
+        errors.push("値を1つ以上入力してください");
       }
-    };
+    } else if (
+      !condition.value &&
+      condition.operator !== "is" &&
+      condition.operator !== "is not"
+    ) {
+      errors.push("値を入力してください");
+    }
 
-    fetchFields();
-  }, [auth, app.appId]);
+    return errors;
+  },
 
-  // Auto-generate query when conditions change
-  useEffect(() => {
-    generateQuery();
-  }, [conditions, orderBy, limit, offset]);
-
-  // Handlers
-  const addCondition = () => {
-    setConditions([
-      ...conditions,
-      { field: "", operator: "=", value: "", logicalOperator: "and" },
-    ]);
-  };
-
-  const removeCondition = (index: number) => {
-    setConditions(conditions.filter((_, i) => i !== index));
-  };
-
-  const updateCondition = (index: number, updates: Partial<QueryCondition>) => {
-    setConditions(
-      conditions.map((condition, i) =>
-        i === index ? { ...condition, ...updates } : condition,
-      ),
-    );
-  };
-
-  const generateQuery = () => {
+  // クエリ生成（修正版）
+  generateQuery: (
+    conditions: QueryCondition[],
+    fields: KintoneField[],
+    options: QueryOptions,
+  ): string => {
     const validConditions = conditions.filter((c) => {
       if (c.operator === "in" || c.operator === "not in") {
         return (
@@ -780,41 +685,20 @@ export default function QueryGeneratorPage({
           c.values.some((v) => v.trim())
         );
       }
-      return c.field && c.value;
+      return (
+        c.field && (c.value || c.operator === "is" || c.operator === "is not")
+      );
     });
 
     if (validConditions.length === 0) {
-      setGeneratedQuery("");
-      return;
+      return "";
     }
 
     let query = "";
 
-    validConditions.forEach((condition, index) => {
-      if (index > 0 && condition.logicalOperator) {
-        query += ` ${condition.logicalOperator} `;
-      }
-
-      const field = condition.field;
-      const operator = condition.operator;
-
-      // in/not in オペレーターの場合は values 配列を使用
-      let value: string;
-      if (operator === "in" || operator === "not in") {
-        const validValues = (condition.values || []).filter((v) => v.trim());
-        if (validValues.length === 0) return;
-
-        value = `(${validValues.map((v) => `"${v.replace(/"/g, '\\"')}"`).join(",")})`;
-      } else {
-        value = condition.value;
-      }
-
-      console.log("Query generation debug:");
-      console.log("  field:", field);
-      console.log("  operator:", operator);
-      console.log("  value:", value);
-
-      // kintone関数かどうかをチェック
+    // kintone関数を判定するヘルパー関数
+    const isKintoneFunction = (value: string): boolean => {
+      const trimmedValue = value.trim();
       const kintoneRegex = /^[A-Z_]+\([^)]*\)$/;
       const knownFunctions = [
         "LOGINUSER()",
@@ -834,75 +718,879 @@ export default function QueryGeneratorPage({
         "PRIMARY_ORGANIZATION()",
       ];
 
-      const trimmedValue = value.trim();
-      const isKintoneFunction =
+      return (
         kintoneRegex.test(trimmedValue) ||
         knownFunctions.includes(trimmedValue) ||
-        /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue);
-      console.log("  isKintoneFunction:", isKintoneFunction);
+        /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue)
+      );
+    };
 
-      // 値をクォートで囲む（数値フィールド、レコード番号、kintone関数以外）
-      let fieldInfo = fields.find((f) => f.code === field);
-      let displayFieldName = field;
-
-      // 日本語のフィールド名（ラベル）での検索も試す
-      if (!fieldInfo) {
-        fieldInfo = fields.find((f) => f.label === field);
-        displayFieldName = field; // ラベルの場合はそのまま使用
-      } else {
-        // コードで見つかった場合は、ラベルがあればラベルを使用
-        displayFieldName = fieldInfo.label || field;
-      }
-
-      console.log("  field:", field);
-      console.log("  displayFieldName:", displayFieldName);
-      console.log("  fieldInfo:", fieldInfo);
-      console.log("  fieldType:", fieldInfo?.type);
-
-      // kintoneの特殊フィールド（$id等）も数値として扱う
-      const isNumericField =
+    // 数値フィールドかどうかを判定するヘルパー関数
+    const isNumericField = (
+      field: string,
+      fieldInfo?: KintoneField,
+    ): boolean => {
+      return (
         fieldInfo?.type === "NUMBER" ||
         fieldInfo?.type === "CALC" ||
         fieldInfo?.type === "RECORD_NUMBER" ||
         fieldInfo?.type === "__ID__" ||
-        field === "$id" || // レコード番号
-        field === "$revision" || // リビジョン
-        field === "レコード番号"; // 日本語表記のレコード番号
+        field === "$id" ||
+        field === "$revision" ||
+        field === "レコード番号"
+      );
+    };
 
-      // in/not in オペレーターの場合は既に適切な形式になっている
-      const isInOperator = operator === "in" || operator === "not in";
-
-      if (!isKintoneFunction && !isNumericField && !isInOperator) {
-        // 通常の値の処理
-        const escapedValue = value.replace(/"/g, '\\"');
-        value = `"${escapedValue}"`;
-        console.log("  value quoted and escaped:", value);
-      } else {
-        console.log("  value not quoted:", value);
+    validConditions.forEach((condition, index) => {
+      if (index > 0 && condition.logicalOperator) {
+        query += ` ${condition.logicalOperator} `;
       }
 
-      query += `${displayFieldName} ${operator} ${value}`;
+      const field = condition.field;
+      const operator = condition.operator;
+      const fieldInfo = fields.find((f) => f.code === field);
+
+      // システムフィールドの場合は日本語のフィールド名を使用
+      let displayFieldName: string;
+      if (fieldInfo) {
+        // システムフィールドかどうかを判定
+        const isSystemField = [
+          "CREATOR",
+          "MODIFIER",
+          "CREATED_TIME",
+          "UPDATED_TIME",
+          "RECORD_NUMBER",
+          "__ID__",
+        ].includes(fieldInfo.type);
+
+        if (isSystemField) {
+          // システムフィールドは日本語名を使用
+          const systemFieldMap: Record<string, string> = {
+            Created_by: "作成者",
+            Updated_by: "更新者",
+            Created_datetime: "作成日時",
+            Updated_datetime: "更新日時",
+            $id: "レコード番号",
+            $revision: "リビジョン",
+          };
+          displayFieldName = systemFieldMap[field] || fieldInfo.label || field;
+        } else {
+          // カスタムフィールドはフィールドコードを使用
+          displayFieldName = field;
+        }
+      } else {
+        displayFieldName = field;
+      }
+
+      // 値の処理
+      let processedValue: string;
+
+      if (operator === "in" || operator === "not in") {
+        // in/not in演算子の場合
+        const validValues = (condition.values || []).filter((v) => v.trim());
+        if (validValues.length === 0) return;
+
+        const processedValues = validValues.map((v) => {
+          const trimmedValue = v.trim();
+
+          // 関数の場合はエスケープしない
+          if (isKintoneFunction(trimmedValue)) {
+            return trimmedValue;
+          }
+
+          // 数値フィールドの場合はエスケープしない
+          if (isNumericField(field, fieldInfo)) {
+            return trimmedValue;
+          }
+
+          // その他の場合はダブルクォートで囲む
+          return `"${trimmedValue.replace(/"/g, '\\"')}"`;
+        });
+
+        processedValue = `(${processedValues.join(",")})`;
+      } else if (operator === "is" || operator === "is not") {
+        // is/is not演算子の場合
+        processedValue = "null";
+      } else {
+        // その他の演算子の場合
+        const trimmedValue = condition.value.trim();
+
+        // 関数の場合はエスケープしない
+        if (isKintoneFunction(trimmedValue)) {
+          processedValue = trimmedValue;
+        }
+        // 数値フィールドの場合はエスケープしない
+        else if (isNumericField(field, fieldInfo)) {
+          processedValue = trimmedValue;
+        }
+        // その他の場合はダブルクォートで囲む
+        else {
+          processedValue = `"${trimmedValue.replace(/"/g, '\\"')}"`;
+        }
+      }
+
+      query += `${displayFieldName} ${operator} ${processedValue}`;
     });
 
-    if (sortField && sortField !== "none") {
-      query += ` order by ${sortField} ${sortDirection}`;
-    } else if (orderBy && orderBy !== "none") {
-      // 後方互換性のため既存のorderByも確認
-      query += ` order by ${orderBy}`;
+    if (options.sortField && options.sortField !== "none") {
+      query += ` order by ${options.sortField} ${options.sortDirection || "asc"}`;
     }
 
-    if (limit) {
-      query += ` limit ${limit}`;
+    if (options.limit) {
+      query += ` limit ${options.limit}`;
     }
 
-    if (offset) {
-      query += ` offset ${offset}`;
+    if (options.offset) {
+      query += ` offset ${options.offset}`;
     }
 
-    setGeneratedQuery(query);
-  };
+    return query;
+  },
+};
 
-  const executeQuery = async () => {
+// コンポーネント定義
+const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
+  <div className="bg-background flex min-h-screen items-center justify-center">
+    <div className="flex items-center space-x-3">
+      <Loader2 className="h-6 w-6 animate-spin" />
+      <span>{message}</span>
+    </div>
+  </div>
+);
+
+const ErrorAlert: React.FC<{ error: string }> = ({ error }) => (
+  <div className="bg-destructive/10 border-destructive/20 mb-6 rounded-lg border p-4">
+    <div className="flex items-center space-x-2">
+      <AlertCircle className="text-destructive h-4 w-4" />
+      <p className="text-destructive">{error}</p>
+    </div>
+  </div>
+);
+
+const ConditionInput: React.FC<ConditionInputProps> = ({
+  condition,
+  index,
+  onUpdate,
+  onRemove,
+  fields,
+  users,
+  usersLoaded,
+  onFetchUsers,
+  canRemove,
+}) => {
+  const [localValue, setLocalValue] = useState(condition.value);
+  const [fieldComboboxOpen, setFieldComboboxOpen] = useState(false);
+  const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
+
+  // デバウンス処理
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localValue !== condition.value) {
+        onUpdate(index, { value: localValue });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [localValue, condition.value, index, onUpdate]);
+
+  // condition.valueが外部から変更された場合にlocalValueを同期
+  useEffect(() => {
+    setLocalValue(condition.value);
+  }, [condition.value]);
+
+  // フィールドタイプに基づく利用可能な演算子を取得
+  const getAvailableOperators = useCallback(
+    (fieldCode: string) => {
+      const field = fields.find((f) => f.code === fieldCode);
+      if (!field) return operators;
+
+      const availableOperatorValues = fieldTypeOperators[field.type] || [
+        "=",
+        "!=",
+        "in",
+        "not in",
+      ];
+
+      return operators.filter((op) =>
+        availableOperatorValues.includes(op.value),
+      );
+    },
+    [fields],
+  );
+
+  // フィールドタイプに基づく利用可能な関数を取得
+  const getAvailableFunctions = useCallback(
+    (fieldCode: string) => {
+      const field = fields.find((f) => f.code === fieldCode);
+      if (!field) return [];
+      return fieldTypeFunctions[field.type] || [];
+    },
+    [fields],
+  );
+
+  const fieldInfo = useMemo(
+    () =>
+      fields.find(
+        (f) => f.code === condition.field || f.label === condition.field,
+      ),
+    [fields, condition.field],
+  );
+
+  const isUserField =
+    fieldInfo?.type === "CREATOR" || fieldInfo?.type === "MODIFIER";
+  const isInOperator =
+    condition.operator === "in" || condition.operator === "not in";
+  const hasFunctions =
+    condition.field && getAvailableFunctions(condition.field).length > 0;
+
+  const getPlaceholder = useCallback(() => {
+    if (isUserField) {
+      return "ユーザーコード または LOGINUSER()";
+    }
+    if (fieldInfo?.type === "NUMBER" || fieldInfo?.type === "CALC") {
+      return "数値を入力 (例: 123)";
+    }
+    if (
+      fieldInfo?.type === "DATETIME" ||
+      fieldInfo?.type === "CREATED_TIME" ||
+      fieldInfo?.type === "UPDATED_TIME"
+    ) {
+      return '日時を入力 (例: "2024-07-10T08:00:00+09:00")';
+    }
+    if (fieldInfo?.type === "DATE") {
+      return '日付を入力 (例: "2024-07-10")';
+    }
+    return "値を入力";
+  }, [fieldInfo, isUserField]);
+
+  return (
+    <div className="bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Badge variant="outline" className="text-xs">
+            条件 {index + 1}
+          </Badge>
+          {index > 0 && (
+            <Select
+              value={condition.logicalOperator}
+              onValueChange={(value: "and" | "or") =>
+                onUpdate(index, { logicalOperator: value })
+              }
+            >
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="and">AND</SelectItem>
+                <SelectItem value="or">OR</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onRemove(index)}
+          className="text-destructive hover:text-destructive h-7 w-7 p-0"
+          disabled={!canRemove}
+          aria-label="条件を削除"
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {/* フィールド選択と演算子選択を1行に */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
+          {/* フィールド選択 */}
+          <div className="md:col-span-4">
+            <Popover
+              open={fieldComboboxOpen}
+              onOpenChange={setFieldComboboxOpen}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={fieldComboboxOpen}
+                  aria-label="フィールドを選択"
+                  className="w-full justify-between"
+                >
+                  <span className="truncate">
+                    {condition.field
+                      ? fields.find((field) => field.code === condition.field)
+                          ?.label
+                      : "フィールドを選択"}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[300px] p-0">
+                <Command>
+                  <CommandInput placeholder="フィールドを検索..." />
+                  <CommandList>
+                    <CommandEmpty>フィールドが見つかりません。</CommandEmpty>
+                    <CommandGroup>
+                      {fields.map((field) => (
+                        <CommandItem
+                          key={field.code}
+                          value={field.code}
+                          onSelect={() => {
+                            const availableOps =
+                              fieldTypeOperators[field.type] || [];
+                            const currentOp = condition.operator;
+                            const newOperator = availableOps.includes(currentOp)
+                              ? currentOp
+                              : (availableOps[0] as QueryOperator) || "=";
+
+                            onUpdate(index, {
+                              field: field.code,
+                              operator: newOperator,
+                              value: "",
+                              values: undefined,
+                            });
+                            setFieldComboboxOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${
+                              condition.field === field.code
+                                ? "opacity-100"
+                                : "opacity-0"
+                            }`}
+                          />
+                          <div className="flex flex-col">
+                            <span>{field.label}</span>
+                            <span className="text-muted-foreground text-xs leading-tight">
+                              {field.code}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* 演算子選択 */}
+          <div className="md:col-span-3">
+            <Select
+              value={condition.operator}
+              onValueChange={(value) =>
+                onUpdate(index, { operator: value as QueryOperator })
+              }
+            >
+              <SelectTrigger className="w-full" aria-label="演算子を選択">
+                <SelectValue className="truncate" />
+              </SelectTrigger>
+              <SelectContent className="min-w-[200px]">
+                {getAvailableOperators(condition.field).map((op) => (
+                  <SelectItem
+                    key={op.value}
+                    value={op.value}
+                    className="whitespace-nowrap"
+                  >
+                    {op.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* 値入力エリア */}
+        <div className="space-y-3">
+          {isInOperator ? (
+            /* 複数値入力 */
+            <div className="space-y-2">
+              {(condition.values || [""]).map((value, valueIndex) => (
+                <div key={valueIndex} className="flex gap-2">
+                  {/* メイン入力フィールドとボタン群 */}
+                  <div className="relative flex flex-1">
+                    <Input
+                      value={value}
+                      onChange={(e) => {
+                        const newValues = [...(condition.values || [""])];
+                        newValues[valueIndex] = e.target.value;
+                        onUpdate(index, { values: newValues });
+                      }}
+                      placeholder={getPlaceholder()}
+                      className={`flex-1 ${
+                        isUserField || hasFunctions
+                          ? "pr-20" // ボタンがある場合は右パディングを追加
+                          : ""
+                      }`}
+                      aria-label={`値 ${valueIndex + 1}`}
+                    />
+
+                    {/* 右側のボタン群 */}
+                    {(isUserField || hasFunctions) && (
+                      <div className="absolute top-0 right-0 flex h-full">
+                        {/* ユーザー選択ボタン */}
+                        {isUserField && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
+                                onClick={() => {
+                                  if (!usersLoaded && users.length === 0) {
+                                    onFetchUsers();
+                                  }
+                                }}
+                                aria-label="ユーザーを選択"
+                                title="ユーザーを選択"
+                              >
+                                <User className="text-muted-foreground h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[400px] p-0">
+                              <Command>
+                                <CommandInput placeholder="ユーザーを検索..." />
+                                <CommandList>
+                                  <CommandEmpty>
+                                    {usersLoaded
+                                      ? "ユーザーが見つかりません"
+                                      : "ユーザー読み込み中..."}
+                                  </CommandEmpty>
+                                  <CommandGroup>
+                                    {users.map((user) => (
+                                      <CommandItem
+                                        key={user.code}
+                                        value={user.code}
+                                        onSelect={() => {
+                                          const newValues = [
+                                            ...(condition.values || [""]),
+                                          ];
+                                          newValues[valueIndex] = user.code;
+                                          onUpdate(index, {
+                                            values: newValues,
+                                          });
+                                        }}
+                                      >
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">
+                                            {user.name}
+                                          </span>
+                                          <span className="text-muted-foreground text-sm">
+                                            {user.code} ({user.email})
+                                          </span>
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+
+                        {/* 関数選択ボタン */}
+                        {hasFunctions && (
+                          <Dialog
+                            open={functionDialogOpen}
+                            onOpenChange={setFunctionDialogOpen}
+                          >
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
+                                title="関数を選択"
+                                aria-label="関数を選択"
+                              >
+                                <Calculator className="text-muted-foreground h-3.5 w-3.5" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                              <DialogHeader>
+                                <DialogTitle>関数を選択</DialogTitle>
+                                <DialogDescription>
+                                  利用可能な関数から選択してください
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="max-h-60 space-y-2 overflow-y-auto">
+                                {getAvailableFunctions(condition.field).map(
+                                  (func) => (
+                                    <div
+                                      key={func.value}
+                                      className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
+                                      onClick={() => {
+                                        const newValues = [
+                                          ...(condition.values || [""]),
+                                        ];
+                                        newValues[valueIndex] = func.value;
+                                        onUpdate(index, { values: newValues });
+                                        setFunctionDialogOpen(false);
+                                      }}
+                                      role="button"
+                                      tabIndex={0}
+                                      onKeyDown={(e) => {
+                                        if (
+                                          e.key === "Enter" ||
+                                          e.key === " "
+                                        ) {
+                                          e.preventDefault();
+                                          const newValues = [
+                                            ...(condition.values || [""]),
+                                          ];
+                                          newValues[valueIndex] = func.value;
+                                          onUpdate(index, {
+                                            values: newValues,
+                                          });
+                                          setFunctionDialogOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      <div className="flex-1">
+                                        <div className="text-sm font-medium">
+                                          {func.label}
+                                        </div>
+                                        <div className="text-muted-foreground text-xs">
+                                          {func.description}
+                                        </div>
+                                        <div className="mt-1 font-mono text-xs text-blue-600">
+                                          {func.value}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 削除ボタン */}
+                  {(condition.values || [""]).length > 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newValues = [...(condition.values || [""])];
+                        newValues.splice(valueIndex, 1);
+                        onUpdate(index, { values: newValues });
+                      }}
+                      className="text-destructive hover:text-destructive h-10 w-10 p-0"
+                      aria-label={`値 ${valueIndex + 1} を削除`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newValues = [...(condition.values || [""]), ""];
+                  onUpdate(index, { values: newValues });
+                }}
+                className="w-full"
+                aria-label="値を追加"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                値を追加
+              </Button>
+            </div>
+          ) : (
+            /* 単一値入力 */
+            <div className="relative flex">
+              <Input
+                value={localValue}
+                onChange={(e) => setLocalValue(e.target.value)}
+                placeholder={getPlaceholder()}
+                className={`flex-1 ${
+                  isUserField || hasFunctions
+                    ? "pr-20" // ボタンがある場合は右パディングを追加
+                    : ""
+                }`}
+                aria-label="値を入力"
+              />
+
+              {/* 右側のボタン群 */}
+              {(isUserField || hasFunctions) && (
+                <div className="absolute top-0 right-0 flex h-full">
+                  {/* ユーザー選択ボタン */}
+                  {isUserField && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
+                          onClick={() => {
+                            if (!usersLoaded && users.length === 0) {
+                              onFetchUsers();
+                            }
+                          }}
+                          aria-label="ユーザーを選択"
+                          title="ユーザーを選択"
+                        >
+                          <User className="text-muted-foreground h-3.5 w-3.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0">
+                        <Command>
+                          <CommandInput placeholder="ユーザーを検索..." />
+                          <CommandList>
+                            <CommandEmpty>
+                              {usersLoaded
+                                ? "ユーザーが見つかりません"
+                                : "ユーザー読み込み中..."}
+                            </CommandEmpty>
+                            <CommandGroup>
+                              {users.map((user) => (
+                                <CommandItem
+                                  key={user.code}
+                                  value={user.code}
+                                  onSelect={() => {
+                                    onUpdate(index, { value: user.code });
+                                    setLocalValue(user.code);
+                                  }}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">
+                                      {user.name}
+                                    </span>
+                                    <span className="text-muted-foreground text-sm">
+                                      {user.code} ({user.email})
+                                    </span>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+
+                  {/* 関数選択ボタン */}
+                  {hasFunctions && (
+                    <Dialog
+                      open={functionDialogOpen}
+                      onOpenChange={setFunctionDialogOpen}
+                    >
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
+                          title="関数を選択"
+                          aria-label="関数を選択"
+                        >
+                          <Calculator className="text-muted-foreground h-3.5 w-3.5" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>関数を選択</DialogTitle>
+                          <DialogDescription>
+                            利用可能な関数から選択してください
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="max-h-60 space-y-2 overflow-y-auto">
+                          {getAvailableFunctions(condition.field).map(
+                            (func) => (
+                              <div
+                                key={func.value}
+                                className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
+                                onClick={() => {
+                                  onUpdate(index, { value: func.value });
+                                  setLocalValue(func.value);
+                                  setFunctionDialogOpen(false);
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    onUpdate(index, { value: func.value });
+                                    setLocalValue(func.value);
+                                    setFunctionDialogOpen(false);
+                                  }
+                                }}
+                              >
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium">
+                                    {func.label}
+                                  </div>
+                                  <div className="text-muted-foreground text-xs">
+                                    {func.description}
+                                  </div>
+                                  <div className="mt-1 font-mono text-xs text-blue-600">
+                                    {func.value}
+                                  </div>
+                                </div>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AnimatedButton: React.FC<{
+  onClick: () => void;
+  disabled?: boolean;
+  animating: boolean;
+  children: React.ReactNode;
+  variant?: "default" | "outline";
+  size?: "default" | "sm";
+  className?: string;
+  "aria-label"?: string;
+}> = ({
+  onClick,
+  disabled,
+  animating,
+  children,
+  variant = "default",
+  size = "default",
+  className = "",
+  "aria-label": ariaLabel,
+}) => (
+  <Button
+    onClick={onClick}
+    disabled={disabled}
+    variant={variant}
+    size={size}
+    className={`relative overflow-hidden transition-all duration-300 ${
+      animating ? "border-green-500 bg-green-500 text-white shadow-lg" : ""
+    } ${className}`}
+    aria-label={ariaLabel}
+  >
+    {animating && (
+      <>
+        <div className="absolute inset-0 animate-ping rounded bg-green-400 opacity-75" />
+        <div className="absolute inset-0 animate-pulse rounded bg-green-300 opacity-50" />
+      </>
+    )}
+    <div className="relative flex items-center justify-center">{children}</div>
+  </Button>
+);
+
+export default function QueryGeneratorPage({
+  auth,
+  app,
+  onBack,
+  onBackToAppList,
+  onLogout,
+  editingQueryId,
+}: QueryGeneratorPageProps) {
+  // State管理
+  const [loading, setLoading] = useState(true);
+  const [fields, setFields] = useState<KintoneField[]>([]);
+  const [generatedQuery, setGeneratedQuery] = useState("");
+  const [error, setError] = useState<string>("");
+  const [conditions, setConditions] = useState<QueryCondition[]>([
+    { field: "", operator: "=", value: "", logicalOperator: "and" },
+  ]);
+  const [sortField, setSortField] = useState("none");
+  const [sortDirection, setSortDirection] = useState("asc");
+  const [limit, setLimit] = useState<number>();
+  const [offset, setOffset] = useState<number>();
+  const [executing, setExecuting] = useState(false);
+  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [activeResultTab, setActiveResultTab] = useState("table");
+  const [currentQueryName, setCurrentQueryName] = useState("");
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [copyAnimating, setCopyAnimating] = useState(false);
+  const [saveAnimating, setSaveAnimating] = useState(false);
+  const [users, setUsers] = useState<
+    Array<{ code: string; name: string; email: string }>
+  >([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+
+  const { savedQueries, saveQuery } = useQueryGenerator(app.appId);
+
+  // メモ化された値
+  const fieldOptions = useMemo(
+    () =>
+      fields.map((field) => ({
+        value: field.code,
+        label: field.label,
+        type: field.type,
+      })),
+    [fields],
+  );
+
+  const queryOptions = useMemo(
+    (): QueryOptions => ({
+      sortField,
+      sortDirection,
+      limit,
+      offset,
+    }),
+    [sortField, sortDirection, limit, offset],
+  );
+
+  // コールバック関数
+  const handleConditionUpdate = useCallback(
+    (index: number, updates: Partial<QueryCondition>) => {
+      setConditions((prev) =>
+        prev.map((condition, i) =>
+          i === index ? { ...condition, ...updates } : condition,
+        ),
+      );
+    },
+    [],
+  );
+
+  const addCondition = useCallback(() => {
+    setConditions((prev) => [
+      ...prev,
+      { field: "", operator: "=", value: "", logicalOperator: "and" },
+    ]);
+  }, []);
+
+  const removeCondition = useCallback((index: number) => {
+    setConditions((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const fetchUsers = useCallback(async () => {
+    if (usersLoaded || users.length > 0) return;
+
+    if (!auth?.subdomain || !auth?.username) {
+      console.error("Auth information is missing:", auth);
+      return;
+    }
+
+    try {
+      setUsersLoaded(true);
+      const result = await (
+        window as unknown as WindowWithKintoneAPI
+      ).kintoneAPI.getUsers(auth);
+
+      if (result.success && result.data) {
+        setUsers(result.data);
+      } else {
+        console.error("Failed to fetch users:", result.error);
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  }, [auth, usersLoaded, users.length]);
+
+  const executeQuery = useCallback(async () => {
     if (!generatedQuery) {
       alert("クエリが生成されていません");
       return;
@@ -911,20 +1599,16 @@ export default function QueryGeneratorPage({
     try {
       setExecuting(true);
       setError("");
-      setQueryResult(null); // 前の結果をクリア
+      setQueryResult(null);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (window as any).kintoneAPI.executeQuery(
-        auth,
-        app.appId,
-        generatedQuery,
-      );
+      const result = await (
+        window as unknown as WindowWithKintoneAPI
+      ).kintoneAPI.executeQuery(auth, app.appId, generatedQuery);
 
-      if (result.success) {
-        setQueryResult(result.data);
+      if (result.success && result.data) {
+        setQueryResult({ records: result.data.records });
       } else {
-        // エラーを実行結果として表示
-        const formattedError = formatErrorMessage(
+        const formattedError = queryUtils.formatErrorMessage(
           result.error || "クエリの実行に失敗しました",
         );
         setQueryResult({
@@ -935,9 +1619,8 @@ export default function QueryGeneratorPage({
       }
     } catch (err) {
       console.error("Error executing query:", err);
-      // エラーを実行結果として表示
       const errorMessage = `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`;
-      const formattedError = formatErrorMessage(errorMessage);
+      const formattedError = queryUtils.formatErrorMessage(errorMessage);
       setQueryResult({
         records: [],
         error: errorMessage,
@@ -946,56 +1629,9 @@ export default function QueryGeneratorPage({
     } finally {
       setExecuting(false);
     }
-  };
+  }, [generatedQuery, auth, app.appId]);
 
-  // カスタムクエリ実行関数
-  const executeCustomQuery = async () => {
-    if (!customQuery.trim()) {
-      alert("クエリを入力してください");
-      return;
-    }
-
-    try {
-      setExecuting(true);
-      setError("");
-      setCustomQueryResult(null); // 前の結果をクリア
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (window as any).kintoneAPI.executeQuery(
-        auth,
-        app.appId,
-        customQuery,
-      );
-
-      if (result.success) {
-        setCustomQueryResult(result.data);
-      } else {
-        // エラーを実行結果として表示
-        const formattedError = formatErrorMessage(
-          result.error || "クエリの実行に失敗しました",
-        );
-        setCustomQueryResult({
-          records: [],
-          error: result.error || "クエリの実行に失敗しました",
-          formattedError: formattedError,
-        });
-      }
-    } catch (err) {
-      console.error("Error executing custom query:", err);
-      // エラーを実行結果として表示
-      const errorMessage = `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`;
-      const formattedError = formatErrorMessage(errorMessage);
-      setCustomQueryResult({
-        records: [],
-        error: errorMessage,
-        formattedError: formattedError,
-      });
-    } finally {
-      setExecuting(false);
-    }
-  };
-
-  const handleSaveQuery = async () => {
+  const handleSaveQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
       alert("クエリ名とクエリ内容が必要です");
       return;
@@ -1007,14 +1643,13 @@ export default function QueryGeneratorPage({
       saveQuery(
         currentQueryName.trim(),
         conditions,
-        orderBy,
+        sortField !== "none" ? sortField : "",
         generatedQuery,
         limit,
         offset,
-        editingQueryId, // 編集中のクエリIDを渡す
+        editingQueryId,
       );
 
-      // アニメーション終了
       setTimeout(() => {
         setSaveAnimating(false);
       }, 1200);
@@ -1023,51 +1658,85 @@ export default function QueryGeneratorPage({
       setSaveAnimating(false);
       alert("クエリの保存に失敗しました");
     }
-  };
+  }, [
+    generatedQuery,
+    currentQueryName,
+    conditions,
+    sortField,
+    limit,
+    offset,
+    editingQueryId,
+    saveQuery,
+  ]);
 
-  // ユーザー一覧を取得する関数
-  const fetchUsers = async () => {
-    if (usersLoaded || users.length > 0) return; // 既に取得済みの場合はスキップ
-
-    if (!auth || !auth.subdomain || !auth.username) {
-      console.error("Auth information is missing:", auth);
-      return;
-    }
-
-    console.log("Fetching users with auth:", {
-      subdomain: auth.subdomain,
-      username: auth.username,
-    });
-
-    try {
-      setUsersLoaded(true); // 取得開始時点で状態を更新（重複呼び出し防止）
-      const result = await (window as WindowWithKintoneAPI).kintoneAPI.getUsers(
-        auth,
-      );
-      console.log("getUsers result:", result);
-
-      if (result.success && result.data) {
-        setUsers(result.data);
-        console.log("Users loaded successfully:", result.data.length, "users");
-        if (result.data.length > 0) {
-          console.log("First user example:", result.data[0]);
-        }
-      } else {
-        console.error("Failed to fetch users:", result.error);
-      }
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    }
-  };
-  if (loading) {
-    return (
-      <div className="bg-background flex min-h-screen items-center justify-center">
-        <div className="flex items-center space-x-3">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>フィールド情報を読み込んでいます...</span>
-        </div>
-      </div>
+  const handleCopyQuery = useCallback(async () => {
+    setCopyAnimating(true);
+    await navigator.clipboard.writeText(
+      JSON.stringify(generatedQuery).slice(1, -1),
     );
+    setTimeout(() => setCopyAnimating(false), 1200);
+  }, [generatedQuery]);
+
+  // Effects
+  useEffect(() => {
+    if (editingQueryId && savedQueries.length > 0) {
+      const queryToEdit = savedQueries.find((q) => q.id === editingQueryId);
+      if (queryToEdit) {
+        setConditions(queryToEdit.conditions);
+        setSortField(queryToEdit.orderBy || "none");
+        setLimit(queryToEdit.limit);
+        setOffset(queryToEdit.offset);
+        setCurrentQueryName(queryToEdit.name);
+        setIsEditMode(true);
+      }
+    } else {
+      setIsEditMode(false);
+      setCurrentQueryName("");
+    }
+  }, [editingQueryId, savedQueries]);
+
+  useEffect(() => {
+    const fetchFields = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        if (!(window as unknown as WindowWithKintoneAPI).kintoneAPI) {
+          setError(
+            "KintoneAPIが利用できません。アプリケーションを再起動してください。",
+          );
+          return;
+        }
+
+        const result = await (
+          window as unknown as WindowWithKintoneAPI
+        ).kintoneAPI.getAppFields(auth, app.appId);
+
+        if (result.success && result.data?.fields) {
+          setFields(result.data.fields);
+        } else {
+          setError(result.error || "フィールドの取得に失敗しました");
+        }
+      } catch (err) {
+        console.error("Error fetching fields:", err);
+        setError(
+          `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFields();
+  }, [auth, app.appId]);
+
+  useEffect(() => {
+    const query = queryUtils.generateQuery(conditions, fields, queryOptions);
+    setGeneratedQuery(query);
+  }, [conditions, fields, queryOptions]);
+
+  if (loading) {
+    return <LoadingSpinner message="フィールド情報を読み込んでいます..." />;
   }
 
   return (
@@ -1114,11 +1783,15 @@ export default function QueryGeneratorPage({
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
-          <nav className="mb-6">
+          <nav className="mb-6" aria-label="パンくずナビゲーション">
             <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
               <li>
                 <button
-                  onClick={onBackToAppList}
+                  type="button"
+                  onClick={() => {
+                    if (typeof onBackToAppList === "function")
+                      onBackToAppList();
+                  }}
                   className="hover:text-foreground transition-colors"
                 >
                   アプリ一覧
@@ -1133,7 +1806,10 @@ export default function QueryGeneratorPage({
               </li>
               <li>
                 <button
-                  onClick={onBack}
+                  type="button"
+                  onClick={() => {
+                    if (typeof onBack === "function") onBack();
+                  }}
                   className="hover:text-foreground transition-colors"
                 >
                   クエリ管理
@@ -1148,11 +1824,7 @@ export default function QueryGeneratorPage({
             </ol>
           </nav>
 
-          {error && (
-            <div className="bg-destructive/10 border-destructive/20 mb-6 rounded-lg border p-4">
-              <p className="text-destructive">{error}</p>
-            </div>
-          )}
+          {error && <ErrorAlert error={error} />}
 
           <div className="space-y-6">
             {/* Main Layout: Query Builder + Results */}
@@ -1169,477 +1841,25 @@ export default function QueryGeneratorPage({
                   <CardContent>
                     <div className="space-y-4">
                       {conditions.map((condition, index) => (
-                        <div
+                        <ConditionInput
                           key={index}
-                          className="bg-muted/20 rounded-lg border p-4"
-                        >
-                          <div>
-                            <div className="mb-3 flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                <Badge variant="outline" className="text-xs">
-                                  条件 {index + 1}
-                                </Badge>
-                                {index > 0 && (
-                                  <Select
-                                    value={condition.logicalOperator}
-                                    onValueChange={(value: "and" | "or") =>
-                                      updateCondition(index, {
-                                        logicalOperator: value,
-                                      })
-                                    }
-                                  >
-                                    <SelectTrigger className="h-7 w-20 text-xs">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="and">AND</SelectItem>
-                                      <SelectItem value="or">OR</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeCondition(index)}
-                                className="h-7 w-7 p-0"
-                                disabled={conditions.length === 1}
-                              >
-                                <Minus className="h-3 w-3" />
-                              </Button>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-                              <div className="md:col-span-4">
-                                <Popover
-                                  open={fieldComboboxOpen[index] || false}
-                                  onOpenChange={(open) =>
-                                    setFieldComboboxOpen((prev) => ({
-                                      ...prev,
-                                      [index]: open,
-                                    }))
-                                  }
-                                >
-                                  <PopoverTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      role="combobox"
-                                      aria-expanded={
-                                        fieldComboboxOpen[index] || false
-                                      }
-                                      className="w-full justify-between"
-                                    >
-                                      <span className="truncate">
-                                        {condition.field
-                                          ? fields.find(
-                                              (field) =>
-                                                field.code === condition.field,
-                                            )?.label
-                                          : "フィールドを選択"}
-                                      </span>
-                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-[300px] p-0">
-                                    <Command>
-                                      <CommandInput placeholder="フィールドを検索..." />
-                                      <CommandList>
-                                        <CommandEmpty>
-                                          フィールドが見つかりません。
-                                        </CommandEmpty>
-                                        <CommandGroup>
-                                          {fields.map((field) => (
-                                            <CommandItem
-                                              key={field.code}
-                                              value={field.code}
-                                              onSelect={() => {
-                                                const availableOps =
-                                                  fieldTypeOperators[
-                                                    field.type
-                                                  ] || [];
-                                                const currentOp =
-                                                  condition.operator;
-                                                const newOperator =
-                                                  availableOps.includes(
-                                                    currentOp,
-                                                  )
-                                                    ? currentOp
-                                                    : availableOps[0] || "=";
-
-                                                updateCondition(index, {
-                                                  field: field.code,
-                                                  operator:
-                                                    newOperator as QueryOperator,
-                                                  value: "", // フィールド変更時に値もクリア
-                                                });
-                                                setFieldComboboxOpen(
-                                                  (prev) => ({
-                                                    ...prev,
-                                                    [index]: false,
-                                                  }),
-                                                );
-                                              }}
-                                            >
-                                              <Check
-                                                className={`mr-2 h-4 w-4 ${
-                                                  condition.field === field.code
-                                                    ? "opacity-100"
-                                                    : "opacity-0"
-                                                }`}
-                                              />
-                                              <div className="flex flex-col">
-                                                <span>{field.label}</span>
-                                                <span className="text-muted-foreground text-xs leading-tight">
-                                                  {field.code}
-                                                </span>
-                                              </div>
-                                            </CommandItem>
-                                          ))}
-                                        </CommandGroup>
-                                      </CommandList>
-                                    </Command>
-                                  </PopoverContent>
-                                </Popover>
-                              </div>
-                              <div className="md:col-span-3">
-                                <Select
-                                  value={condition.operator}
-                                  onValueChange={(value) =>
-                                    updateCondition(index, {
-                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                      operator: value as any,
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue className="truncate" />
-                                  </SelectTrigger>
-                                  <SelectContent className="min-w-[200px]">
-                                    {getAvailableOperators(condition.field).map(
-                                      (op) => (
-                                        <SelectItem
-                                          key={op.value}
-                                          value={op.value}
-                                          className="whitespace-nowrap"
-                                        >
-                                          {op.label}
-                                        </SelectItem>
-                                      ),
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="md:col-span-5">
-                                <div className="flex gap-2">
-                                  {/* in/not in オペレーターの場合は複数値入力 */}
-                                  {condition.operator === "in" ||
-                                  condition.operator === "not in" ? (
-                                    <div className="flex-1 space-y-2">
-                                      {(condition.values || [""]).map(
-                                        (value, valueIndex) => (
-                                          <div
-                                            key={valueIndex}
-                                            className="flex gap-2"
-                                          >
-                                            {/* ユーザーフィールドの場合はComboboxで選択 */}
-                                            {(() => {
-                                              const fieldInfo = fields.find(
-                                                (f) =>
-                                                  f.code === condition.field ||
-                                                  f.label === condition.field,
-                                              );
-                                              const isUserField =
-                                                fieldInfo?.type === "CREATOR" ||
-                                                fieldInfo?.type === "MODIFIER";
-
-                                              if (isUserField) {
-                                                // 初回のみユーザー一覧を取得
-                                                if (
-                                                  !usersLoaded &&
-                                                  users.length === 0
-                                                ) {
-                                                  fetchUsers();
-                                                }
-
-                                                return (
-                                                  <Popover>
-                                                    <PopoverTrigger asChild>
-                                                      <Button
-                                                        variant="outline"
-                                                        role="combobox"
-                                                        className="flex-1 justify-between"
-                                                      >
-                                                        {value ||
-                                                          (usersLoaded
-                                                            ? "ユーザーを選択..."
-                                                            : "ユーザー読み込み中...")}
-                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                      </Button>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-[400px] p-0">
-                                                      <Command>
-                                                        <CommandInput placeholder="ユーザーを検索..." />
-                                                        <CommandList>
-                                                          <CommandEmpty>
-                                                            {usersLoaded
-                                                              ? "ユーザーが見つかりません"
-                                                              : "ユーザー読み込み中..."}
-                                                          </CommandEmpty>
-                                                          <CommandGroup>
-                                                            {users.map(
-                                                              (user) => (
-                                                                <CommandItem
-                                                                  key={
-                                                                    user.code
-                                                                  }
-                                                                  value={
-                                                                    user.code
-                                                                  }
-                                                                  onSelect={() => {
-                                                                    const newValues =
-                                                                      [
-                                                                        ...(condition.values || [
-                                                                          "",
-                                                                        ]),
-                                                                      ];
-                                                                    newValues[
-                                                                      valueIndex
-                                                                    ] =
-                                                                      user.code;
-                                                                    updateCondition(
-                                                                      index,
-                                                                      {
-                                                                        values:
-                                                                          newValues,
-                                                                      },
-                                                                    );
-                                                                  }}
-                                                                >
-                                                                  <div className="flex flex-col">
-                                                                    <span className="font-medium">
-                                                                      {
-                                                                        user.name
-                                                                      }
-                                                                    </span>
-                                                                    <span className="text-muted-foreground text-sm">
-                                                                      {
-                                                                        user.code
-                                                                      }{" "}
-                                                                      (
-                                                                      {
-                                                                        user.email
-                                                                      }
-                                                                      )
-                                                                    </span>
-                                                                  </div>
-                                                                </CommandItem>
-                                                              ),
-                                                            )}
-                                                          </CommandGroup>
-                                                        </CommandList>
-                                                      </Command>
-                                                    </PopoverContent>
-                                                  </Popover>
-                                                );
-                                              }
-
-                                              // 通常の入力フィールド
-                                              return (
-                                                <Input
-                                                  value={value}
-                                                  onChange={(e) => {
-                                                    const newValues = [
-                                                      ...(condition.values || [
-                                                        "",
-                                                      ]),
-                                                    ];
-                                                    newValues[valueIndex] =
-                                                      e.target.value;
-                                                    updateCondition(index, {
-                                                      values: newValues,
-                                                    });
-                                                  }}
-                                                  placeholder={(() => {
-                                                    if (
-                                                      fieldInfo?.type ===
-                                                        "NUMBER" ||
-                                                      fieldInfo?.type === "CALC"
-                                                    ) {
-                                                      return "数値 (例: 123)";
-                                                    }
-                                                    return "値を入力";
-                                                  })()}
-                                                  className="flex-1"
-                                                />
-                                              );
-                                            })()}
-                                            {(condition.values || [""]).length >
-                                              1 && (
-                                              <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => {
-                                                  const newValues = [
-                                                    ...(condition.values || [
-                                                      "",
-                                                    ]),
-                                                  ];
-                                                  newValues.splice(
-                                                    valueIndex,
-                                                    1,
-                                                  );
-                                                  updateCondition(index, {
-                                                    values: newValues,
-                                                  });
-                                                }}
-                                                className="px-3"
-                                              >
-                                                <Minus className="h-4 w-4" />
-                                              </Button>
-                                            )}
-                                          </div>
-                                        ),
-                                      )}
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          const newValues = [
-                                            ...(condition.values || [""]),
-                                            "",
-                                          ];
-                                          updateCondition(index, {
-                                            values: newValues,
-                                          });
-                                        }}
-                                        className="w-full"
-                                      >
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        値を追加
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    /* 通常の単一値入力 */
-                                    <Input
-                                      value={condition.value}
-                                      onChange={(e) =>
-                                        updateCondition(index, {
-                                          value: e.target.value,
-                                        })
-                                      }
-                                      placeholder={(() => {
-                                        const fieldInfo = fields.find(
-                                          (f) =>
-                                            f.code === condition.field ||
-                                            f.label === condition.field,
-                                        );
-                                        if (
-                                          fieldInfo?.type === "CREATOR" ||
-                                          fieldInfo?.type === "MODIFIER"
-                                        ) {
-                                          return "ユーザーコードを入力 (例: hashizume-kento)";
-                                        }
-                                        if (
-                                          fieldInfo?.type === "NUMBER" ||
-                                          fieldInfo?.type === "CALC"
-                                        ) {
-                                          return "数値を入力 (例: 123)";
-                                        }
-                                        return "値を入力";
-                                      })()}
-                                      className="flex-1"
-                                    />
-                                  )}
-                                  {condition.field &&
-                                    getAvailableFunctions(condition.field)
-                                      .length > 0 && (
-                                      <Dialog
-                                        open={
-                                          functionDialogOpen[index] || false
-                                        }
-                                        onOpenChange={(open) =>
-                                          setFunctionDialogOpen((prev) => ({
-                                            ...prev,
-                                            [index]: open,
-                                          }))
-                                        }
-                                      >
-                                        <DialogTrigger asChild>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="shrink-0 px-3"
-                                            title="関数を選択"
-                                          >
-                                            f(x)
-                                          </Button>
-                                        </DialogTrigger>
-                                        <DialogContent className="sm:max-w-md">
-                                          <DialogHeader>
-                                            <DialogTitle>
-                                              関数を選択
-                                            </DialogTitle>
-                                            <DialogDescription>
-                                              利用可能な関数から選択してください
-                                            </DialogDescription>
-                                          </DialogHeader>
-                                          <div className="max-h-60 space-y-2 overflow-y-auto">
-                                            {getAvailableFunctions(
-                                              condition.field,
-                                            ).length > 0 ? (
-                                              getAvailableFunctions(
-                                                condition.field,
-                                              ).map((func) => (
-                                                <div
-                                                  key={func.value}
-                                                  className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
-                                                  onClick={() => {
-                                                    updateCondition(index, {
-                                                      value: func.value,
-                                                    });
-                                                    setFunctionDialogOpen(
-                                                      (prev) => ({
-                                                        ...prev,
-                                                        [index]: false,
-                                                      }),
-                                                    );
-                                                  }}
-                                                >
-                                                  <div className="flex-1">
-                                                    <div className="text-sm font-medium">
-                                                      {func.label}
-                                                    </div>
-                                                    <div className="text-muted-foreground text-xs">
-                                                      {func.description}
-                                                    </div>
-                                                    <div className="mt-1 font-mono text-xs text-blue-600">
-                                                      {func.value}
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              ))
-                                            ) : (
-                                              <div className="text-muted-foreground p-4 text-center">
-                                                このフィールドタイプでは利用可能な関数はありません
-                                              </div>
-                                            )}
-                                          </div>
-                                        </DialogContent>
-                                      </Dialog>
-                                    )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                          condition={condition}
+                          index={index}
+                          onUpdate={handleConditionUpdate}
+                          onRemove={removeCondition}
+                          fields={fields}
+                          users={users}
+                          usersLoaded={usersLoaded}
+                          onFetchUsers={fetchUsers}
+                          canRemove={conditions.length > 1}
+                        />
                       ))}
 
                       <Button
                         variant="outline"
                         onClick={addCondition}
                         className="w-full"
+                        aria-label="条件を追加"
                       >
                         <Plus className="mr-2 h-4 w-4" />
                         条件を追加
@@ -1670,7 +1890,10 @@ export default function QueryGeneratorPage({
                             value={sortField}
                             onValueChange={setSortField}
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger
+                              className="w-full"
+                              aria-label="並び替えフィールドを選択"
+                            >
                               <SelectValue className="truncate" />
                             </SelectTrigger>
                             <SelectContent className="min-w-[180px]">
@@ -1699,7 +1922,10 @@ export default function QueryGeneratorPage({
                             onValueChange={setSortDirection}
                             disabled={sortField === "none"}
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger
+                              className="w-full"
+                              aria-label="並び順を選択"
+                            >
                               <SelectValue className="truncate" />
                             </SelectTrigger>
                             <SelectContent className="min-w-[120px]">
@@ -1742,6 +1968,7 @@ export default function QueryGeneratorPage({
                                   : undefined,
                               )
                             }
+                            aria-label="取得件数を入力"
                           />
                         </div>
                         <div>
@@ -1764,6 +1991,7 @@ export default function QueryGeneratorPage({
                                   : undefined,
                               )
                             }
+                            aria-label="スキップ件数を入力"
                           />
                         </div>
                       </div>
@@ -1795,57 +2023,39 @@ export default function QueryGeneratorPage({
                             </code>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <Button
-                              onClick={async () => {
-                                setCopyAnimating(true);
-                                await navigator.clipboard.writeText(
-                                  JSON.stringify(generatedQuery).slice(1, -1),
-                                );
-                                setTimeout(() => setCopyAnimating(false), 1200);
-                              }}
+                            <AnimatedButton
+                              onClick={handleCopyQuery}
                               variant="outline"
                               size="sm"
-                              className={`relative w-[120px] overflow-hidden transition-all duration-300 ${
-                                copyAnimating
-                                  ? "border-green-500 bg-green-500 text-white shadow-lg"
-                                  : "hover:bg-gray-50"
-                              }`}
+                              animating={copyAnimating}
+                              className="w-[120px]"
+                              aria-label="クエリをコピー"
                             >
-                              {/* 波紋効果 */}
-                              {copyAnimating && (
-                                <>
-                                  <div className="absolute inset-0 animate-ping rounded bg-green-400 opacity-75" />
-                                  <div className="absolute inset-0 animate-pulse rounded bg-green-300 opacity-50" />
-                                </>
-                              )}
-
-                              {/* アイコンとテキスト */}
-                              <div className="relative flex items-center justify-center">
-                                <div
-                                  className={`mr-2 transition-transform duration-300 ${
-                                    copyAnimating ? "scale-110 rotate-12" : ""
-                                  }`}
-                                >
-                                  {copyAnimating ? (
-                                    <Check className="h-4 w-4" />
-                                  ) : (
-                                    <Copy className="h-4 w-4" />
-                                  )}
-                                </div>
-                                <span
-                                  className={`transition-all duration-300 ${
-                                    copyAnimating ? "font-medium" : ""
-                                  }`}
-                                >
-                                  {copyAnimating ? "完了!" : "コピー"}
-                                </span>
+                              <div
+                                className={`mr-2 transition-transform duration-300 ${
+                                  copyAnimating ? "scale-110 rotate-12" : ""
+                                }`}
+                              >
+                                {copyAnimating ? (
+                                  <Check className="h-4 w-4" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
                               </div>
-                            </Button>
+                              <span
+                                className={`transition-all duration-300 ${
+                                  copyAnimating ? "font-medium" : ""
+                                }`}
+                              >
+                                {copyAnimating ? "完了!" : "コピー"}
+                              </span>
+                            </AnimatedButton>
                             <Button
                               onClick={executeQuery}
                               size="sm"
                               disabled={executing}
                               className="w-[100px] bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+                              aria-label="クエリを実行"
                             >
                               {executing ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1947,57 +2157,11 @@ export default function QueryGeneratorPage({
                                   }
                                   variant="outline"
                                   size="sm"
+                                  aria-label="JSONをコピー"
                                 >
                                   <Copy className="mr-2 h-4 w-4" />
                                   JSONコピー
                                 </Button>
-                              </div>
-
-                              {/* Parameters Section */}
-                              <div className="space-y-2">
-                                <div className="text-foreground border-b pb-1 text-sm font-medium">
-                                  リクエストパラメータ
-                                </div>
-                                <div className="bg-background space-y-3 rounded p-3">
-                                  <div className="grid grid-cols-1 gap-3">
-                                    <div className="flex flex-col">
-                                      <label className="mb-1 font-mono text-xs text-blue-600">
-                                        app:
-                                      </label>
-                                      <code className="bg-muted rounded p-2 text-xs">
-                                        {app.appId}
-                                      </code>
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <label className="mb-1 font-mono text-xs text-blue-600">
-                                        query:
-                                      </label>
-                                      <code className="bg-muted min-h-[2rem] rounded p-2 text-xs whitespace-pre-wrap">
-                                        {generatedQuery || "（条件なし）"}
-                                      </code>
-                                    </div>
-                                    {limit && (
-                                      <div className="flex flex-col">
-                                        <label className="mb-1 font-mono text-xs text-blue-600">
-                                          size:
-                                        </label>
-                                        <code className="bg-muted rounded p-2 text-xs">
-                                          {limit}
-                                        </code>
-                                      </div>
-                                    )}
-                                    {offset && (
-                                      <div className="flex flex-col">
-                                        <label className="mb-1 font-mono text-xs text-blue-600">
-                                          offset:
-                                        </label>
-                                        <code className="bg-muted rounded p-2 text-xs">
-                                          {offset}
-                                        </code>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
                               </div>
                             </div>
                           </div>
@@ -2028,13 +2192,25 @@ export default function QueryGeneratorPage({
                           <div className="mb-2 flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-red-500"></div>
                             <h3 className="font-medium text-red-800 dark:text-red-200">
-                              エラー
+                              {queryResult.formattedError?.title || "エラー"}
                             </h3>
                           </div>
-                          <p className="text-sm text-red-700 dark:text-red-300">
+                          <p className="mb-3 text-sm text-red-700 dark:text-red-300">
                             {queryResult.formattedError?.message ||
                               queryResult.error}
                           </p>
+                          {queryResult.formattedError?.suggestions && (
+                            <div className="text-sm text-red-600 dark:text-red-400">
+                              <p className="mb-1 font-medium">解決方法:</p>
+                              <ul className="list-inside list-disc space-y-1">
+                                {queryResult.formattedError.suggestions.map(
+                                  (suggestion, index) => (
+                                    <li key={index}>{suggestion}</li>
+                                  ),
+                                )}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <Tabs
@@ -2055,7 +2231,6 @@ export default function QueryGeneratorPage({
                             >
                               JSON表示
                             </TabsTrigger>
-                            {/* スライド背景 */}
                             <div
                               className={`bg-background border-border absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] rounded-md border shadow-md transition-transform duration-300 ease-out ${
                                 activeResultTab === "json"
@@ -2100,31 +2275,34 @@ export default function QueryGeneratorPage({
                                   <tbody>
                                     {queryResult.records
                                       .slice(0, 10)
-                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                      .map((record: any, index: number) => (
-                                        <tr
-                                          key={index}
-                                          className="hover:bg-muted/30 border-b"
-                                        >
-                                          {Object.entries(record).map(
-                                            ([fieldCode, fieldData]: [
-                                              string,
-                                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                              any,
-                                            ]) => (
-                                              <td
-                                                key={fieldCode}
-                                                className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
-                                                style={{
-                                                  writingMode: "horizontal-tb",
-                                                }}
-                                              >
-                                                {formatFieldValue(fieldData)}
-                                              </td>
-                                            ),
-                                          )}
-                                        </tr>
-                                      ))}
+                                      .map(
+                                        (
+                                          record: Record<string, unknown>,
+                                          index: number,
+                                        ) => (
+                                          <tr
+                                            key={index}
+                                            className="hover:bg-muted/30 border-b"
+                                          >
+                                            {Object.entries(record).map(
+                                              ([fieldCode, fieldData]) => (
+                                                <td
+                                                  key={fieldCode}
+                                                  className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
+                                                  style={{
+                                                    writingMode:
+                                                      "horizontal-tb",
+                                                  }}
+                                                >
+                                                  {queryUtils.formatFieldValue(
+                                                    fieldData,
+                                                  )}
+                                                </td>
+                                              ),
+                                            )}
+                                          </tr>
+                                        ),
+                                      )}
                                   </tbody>
                                 </table>
                               </div>
@@ -2159,141 +2337,6 @@ export default function QueryGeneratorPage({
                 )}
               </div>
             </div>
-
-            {/* Custom Query Section */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>カスタムクエリ実行</CardTitle>
-                  <CardDescription>
-                    独自のクエリを入力して直接実行できます
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="custom-query">クエリを入力</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="custom-query"
-                        placeholder="例: フィールド名 = '値' or 作成者 in LOGINUSER()"
-                        value={customQuery}
-                        onChange={(e) => setCustomQuery(e.target.value)}
-                        className="flex-1 font-mono text-sm"
-                      />
-                      <Button
-                        onClick={executeCustomQuery}
-                        disabled={executing || !customQuery.trim()}
-                        className="w-[80px] gap-2"
-                      >
-                        {executing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                        実行
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Custom Query Results */}
-                  {customQueryResult && (
-                    <div className="space-y-4">
-                      <div className="border-t pt-4">
-                        <h3 className="mb-2 font-medium">実行結果</h3>
-                        {customQueryResult.error ? (
-                          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/20">
-                            <div className="mb-2 flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                              <h4 className="font-medium text-red-800 dark:text-red-200">
-                                エラー
-                              </h4>
-                            </div>
-                            <p className="text-sm text-red-700 dark:text-red-300">
-                              {customQueryResult.formattedError?.message ||
-                                customQueryResult.error}
-                            </p>
-                          </div>
-                        ) : (
-                          <div>
-                            <p className="text-muted-foreground mb-2 text-sm">
-                              {customQueryResult.records?.length || 0}
-                              件のレコードが見つかりました
-                            </p>
-                            {customQueryResult.records.length > 0 ? (
-                              <div
-                                className="scrollbar-thin max-h-96 overflow-x-auto"
-                                style={{ direction: "ltr" }}
-                              >
-                                <table
-                                  className="w-full border-collapse text-sm"
-                                  style={{
-                                    writingMode: "horizontal-tb",
-                                    textOrientation: "mixed",
-                                  }}
-                                >
-                                  <thead>
-                                    <tr className="bg-muted/50 border-b">
-                                      {Object.keys(
-                                        customQueryResult.records[0],
-                                      ).map((fieldCode) => (
-                                        <th
-                                          key={fieldCode}
-                                          className="border-r p-2 text-left font-medium"
-                                          style={{
-                                            writingMode: "horizontal-tb",
-                                          }}
-                                        >
-                                          {fields.find(
-                                            (f) => f.code === fieldCode,
-                                          )?.label || fieldCode}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {customQueryResult.records
-                                      .slice(0, 10)
-                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                      .map((record: any, index: number) => (
-                                        <tr
-                                          key={index}
-                                          className="hover:bg-muted/30 border-b"
-                                        >
-                                          {Object.entries(record).map(
-                                            ([fieldCode, fieldData]: [
-                                              string,
-                                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                              any,
-                                            ]) => (
-                                              <td
-                                                key={fieldCode}
-                                                className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
-                                                style={{
-                                                  writingMode: "horizontal-tb",
-                                                }}
-                                              >
-                                                {formatFieldValue(fieldData)}
-                                              </td>
-                                            ),
-                                          )}
-                                        </tr>
-                                      ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <p className="text-muted-foreground py-8 text-center">
-                                レコードがありません
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </div>
       </div>
@@ -2319,46 +2362,38 @@ export default function QueryGeneratorPage({
                 value={currentQueryName}
                 onChange={(e) => setCurrentQueryName(e.target.value)}
                 className="w-64"
+                aria-label="クエリ名を入力"
               />
-              <Button
+              <AnimatedButton
                 onClick={handleSaveQuery}
                 disabled={!generatedQuery || !currentQueryName.trim()}
-                className={`relative w-[80px] gap-2 overflow-hidden shadow-md transition-all duration-300 ${
-                  saveAnimating
-                    ? "border-green-500 bg-green-500 text-white shadow-lg"
-                    : "bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+                animating={saveAnimating}
+                className={`w-[80px] gap-2 shadow-md ${
+                  !saveAnimating
+                    ? "bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+                    : ""
                 }`}
+                aria-label={isEditMode ? "クエリを更新" : "クエリを保存"}
               >
-                {/* 波紋効果 */}
-                {saveAnimating && (
-                  <>
-                    <div className="absolute inset-0 animate-ping rounded bg-green-400 opacity-75" />
-                    <div className="absolute inset-0 animate-pulse rounded bg-green-300 opacity-50" />
-                  </>
-                )}
-
-                {/* アイコンとテキスト */}
-                <div className="relative flex items-center justify-center">
-                  <div
-                    className={`mr-2 transition-transform duration-300 ${
-                      saveAnimating ? "scale-110 rotate-12" : ""
-                    }`}
-                  >
-                    {saveAnimating ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                  </div>
-                  <span
-                    className={`transition-all duration-300 ${
-                      saveAnimating ? "font-medium" : ""
-                    }`}
-                  >
-                    {saveAnimating ? "完了!" : isEditMode ? "更新" : "保存"}
-                  </span>
+                <div
+                  className={`mr-2 transition-transform duration-300 ${
+                    saveAnimating ? "scale-110 rotate-12" : ""
+                  }`}
+                >
+                  {saveAnimating ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
                 </div>
-              </Button>
+                <span
+                  className={`transition-all duration-300 ${
+                    saveAnimating ? "font-medium" : ""
+                  }`}
+                >
+                  {saveAnimating ? "完了!" : isEditMode ? "更新" : "保存"}
+                </span>
+              </AnimatedButton>
             </div>
           </div>
         </div>

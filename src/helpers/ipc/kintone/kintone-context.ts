@@ -20,10 +20,21 @@ export function exposeKintoneAPI() {
       }
     },
 
-    getApps: async (auth: KintoneAuth) => {
+    // ここを修正：optionsパラメータを追加
+    getApps: async (
+      auth: KintoneAuth,
+      options?: { offset?: number; limit?: number },
+    ) => {
       try {
-        console.log("Preload: Calling main process getApps");
-        const result = await ipcRenderer.invoke("kintone:getApps", auth);
+        console.log(
+          "Preload: Calling main process getApps",
+          options ? `with options: ${JSON.stringify(options)}` : "",
+        );
+        const result = await ipcRenderer.invoke(
+          "kintone:getApps",
+          auth,
+          options,
+        );
         return result;
       } catch (error) {
         console.error("Preload: getApps error:", error);

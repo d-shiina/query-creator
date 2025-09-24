@@ -79,21 +79,59 @@ export default function AppManagementPage({
     updatedDate: "",
   });
 
-  // アプリ一覧を取得
+  // アプリ一覧を取得（ページネーション対応）
   useEffect(() => {
     const fetchApps = async () => {
       try {
         setLoading(true);
         setError("");
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await (window as any).kintoneAPI.getApps(auth);
+        const allApps: any[] = [];
+        let offset = 0;
+        const limit = 100;
+        let hasMore = true;
 
-        if (result.success && result.data && result.data.apps) {
-          console.log("Apps API response:", result.data);
-          // ブックマーク状態を設定
+        console.log("Starting to fetch all apps...");
+
+        // ページネーションで全てのアプリを取得
+        while (hasMore) {
+          console.log(`Fetching apps with offset: ${offset}`);
+
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const appsWithFavorites = result.data.apps.map((app: any) => {
+          const result = await (window as any).kintoneAPI.getApps(auth, {
+            offset,
+            limit,
+          });
+
+          if (result.success && result.data && result.data.apps) {
+            console.log(`Apps API response (offset: ${offset}):`, {
+              count: result.data.apps.length,
+              hasMore: result.data.hasMore,
+            });
+
+            const apps = result.data.apps;
+            allApps.push(...apps);
+
+            // 取得したアプリ数が limit より少ない場合、これ以上データがない
+            if (apps.length < limit) {
+              hasMore = false;
+              console.log("No more apps to fetch (apps.length < limit)");
+            } else {
+              offset += limit;
+              console.log(`Continuing to next batch, new offset: ${offset}`);
+            }
+          } else {
+            console.error("Failed to fetch apps:", result.error);
+            setError(result.error || "アプリの取得に失敗しました");
+            hasMore = false;
+          }
+        }
+
+        console.log(`Total apps fetched: ${allApps.length}`);
+
+        if (allApps.length > 0) {
+          // ブックマーク状態を設定
+          const appsWithFavorites = allApps.map((app: any) => {
             console.log(`App ${app.appId} creator:`, app.creator);
             console.log(`App ${app.appId} modifier:`, app.modifier);
             return {
@@ -111,10 +149,13 @@ export default function AppManagementPage({
             };
           });
           setApps(appsWithFavorites);
+          console.log(`Apps with favorites set: ${appsWithFavorites.length}`);
         } else {
-          setError(result.error || "アプリの取得に失敗しました");
+          console.log("No apps found");
+          setApps([]);
         }
       } catch (err) {
+        console.error("Exception in fetchApps:", err);
         setError(
           `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`,
         );

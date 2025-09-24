@@ -1,8 +1,8 @@
 {
   "name": "kintone-query-creator",
-  "productName": "Kintone Query Creator",
+  "productName": "kintone Query Creator",
   "version": "1.0.0",
-  "description": "Kintone Custom Query Generator Tool with shadcn-ui",
+  "description": "kintone Custom Query Generator Tool",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
