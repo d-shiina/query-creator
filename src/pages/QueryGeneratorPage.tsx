@@ -15,11 +15,11 @@ import {
   Calendar,
   AlertCircle,
   User,
-  Calculator,
+  Sigma,
   CalendarIcon,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -139,355 +139,11 @@ interface ConditionInputProps {
 }
 
 // 定数定義
-const operators = [
-  { value: "=", label: "等しい (=)" },
-  { value: "!=", label: "等しくない (!=)" },
-  { value: ">", label: "より大きい (>)" },
-  { value: "<", label: "より小さい (<)" },
-  { value: ">=", label: "以上 (>=)" },
-  { value: "<=", label: "以下 (<=)" },
-  { value: "in", label: "のいずれか (in)" },
-  { value: "not in", label: "のいずれでもない (not in)" },
-  { value: "like", label: "を含む (like)" },
-  { value: "not like", label: "を含まない (not like)" },
-  { value: "is", label: "が空 (is)" },
-  { value: "is not", label: "が空でない (is not)" },
-];
-
-const fieldTypeOperators: Record<string, string[]> = {
-  // レコード番号・$id
-  RECORD_NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
-  __ID__: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
-
-  // システムフィールド（ユーザー系）
-  CREATOR: ["in", "not in"],
-  MODIFIER: ["in", "not in"],
-
-  // システムフィールド（日時系）
-  CREATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
-  UPDATED_TIME: ["=", "!=", ">", "<", ">=", "<="],
-
-  // テキスト系
-  SINGLE_LINE_TEXT: ["=", "!=", "in", "not in", "like", "not like"],
-  LINK: ["=", "!=", "in", "not in", "like", "not like"],
-  MULTI_LINE_TEXT: ["like", "not like", "is", "is not"],
-  RICH_TEXT: ["like", "not like"],
-
-  // 数値系
-  NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
-  CALC: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
-
-  // 選択系
-  CHECK_BOX: ["in", "not in"],
-  RADIO_BUTTON: ["in", "not in"],
-  DROP_DOWN: ["in", "not in"],
-  MULTI_SELECT: ["in", "not in"],
-
-  // 添付ファイル
-  FILE: ["like", "not like", "is", "is not"],
-
-  // 日付・時刻系
-  DATE: ["=", "!=", ">", "<", ">=", "<="],
-  TIME: ["=", "!=", ">", "<", ">=", "<="],
-  DATETIME: ["=", "!=", ">", "<", ">=", "<="],
-
-  // ユーザー・組織選択
-  USER_SELECT: ["in", "not in"],
-  ORGANIZATION_SELECT: ["in", "not in"],
-  GROUP_SELECT: ["in", "not in"],
-
-  // ステータス
-  STATUS: ["=", "!=", "in", "not in"],
-  STATUS_ASSIGNEE: ["in", "not in"],
-};
-
-const fieldTypeFunctions: Record<
-  string,
-  { value: string; label: string; description: string }[]
-> = {
-  CREATOR: [
-    {
-      value: "LOGINUSER()",
-      label: "ログインユーザー",
-      description: "APIを実行したユーザー",
-    },
-  ],
-  MODIFIER: [
-    {
-      value: "LOGINUSER()",
-      label: "ログインユーザー",
-      description: "APIを実行したユーザー",
-    },
-  ],
-  STATUS_ASSIGNEE: [
-    {
-      value: "LOGINUSER()",
-      label: "ログインユーザー",
-      description: "APIを実行したユーザー",
-    },
-  ],
-  USER_SELECT: [
-    {
-      value: "LOGINUSER()",
-      label: "ログインユーザー",
-      description: "APIを実行したユーザー",
-    },
-  ],
-  ORGANIZATION_SELECT: [
-    {
-      value: "PRIMARY_ORGANIZATION()",
-      label: "優先組織",
-      description: "APIを実行したユーザーの優先する組織",
-    },
-  ],
-  CREATED_TIME: [
-    { value: "NOW()", label: "現在日時", description: "APIを実行した日時" },
-    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
-    {
-      value: "YESTERDAY()",
-      label: "昨日",
-      description: "APIを実行した日の前日",
-    },
-    {
-      value: "TOMORROW()",
-      label: "明日",
-      description: "APIを実行した日の翌日",
-    },
-    {
-      value: "FROM_TODAY(1, DAYS)",
-      label: "今日から1日後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, WEEKS)",
-      label: "今日から1週間後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, MONTHS)",
-      label: "今日から1ヶ月後",
-      description: "APIを実行した日から起算した期間",
-    },
-    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
-    {
-      value: "LAST_WEEK()",
-      label: "先週",
-      description: "APIを実行した週の前週",
-    },
-    {
-      value: "NEXT_WEEK()",
-      label: "来週",
-      description: "APIを実行した週の翌週",
-    },
-    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
-    {
-      value: "LAST_MONTH()",
-      label: "先月",
-      description: "APIを実行した月の前月",
-    },
-    {
-      value: "NEXT_MONTH()",
-      label: "来月",
-      description: "APIを実行した月の翌月",
-    },
-    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
-    {
-      value: "LAST_YEAR()",
-      label: "昨年",
-      description: "APIを実行した年の前年",
-    },
-    {
-      value: "NEXT_YEAR()",
-      label: "来年",
-      description: "APIを実行した年の翌年",
-    },
-  ],
-  UPDATED_TIME: [
-    { value: "NOW()", label: "現在日時", description: "APIを実行した日時" },
-    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
-    {
-      value: "YESTERDAY()",
-      label: "昨日",
-      description: "APIを実行した日の前日",
-    },
-    {
-      value: "TOMORROW()",
-      label: "明日",
-      description: "APIを実行した日の翌日",
-    },
-    {
-      value: "FROM_TODAY(1, DAYS)",
-      label: "今日から1日後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, WEEKS)",
-      label: "今日から1週間後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, MONTHS)",
-      label: "今日から1ヶ月後",
-      description: "APIを実行した日から起算した期間",
-    },
-    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
-    {
-      value: "LAST_WEEK()",
-      label: "先週",
-      description: "APIを実行した週の前週",
-    },
-    {
-      value: "NEXT_WEEK()",
-      label: "来週",
-      description: "APIを実行した週の翌週",
-    },
-    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
-    {
-      value: "LAST_MONTH()",
-      label: "先月",
-      description: "APIを実行した月の前月",
-    },
-    {
-      value: "NEXT_MONTH()",
-      label: "来月",
-      description: "APIを実行した月の翌月",
-    },
-    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
-    {
-      value: "LAST_YEAR()",
-      label: "昨年",
-      description: "APIを実行した年の前年",
-    },
-    {
-      value: "NEXT_YEAR()",
-      label: "来年",
-      description: "APIを実行した年の翌年",
-    },
-  ],
-  DATE: [
-    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
-    {
-      value: "YESTERDAY()",
-      label: "昨日",
-      description: "APIを実行した日の前日",
-    },
-    {
-      value: "TOMORROW()",
-      label: "明日",
-      description: "APIを実行した日の翌日",
-    },
-    {
-      value: "FROM_TODAY(1, DAYS)",
-      label: "今日から1日後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, WEEKS)",
-      label: "今日から1週間後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, MONTHS)",
-      label: "今日から1ヶ月後",
-      description: "APIを実行した日から起算した期間",
-    },
-    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
-    {
-      value: "LAST_WEEK()",
-      label: "先週",
-      description: "APIを実行した週の前週",
-    },
-    {
-      value: "NEXT_WEEK()",
-      label: "来週",
-      description: "APIを実行した週の翌週",
-    },
-    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
-    {
-      value: "LAST_MONTH()",
-      label: "先月",
-      description: "APIを実行した月の前月",
-    },
-    {
-      value: "NEXT_MONTH()",
-      label: "来月",
-      description: "APIを実行した月の翌月",
-    },
-    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
-    {
-      value: "LAST_YEAR()",
-      label: "昨年",
-      description: "APIを実行した年の前年",
-    },
-    {
-      value: "NEXT_YEAR()",
-      label: "来年",
-      description: "APIを実行した年の翌年",
-    },
-  ],
-  DATETIME: [
-    { value: "NOW()", label: "現在日時", description: "APIを実行した日時" },
-    { value: "TODAY()", label: "今日", description: "APIを実行した日" },
-    {
-      value: "YESTERDAY()",
-      label: "昨日",
-      description: "APIを実行した日の前日",
-    },
-    {
-      value: "TOMORROW()",
-      label: "明日",
-      description: "APIを実行した日の翌日",
-    },
-    {
-      value: "FROM_TODAY(1, DAYS)",
-      label: "今日から1日後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, WEEKS)",
-      label: "今日から1週間後",
-      description: "APIを実行した日から起算した期間",
-    },
-    {
-      value: "FROM_TODAY(1, MONTHS)",
-      label: "今日から1ヶ月後",
-      description: "APIを実行した日から起算した期間",
-    },
-    { value: "THIS_WEEK()", label: "今週", description: "APIを実行した週" },
-    {
-      value: "LAST_WEEK()",
-      label: "先週",
-      description: "APIを実行した週の前週",
-    },
-    {
-      value: "NEXT_WEEK()",
-      label: "来週",
-      description: "APIを実行した週の翌週",
-    },
-    { value: "THIS_MONTH()", label: "今月", description: "APIを実行した月" },
-    {
-      value: "LAST_MONTH()",
-      label: "先月",
-      description: "APIを実行した月の前月",
-    },
-    {
-      value: "NEXT_MONTH()",
-      label: "来月",
-      description: "APIを実行した月の翌月",
-    },
-    { value: "THIS_YEAR()", label: "今年", description: "APIを実行した年" },
-    {
-      value: "LAST_YEAR()",
-      label: "昨年",
-      description: "APIを実行した年の前年",
-    },
-    {
-      value: "NEXT_YEAR()",
-      label: "来年",
-      description: "APIを実行した年の翌年",
-    },
-  ],
-};
+import {
+  operators,
+  fieldTypeOperators,
+  fieldTypeFunctions,
+} from "@/constants/kintone-query-constants";
 
 const sortFieldOptions = [
   { value: "none", label: "並び替えなし" },
@@ -670,6 +326,7 @@ const queryUtils = {
   },
 
   // クエリ生成（修正版）
+  // クエリ生成（修正版）
   generateQuery: (
     conditions: QueryCondition[],
     fields: KintoneField[],
@@ -693,27 +350,8 @@ const queryUtils = {
       return "";
     }
 
-    let query = "";
-
-    validConditions.forEach((condition, index) => {
-      if (index > 0 && condition.logicalOperator) {
-        query += ` ${condition.logicalOperator} `;
-      }
-
-      const field = condition.field;
-      const operator = condition.operator;
-
-      let value: string;
-      if (operator === "in" || operator === "not in") {
-        const validValues = (condition.values || []).filter((v) => v.trim());
-        if (validValues.length === 0) return;
-        value = `(${validValues.map((v) => `"${v.replace(/"/g, '\\"')}"`).join(",")})`;
-      } else if (operator === "is" || operator === "is not") {
-        value = "null";
-      } else {
-        value = condition.value;
-      }
-
+    // Kintone関数を判定するヘルパー関数
+    const isKintoneFunction = (value: string): boolean => {
       const kintoneRegex = /^[A-Z_]+\([^)]*\)$/;
       const knownFunctions = [
         "LOGINUSER()",
@@ -734,10 +372,43 @@ const queryUtils = {
       ];
 
       const trimmedValue = value.trim();
-      const isKintoneFunction =
+      return (
         kintoneRegex.test(trimmedValue) ||
         knownFunctions.includes(trimmedValue) ||
-        /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue);
+        /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(trimmedValue)
+      );
+    };
+
+    let query = "";
+
+    validConditions.forEach((condition, index) => {
+      if (index > 0 && condition.logicalOperator) {
+        query += ` ${condition.logicalOperator} `;
+      }
+
+      const field = condition.field;
+      const operator = condition.operator;
+
+      let value: string;
+      if (operator === "in" || operator === "not in") {
+        const validValues = (condition.values || []).filter((v) => v.trim());
+        if (validValues.length === 0) return;
+
+        // 各値に対してKintone関数かどうかを判定してエスケープを決定
+        const formattedValues = validValues.map((v) => {
+          if (isKintoneFunction(v)) {
+            return v; // 関数の場合はエスケープしない
+          } else {
+            return `"${v.replace(/"/g, '\\"')}"`;
+          }
+        });
+
+        value = `(${formattedValues.join(",")})`;
+      } else if (operator === "is" || operator === "is not") {
+        value = "null";
+      } else {
+        value = condition.value;
+      }
 
       const fieldInfo = fields.find((f) => f.code === field);
 
@@ -785,14 +456,15 @@ const queryUtils = {
       const isInOperator = operator === "in" || operator === "not in";
       const isNullOperator = operator === "is" || operator === "is not";
 
-      if (
-        !isKintoneFunction &&
-        !isNumericField &&
-        !isInOperator &&
-        !isNullOperator
-      ) {
-        const escapedValue = value.replace(/"/g, '\\"');
-        value = `"${escapedValue}"`;
+      // 単一値の場合のエスケープ処理（in/not in演算子以外）
+      if (!isInOperator && !isNullOperator) {
+        const trimmedValue = value.trim();
+        const isFunctionValue = isKintoneFunction(trimmedValue);
+
+        if (!isFunctionValue && !isNumericField) {
+          const escapedValue = value.replace(/"/g, '\\"');
+          value = `"${escapedValue}"`;
+        }
       }
 
       query += `${displayFieldName} ${operator} ${value}`;
@@ -814,121 +486,44 @@ const queryUtils = {
   },
 };
 
-// DatePicker コンポーネント
-const DatePicker: React.FC<{
-  date: Date | undefined;
-  onDateChange: (date: Date | undefined) => void;
-  placeholder?: string;
-  className?: string;
-}> = ({ date, onDateChange, placeholder = "日付を選択", className }) => {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className={cn(
-            "w-full justify-start text-left font-normal",
-            !date && "text-muted-foreground",
-            className,
-          )}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "yyyy-MM-dd", { locale: ja }) : placeholder}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[340px] p-0">
-        <CalendarComponent
-          mode="single"
-          selected={date}
-          onSelect={onDateChange}
-          locale={ja}
-        />
-      </PopoverContent>
-    </Popover>
-  );
-};
+// 安全な日付パース関数
+const parseDate = (value: string): Date | undefined => {
+  if (!value) return undefined;
 
-// DateTimePicker コンポーネント
-const DateTimePicker: React.FC<{
-  date: Date | undefined;
-  onDateChange: (date: Date | undefined) => void;
-  placeholder?: string;
-  className?: string;
-}> = ({ date, onDateChange, placeholder = "日時を選択", className }) => {
-  const [timeValue, setTimeValue] = useState("");
+  // Kintone関数の場合はundefinedを返す
+  const kintoneRegex = /^[A-Z_]+\([^)]*\)$/;
+  const knownFunctions = [
+    "LOGINUSER()",
+    "TODAY()",
+    "NOW()",
+    "YESTERDAY()",
+    "TOMORROW()",
+    "THIS_WEEK()",
+    "LAST_WEEK()",
+    "NEXT_WEEK()",
+    "THIS_MONTH()",
+    "LAST_MONTH()",
+    "NEXT_MONTH()",
+    "THIS_YEAR()",
+    "LAST_YEAR()",
+    "NEXT_YEAR()",
+    "PRIMARY_ORGANIZATION()",
+  ];
 
-  useEffect(() => {
-    if (date) {
-      setTimeValue(format(date, "HH:mm"));
-    }
-  }, [date]);
+  if (
+    kintoneRegex.test(value) ||
+    knownFunctions.includes(value) ||
+    /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(value)
+  ) {
+    return undefined;
+  }
 
-  const handleDateSelect = (selectedDate: Date | undefined) => {
-    if (selectedDate) {
-      const [hours, minutes] = timeValue.split(":").map(Number);
-      if (!isNaN(hours) && !isNaN(minutes)) {
-        selectedDate.setHours(hours, minutes);
-      }
-      onDateChange(selectedDate);
-    } else {
-      onDateChange(undefined);
-    }
-  };
-
-  const handleTimeChange = (time: string) => {
-    setTimeValue(time);
-    if (date) {
-      const [hours, minutes] = time.split(":").map(Number);
-      if (!isNaN(hours) && !isNaN(minutes)) {
-        const newDate = new Date(date);
-        newDate.setHours(hours, minutes);
-        onDateChange(newDate);
-      }
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className={cn(
-              "w-full justify-start text-left font-normal",
-              !date && "text-muted-foreground",
-              className,
-            )}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {date
-              ? format(date, "yyyy-MM-dd HH:mm", { locale: ja })
-              : placeholder}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0">
-          <CalendarComponent
-            mode="single"
-            selected={date}
-            onSelect={handleDateSelect}
-            initialFocus
-            locale={ja}
-          />
-          <div className="border-t p-3">
-            <Label htmlFor="time" className="text-sm font-medium">
-              時刻
-            </Label>
-            <Input
-              id="time"
-              type="time"
-              value={timeValue}
-              onChange={(e) => handleTimeChange(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
+  try {
+    const date = new Date(value);
+    return !isNaN(date.getTime()) ? date : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 // コンポーネント定義
@@ -1003,10 +598,30 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
 
   // フィールドタイプに基づく利用可能な関数を取得
   const getAvailableFunctions = useCallback(
-    (fieldCode: string) => {
+    (
+      fieldCode: string,
+    ): { value: string; label: string; description: string }[] => {
       const field = fields.find((f) => f.code === fieldCode);
-      if (!field) return [];
-      return fieldTypeFunctions[field.type] || [];
+      const typeKey = field?.type || "";
+
+      // 重複を避けるためにSetを使用
+      const functionsSet = new Set<{
+        value: string;
+        label: string;
+        description: string;
+      }>();
+
+      // タイプベースの関数を追加
+      if (typeKey && fieldTypeFunctions[typeKey]) {
+        fieldTypeFunctions[typeKey].forEach((func) => functionsSet.add(func));
+      }
+
+      // フィールドコードベースの関数を追加
+      if (fieldCode && fieldTypeFunctions[fieldCode]) {
+        fieldTypeFunctions[fieldCode].forEach((func) => functionsSet.add(func));
+      }
+
+      return Array.from(functionsSet);
     },
     [fields],
   );
@@ -1030,8 +645,24 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
     condition.operator === "is" || condition.operator === "is not";
-  const hasFunctions =
-    condition.field && getAvailableFunctions(condition.field).length > 0;
+
+  // 安全に関数の存在をチェック
+  const hasFunctions = useMemo(() => {
+    if (!condition.field) return false;
+
+    const fieldObj = fields.find((f) => f.code === condition.field);
+    const typeKey = fieldObj?.type || "";
+
+    const typeFunctions =
+      typeKey && fieldTypeFunctions[typeKey]
+        ? fieldTypeFunctions[typeKey].length > 0
+        : false;
+    const codeFunctions = fieldTypeFunctions[condition.field]
+      ? fieldTypeFunctions[condition.field].length > 0
+      : false;
+
+    return typeFunctions || codeFunctions;
+  }, [condition.field, fields]);
 
   const getPlaceholder = useCallback(() => {
     if (isUserField) {
@@ -1041,46 +672,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       return "数値を入力 (例: 123)";
     }
     if (isDateTimeField) {
-      return '日時を入力 (例: "2024-07-10T08:00:00+09:00")';
+      return '日時を入力 (例: "2024-07-10T08:00:00+09:00") または関数';
     }
     if (isDateField) {
-      return '日付を入力 (例: "2024-07-10")';
+      return '日付を入力 (例: "2024-07-10") または関数';
     }
     return "値を入力";
   }, [fieldInfo, isUserField, isDateField, isDateTimeField]);
-
-  // 日付ピッカーでの値変更ハンドラー
-  const handleDateChange = (date: Date | undefined, valueIndex?: number) => {
-    if (date) {
-      const formattedDate = format(date, "yyyy-MM-dd");
-      if (isInOperator && typeof valueIndex === "number") {
-        const newValues = [...(condition.values || [""])];
-        newValues[valueIndex] = formattedDate;
-        onUpdate(index, { values: newValues });
-      } else {
-        onUpdate(index, { value: formattedDate });
-        setLocalValue(formattedDate);
-      }
-    }
-  };
-
-  // 日時ピッカーでの値変更ハンドラー
-  const handleDateTimeChange = (
-    date: Date | undefined,
-    valueIndex?: number,
-  ) => {
-    if (date) {
-      const formattedDateTime = format(date, "yyyy-MM-dd'T'HH:mm:ssXXX");
-      if (isInOperator && typeof valueIndex === "number") {
-        const newValues = [...(condition.values || [""])];
-        newValues[valueIndex] = formattedDateTime;
-        onUpdate(index, { values: newValues });
-      } else {
-        onUpdate(index, { value: formattedDateTime });
-        setLocalValue(formattedDateTime);
-      }
-    }
-  };
 
   return (
     <div className="bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words">
@@ -1227,188 +825,278 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               <div className="space-y-2">
                 {(condition.values || [""]).map((value, valueIndex) => (
                   <div key={valueIndex} className="flex gap-2">
-                    {/* メイン入力フィールド */}
-                    <div className="flex-1 space-y-2">
-                      {isDateField ? (
-                        <DatePicker
-                          date={value ? new Date(value) : undefined}
-                          onDateChange={(date) =>
-                            handleDateChange(date, valueIndex)
-                          }
-                          placeholder="日付を選択"
-                        />
-                      ) : isDateTimeField ? (
-                        <DateTimePicker
-                          date={value ? new Date(value) : undefined}
-                          onDateChange={(date) =>
-                            handleDateTimeChange(date, valueIndex)
-                          }
-                          placeholder="日時を選択"
-                        />
-                      ) : (
-                        <div className="relative flex">
-                          <Input
-                            value={value}
-                            onChange={(e) => {
-                              const newValues = [...(condition.values || [""])];
-                              newValues[valueIndex] = e.target.value;
-                              onUpdate(index, { values: newValues });
-                            }}
-                            placeholder={getPlaceholder()}
-                            className={`flex-1 ${
-                              isUserField || hasFunctions ? "pr-20" : ""
-                            }`}
-                            aria-label={`値 ${valueIndex + 1}`}
-                          />
+                    {/* 入力フィールド */}
+                    <Input
+                      value={value}
+                      onChange={(e) => {
+                        const newValues = [...(condition.values || [""])];
+                        newValues[valueIndex] = e.target.value;
+                        onUpdate(index, { values: newValues });
+                      }}
+                      placeholder={getPlaceholder()}
+                      className="flex-1"
+                      aria-label={`値 ${valueIndex + 1}`}
+                    />
 
-                          {/* 右側のボタン群 */}
-                          {(isUserField || hasFunctions) && (
-                            <div className="absolute top-0 right-0 flex h-full">
-                              {/* ユーザー選択ボタン */}
-                              {isUserField && (
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
-                                      onClick={() => {
-                                        if (
-                                          !usersLoaded &&
-                                          users.length === 0
-                                        ) {
-                                          onFetchUsers();
-                                        }
+                    {/* ボタン群 */}
+                    <div className="flex gap-1">
+                      {/* カレンダーボタン（日付フィールドの場合） */}
+                      {isDateField && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-10 p-0"
+                              title="カレンダーから選択"
+                              aria-label="カレンダーから選択"
+                            >
+                              <Calendar className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[340px] p-0">
+                            <CalendarComponent
+                              mode="single"
+                              selected={parseDate(value)}
+                              onSelect={(date) => {
+                                if (date) {
+                                  const formattedDate = format(
+                                    date,
+                                    "yyyy-MM-dd",
+                                  );
+                                  const newValues = [
+                                    ...(condition.values || [""]),
+                                  ];
+                                  newValues[valueIndex] = formattedDate;
+                                  onUpdate(index, { values: newValues });
+                                }
+                              }}
+                              locale={ja}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+
+                      {/* カレンダー+時刻ボタン（日時フィールドの場合） */}
+                      {isDateTimeField && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-10 p-0"
+                              title="日時を選択"
+                              aria-label="日時を選択"
+                            >
+                              <CalendarIcon className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <CalendarComponent
+                              mode="single"
+                              selected={parseDate(value)}
+                              onSelect={(date) => {
+                                if (date) {
+                                  // 既存の時刻を保持するか、デフォルト時刻を設定
+                                  const existingDate = parseDate(value);
+                                  if (
+                                    existingDate &&
+                                    !isNaN(existingDate.getTime())
+                                  ) {
+                                    date.setHours(
+                                      existingDate.getHours(),
+                                      existingDate.getMinutes(),
+                                    );
+                                  } else {
+                                    date.setHours(9, 0); // デフォルト時刻
+                                  }
+                                  const formattedDateTime = format(
+                                    date,
+                                    "yyyy-MM-dd'T'HH:mm:ssXXX",
+                                  );
+                                  const newValues = [
+                                    ...(condition.values || [""]),
+                                  ];
+                                  newValues[valueIndex] = formattedDateTime;
+                                  onUpdate(index, { values: newValues });
+                                }
+                              }}
+                              initialFocus
+                              locale={ja}
+                            />
+                            <div className="border-t p-3">
+                              <Label
+                                htmlFor={`time-${index}-${valueIndex}`}
+                                className="text-sm font-medium"
+                              >
+                                時刻
+                              </Label>
+                              <Input
+                                id={`time-${index}-${valueIndex}`}
+                                type="time"
+                                value={(() => {
+                                  const date = parseDate(value);
+                                  return date && !isNaN(date.getTime())
+                                    ? format(date, "HH:mm")
+                                    : "09:00";
+                                })()}
+                                onChange={(e) => {
+                                  const timeValue = e.target.value;
+                                  const [hours, minutes] = timeValue
+                                    .split(":")
+                                    .map(Number);
+                                  if (!isNaN(hours) && !isNaN(minutes)) {
+                                    const date = parseDate(value) || new Date();
+                                    date.setHours(hours, minutes);
+                                    const formattedDateTime = format(
+                                      date,
+                                      "yyyy-MM-dd'T'HH:mm:ssXXX",
+                                    );
+                                    const newValues = [
+                                      ...(condition.values || [""]),
+                                    ];
+                                    newValues[valueIndex] = formattedDateTime;
+                                    onUpdate(index, { values: newValues });
+                                  }
+                                }}
+                                className="mt-1"
+                              />
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+
+                      {/* ユーザー選択ボタン */}
+                      {isUserField && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-10 p-0"
+                              onClick={() => {
+                                if (!usersLoaded && users.length === 0) {
+                                  onFetchUsers();
+                                }
+                              }}
+                              aria-label="ユーザーを選択"
+                              title="ユーザーを選択"
+                            >
+                              <User className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0">
+                            <Command>
+                              <CommandInput placeholder="ユーザーを検索..." />
+                              <CommandList>
+                                <CommandEmpty>
+                                  {usersLoaded
+                                    ? "ユーザーが見つかりません"
+                                    : "ユーザー読み込み中..."}
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  {users.map((user) => (
+                                    <CommandItem
+                                      key={user.code}
+                                      value={user.code}
+                                      onSelect={() => {
+                                        const newValues = [
+                                          ...(condition.values || [""]),
+                                        ];
+                                        newValues[valueIndex] = user.code;
+                                        onUpdate(index, { values: newValues });
                                       }}
-                                      aria-label="ユーザーを選択"
-                                      title="ユーザーを選択"
                                     >
-                                      <User className="text-muted-foreground h-3.5 w-3.5" />
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-[400px] p-0">
-                                    <Command>
-                                      <CommandInput placeholder="ユーザーを検索..." />
-                                      <CommandList>
-                                        <CommandEmpty>
-                                          {usersLoaded
-                                            ? "ユーザーが見つかりません"
-                                            : "ユーザー読み込み中..."}
-                                        </CommandEmpty>
-                                        <CommandGroup>
-                                          {users.map((user) => (
-                                            <CommandItem
-                                              key={user.code}
-                                              value={user.code}
-                                              onSelect={() => {
-                                                const newValues = [
-                                                  ...(condition.values || [""]),
-                                                ];
-                                                newValues[valueIndex] =
-                                                  user.code;
-                                                onUpdate(index, {
-                                                  values: newValues,
-                                                });
-                                              }}
-                                            >
-                                              <div className="flex flex-col">
-                                                <span className="font-medium">
-                                                  {user.name}
-                                                </span>
-                                                <span className="text-muted-foreground text-sm">
-                                                  {user.code} ({user.email})
-                                                </span>
-                                              </div>
-                                            </CommandItem>
-                                          ))}
-                                        </CommandGroup>
-                                      </CommandList>
-                                    </Command>
-                                  </PopoverContent>
-                                </Popover>
-                              )}
+                                      <div className="flex flex-col">
+                                        <span className="font-medium">
+                                          {user.name}
+                                        </span>
+                                        <span className="text-muted-foreground text-sm">
+                                          {user.code} ({user.email})
+                                        </span>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      )}
 
-                              {/* 関数選択ボタン */}
-                              {hasFunctions && (
-                                <Dialog
-                                  open={functionDialogOpen}
-                                  onOpenChange={setFunctionDialogOpen}
-                                >
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
-                                      title="関数を選択"
-                                      aria-label="関数を選択"
-                                    >
-                                      <Calculator className="text-muted-foreground h-3.5 w-3.5" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle>関数を選択</DialogTitle>
-                                      <DialogDescription>
-                                        利用可能な関数から選択してください
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="max-h-60 space-y-2 overflow-y-auto">
-                                      {getAvailableFunctions(
-                                        condition.field,
-                                      ).map((func) => (
-                                        <div
-                                          key={func.value}
-                                          className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
-                                          onClick={() => {
-                                            const newValues = [
-                                              ...(condition.values || [""]),
-                                            ];
-                                            newValues[valueIndex] = func.value;
-                                            onUpdate(index, {
-                                              values: newValues,
-                                            });
-                                            setFunctionDialogOpen(false);
-                                          }}
-                                          role="button"
-                                          tabIndex={0}
-                                          onKeyDown={(e) => {
-                                            if (
-                                              e.key === "Enter" ||
-                                              e.key === " "
-                                            ) {
-                                              e.preventDefault();
-                                              const newValues = [
-                                                ...(condition.values || [""]),
-                                              ];
-                                              newValues[valueIndex] =
-                                                func.value;
-                                              onUpdate(index, {
-                                                values: newValues,
-                                              });
-                                              setFunctionDialogOpen(false);
-                                            }
-                                          }}
-                                        >
-                                          <div className="flex-1">
-                                            <div className="text-sm font-medium">
-                                              {func.label}
-                                            </div>
-                                            <div className="text-muted-foreground text-xs">
-                                              {func.description}
-                                            </div>
-                                            <div className="mt-1 font-mono text-xs text-blue-600">
-                                              {func.value}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
+                      {/* 関数選択ボタン */}
+                      {hasFunctions && (
+                        <Dialog
+                          open={functionDialogOpen}
+                          onOpenChange={setFunctionDialogOpen}
+                        >
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-10 p-0"
+                              title="関数を選択"
+                              aria-label="関数を選択"
+                            >
+                              <Sigma className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>関数を選択</DialogTitle>
+                              <DialogDescription>
+                                利用可能な関数から選択してください
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="max-h-60 space-y-2 overflow-y-auto">
+                              {getAvailableFunctions(condition.field).map(
+                                (func: {
+                                  value: string;
+                                  label: string;
+                                  description: string;
+                                }) => (
+                                  <div
+                                    key={func.value}
+                                    className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
+                                    onClick={() => {
+                                      const newValues = [
+                                        ...(condition.values || [""]),
+                                      ];
+                                      newValues[valueIndex] = func.value;
+                                      onUpdate(index, { values: newValues });
+                                      setFunctionDialogOpen(false);
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        const newValues = [
+                                          ...(condition.values || [""]),
+                                        ];
+                                        newValues[valueIndex] = func.value;
+                                        onUpdate(index, { values: newValues });
+                                        setFunctionDialogOpen(false);
+                                      }
+                                    }}
+                                  >
+                                    <div className="flex-1">
+                                      <div className="text-sm font-medium">
+                                        {func.label}
+                                      </div>
+                                      <div className="text-muted-foreground text-xs">
+                                        {func.description}
+                                      </div>
+                                      <div className="mt-1 font-mono text-xs text-blue-600">
+                                        {func.value}
+                                      </div>
                                     </div>
-                                  </DialogContent>
-                                </Dialog>
+                                  </div>
+                                ),
                               )}
                             </div>
-                          )}
-                        </div>
+                          </DialogContent>
+                        </Dialog>
                       )}
                     </div>
 
@@ -1450,161 +1138,261 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             ) : (
               /* 単一値入力 */
               <div className="space-y-2">
-                {isDateField ? (
-                  <DatePicker
-                    date={localValue ? new Date(localValue) : undefined}
-                    onDateChange={handleDateChange}
-                    placeholder="日付を選択"
+                <div className="flex gap-2">
+                  {/* 入力フィールド */}
+                  <Input
+                    value={localValue}
+                    onChange={(e) => setLocalValue(e.target.value)}
+                    placeholder={getPlaceholder()}
+                    className="flex-1"
+                    aria-label="値を入力"
                   />
-                ) : isDateTimeField ? (
-                  <DateTimePicker
-                    date={localValue ? new Date(localValue) : undefined}
-                    onDateChange={handleDateTimeChange}
-                    placeholder="日時を選択"
-                  />
-                ) : (
-                  <div className="relative flex">
-                    <Input
-                      value={localValue}
-                      onChange={(e) => setLocalValue(e.target.value)}
-                      placeholder={getPlaceholder()}
-                      className={`flex-1 ${
-                        isUserField || hasFunctions ? "pr-20" : ""
-                      }`}
-                      aria-label="値を入力"
-                    />
 
-                    {/* 右側のボタン群 */}
-                    {(isUserField || hasFunctions) && (
-                      <div className="absolute top-0 right-0 flex h-full">
-                        {/* ユーザー選択ボタン */}
-                        {isUserField && (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
-                                onClick={() => {
-                                  if (!usersLoaded && users.length === 0) {
-                                    onFetchUsers();
-                                  }
-                                }}
-                                aria-label="ユーザーを選択"
-                                title="ユーザーを選択"
-                              >
-                                <User className="text-muted-foreground h-3.5 w-3.5" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <Command>
-                                <CommandInput placeholder="ユーザーを検索..." />
-                                <CommandList>
-                                  <CommandEmpty>
-                                    {usersLoaded
-                                      ? "ユーザーが見つかりません"
-                                      : "ユーザー読み込み中..."}
-                                  </CommandEmpty>
-                                  <CommandGroup>
-                                    {users.map((user) => (
-                                      <CommandItem
-                                        key={user.code}
-                                        value={user.code}
-                                        onSelect={() => {
-                                          onUpdate(index, { value: user.code });
-                                          setLocalValue(user.code);
-                                        }}
-                                      >
-                                        <div className="flex flex-col">
-                                          <span className="font-medium">
-                                            {user.name}
-                                          </span>
-                                          <span className="text-muted-foreground text-sm">
-                                            {user.code} ({user.email})
-                                          </span>
-                                        </div>
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                        )}
-
-                        {/* 関数選択ボタン */}
-                        {hasFunctions && (
-                          <Dialog
-                            open={functionDialogOpen}
-                            onOpenChange={setFunctionDialogOpen}
+                  {/* ボタン群 */}
+                  <div className="flex gap-1">
+                    {/* カレンダーボタン（日付フィールドの場合） */}
+                    {isDateField && (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                            title="カレンダーから選択"
+                            aria-label="カレンダーから選択"
                           >
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="hover:bg-muted h-full w-8 rounded-none border-0 px-1"
-                                title="関数を選択"
-                                aria-label="関数を選択"
-                              >
-                                <Calculator className="text-muted-foreground h-3.5 w-3.5" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                              <DialogHeader>
-                                <DialogTitle>関数を選択</DialogTitle>
-                                <DialogDescription>
-                                  利用可能な関数から選択してください
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="max-h-60 space-y-2 overflow-y-auto">
-                                {getAvailableFunctions(condition.field).map(
-                                  (func) => (
-                                    <div
-                                      key={func.value}
-                                      className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
-                                      onClick={() => {
-                                        onUpdate(index, { value: func.value });
-                                        setLocalValue(func.value);
-                                        setFunctionDialogOpen(false);
-                                      }}
-                                      role="button"
-                                      tabIndex={0}
-                                      onKeyDown={(e) => {
-                                        if (
-                                          e.key === "Enter" ||
-                                          e.key === " "
-                                        ) {
-                                          e.preventDefault();
-                                          onUpdate(index, {
-                                            value: func.value,
-                                          });
-                                          setLocalValue(func.value);
-                                          setFunctionDialogOpen(false);
-                                        }
-                                      }}
-                                    >
-                                      <div className="flex-1">
-                                        <div className="text-sm font-medium">
-                                          {func.label}
-                                        </div>
-                                        <div className="text-muted-foreground text-xs">
-                                          {func.description}
-                                        </div>
-                                        <div className="mt-1 font-mono text-xs text-blue-600">
-                                          {func.value}
-                                        </div>
-                                      </div>
+                            <Calendar className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[340px] p-0">
+                          <CalendarComponent
+                            mode="single"
+                            selected={parseDate(localValue)}
+                            onSelect={(date) => {
+                              if (date) {
+                                const formattedDate = format(
+                                  date,
+                                  "yyyy-MM-dd",
+                                );
+                                setLocalValue(formattedDate);
+                                onUpdate(index, { value: formattedDate });
+                              }
+                            }}
+                            locale={ja}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    )}
+
+                    {/* カレンダー+時刻ボタン（日時フィールドの場合） */}
+                    {isDateTimeField && (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                            title="日時を選択"
+                            aria-label="日時を選択"
+                          >
+                            <CalendarIcon className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <CalendarComponent
+                            mode="single"
+                            selected={parseDate(localValue)}
+                            onSelect={(date) => {
+                              if (date) {
+                                // 既存の時刻を保持するか、デフォルト時刻を設定
+                                const existingDate = parseDate(localValue);
+                                if (
+                                  existingDate &&
+                                  !isNaN(existingDate.getTime())
+                                ) {
+                                  date.setHours(
+                                    existingDate.getHours(),
+                                    existingDate.getMinutes(),
+                                  );
+                                } else {
+                                  date.setHours(9, 0); // デフォルト時刻
+                                }
+                                const formattedDateTime = format(
+                                  date,
+                                  "yyyy-MM-dd'T'HH:mm:ssXXX",
+                                );
+                                setLocalValue(formattedDateTime);
+                                onUpdate(index, { value: formattedDateTime });
+                              }
+                            }}
+                            initialFocus
+                            locale={ja}
+                          />
+                          <div className="border-t p-3">
+                            <Label
+                              htmlFor={`time-single-${index}`}
+                              className="text-sm font-medium"
+                            >
+                              時刻
+                            </Label>
+                            <Input
+                              id={`time-single-${index}`}
+                              type="time"
+                              value={(() => {
+                                const date = parseDate(localValue);
+                                return date && !isNaN(date.getTime())
+                                  ? format(date, "HH:mm")
+                                  : "09:00";
+                              })()}
+                              onChange={(e) => {
+                                const timeValue = e.target.value;
+                                const [hours, minutes] = timeValue
+                                  .split(":")
+                                  .map(Number);
+                                if (!isNaN(hours) && !isNaN(minutes)) {
+                                  const date =
+                                    parseDate(localValue) || new Date();
+                                  date.setHours(hours, minutes);
+                                  const formattedDateTime = format(
+                                    date,
+                                    "yyyy-MM-dd'T'HH:mm:ssXXX",
+                                  );
+                                  setLocalValue(formattedDateTime);
+                                  onUpdate(index, { value: formattedDateTime });
+                                }
+                              }}
+                              className="mt-1"
+                            />
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+
+                    {/* ユーザー選択ボタン */}
+                    {isUserField && (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                            onClick={() => {
+                              if (!usersLoaded && users.length === 0) {
+                                onFetchUsers();
+                              }
+                            }}
+                            aria-label="ユーザーを選択"
+                            title="ユーザーを選択"
+                          >
+                            <User className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Command>
+                            <CommandInput placeholder="ユーザーを検索..." />
+                            <CommandList>
+                              <CommandEmpty>
+                                {usersLoaded
+                                  ? "ユーザーが見つかりません"
+                                  : "ユーザー読み込み中..."}
+                              </CommandEmpty>
+                              <CommandGroup>
+                                {users.map((user) => (
+                                  <CommandItem
+                                    key={user.code}
+                                    value={user.code}
+                                    onSelect={() => {
+                                      onUpdate(index, { value: user.code });
+                                      setLocalValue(user.code);
+                                    }}
+                                  >
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">
+                                        {user.name}
+                                      </span>
+                                      <span className="text-muted-foreground text-sm">
+                                        {user.code} ({user.email})
+                                      </span>
                                     </div>
-                                  ),
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        )}
-                      </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+
+                    {/* 関数選択ボタン */}
+                    {hasFunctions && (
+                      <Dialog
+                        open={functionDialogOpen}
+                        onOpenChange={setFunctionDialogOpen}
+                      >
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-10 p-0"
+                            title="関数を選択"
+                            aria-label="関数を選択"
+                          >
+                            <Sigma className="h-4 w-4" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>関数を選択</DialogTitle>
+                            <DialogDescription>
+                              利用可能な関数から選択してください
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="max-h-60 space-y-2 overflow-y-auto">
+                            {getAvailableFunctions(condition.field).map(
+                              (func: {
+                                value: string;
+                                label: string;
+                                description: string;
+                              }) => (
+                                <div
+                                  key={func.value}
+                                  className="hover:bg-muted flex cursor-pointer items-center justify-between rounded p-2"
+                                  onClick={() => {
+                                    onUpdate(index, { value: func.value });
+                                    setLocalValue(func.value);
+                                    setFunctionDialogOpen(false);
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      onUpdate(index, { value: func.value });
+                                      setLocalValue(func.value);
+                                      setFunctionDialogOpen(false);
+                                    }
+                                  }}
+                                >
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium">
+                                      {func.label}
+                                    </div>
+                                    <div className="text-muted-foreground text-xs">
+                                      {func.description}
+                                    </div>
+                                    <div className="mt-1 font-mono text-xs text-blue-600">
+                                      {func.value}
+                                    </div>
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     )}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
@@ -2471,7 +2259,7 @@ export default function QueryGeneratorPage({
                             <div className="scrollbar-hover border-border max-h-96 overflow-y-auto rounded-lg border">
                               <SyntaxHighlighter
                                 language="json"
-                                style={tomorrow}
+                                style={vscDarkPlus}
                                 customStyle={{
                                   margin: 0,
                                   borderRadius: "0.5rem",
