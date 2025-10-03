@@ -4,6 +4,15 @@ import { Button } from "@/components/ui/button";
 import { getCurrentTheme, setTheme } from "@/helpers/theme_helpers";
 import { ThemeMode } from "@/types/theme-mode";
 
+// Window型を拡張
+declare global {
+  interface Window {
+    themeMode: {
+      current: () => Promise<"dark" | "light" | "system">;
+    };
+  }
+}
+
 export default function ToggleTheme() {
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>("system");
   const [isDark, setIsDark] = useState(false);

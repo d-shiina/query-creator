@@ -21,6 +21,11 @@
   },
   "author": "ROG <luan.roger.2003@gmail.com>",
   "license": "MIT",
+  "homepage": "https://github.com/d-shiina/query-creator",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d-shiina/query-creator.git"
+  },
   "devDependencies": {
     "@electron-forge/cli": "^7.8.2",
     "@electron-forge/maker-deb": "^7.8.2",
@@ -85,6 +90,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "electron-squirrel-startup": "^1.0.1",
     "i18next": "^25.3.2",
     "lucide-react": "^0.536.0",

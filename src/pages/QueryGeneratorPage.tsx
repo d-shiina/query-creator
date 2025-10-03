@@ -9,20 +9,20 @@ import {
   Plus,
   Trash2,
   Save,
-  ChevronRight,
   Check,
   ChevronsUpDown,
-  Calendar,
   AlertCircle,
   User,
   Sigma,
   CalendarIcon,
+  ChevronRight,
+  Clock,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { format } from "date-fns";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { ja } from "date-fns/locale";
-import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,7 +59,7 @@ import {
 } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
@@ -67,36 +67,9 @@ import {
   KintoneAuth,
   KintoneApp,
   KintoneField,
-  KintoneUser,
   QueryCondition,
   QueryOperator,
 } from "@/types/kintone";
-
-// Window拡張（kintoneAPI型定義）
-interface WindowWithKintoneAPI extends Window {
-  kintoneAPI: {
-    getUsers: (
-      auth: KintoneAuth,
-    ) => Promise<{ success: boolean; data?: KintoneUser[]; error?: string }>;
-    getAppFields: (
-      auth: KintoneAuth,
-      appId: string,
-    ) => Promise<{
-      success: boolean;
-      data?: { fields: KintoneField[] };
-      error?: string;
-    }>;
-    executeQuery: (
-      auth: KintoneAuth,
-      appId: string,
-      query: string,
-    ) => Promise<{
-      success: boolean;
-      data?: { records: Record<string, unknown>[] };
-      error?: string;
-    }>;
-  };
-}
 
 interface QueryGeneratorPageProps {
   auth: KintoneAuth;
@@ -114,16 +87,15 @@ interface QueryOptions {
   offset?: number;
 }
 
-interface FormattedError {
-  title: string;
-  message: string;
-  suggestions?: string[];
+interface KintoneErrorResponse {
+  code?: string;
+  message?: string;
+  id?: string;
 }
 
 interface QueryResult {
   records: Record<string, unknown>[];
   error?: string;
-  formattedError?: FormattedError;
 }
 
 interface ConditionInputProps {
@@ -157,101 +129,334 @@ const sortDirectionOptions = [
   { value: "desc", label: "降順" },
 ];
 
-// ユーティリティ関数
-const queryUtils = {
-  // エラーメッセージのフォーマット
-  formatErrorMessage: (errorMsg: string): FormattedError => {
-    const errorPatterns = [
-      {
-        pattern: /GAIA_IL26/,
-        title: "ユーザーが見つかりません",
-        getMessage: (msg: string) => {
-          const userCode = msg.match(/ユーザー（code：(.+?)）/)?.[1] || "不明";
-          return `指定されたユーザー「${userCode}」は存在しないか、権限がありません。`;
-        },
-        suggestions: [
-          "ユーザーコードの入力値を確認してください",
-          "該当ユーザーがシステムに登録されているか確認してください",
-          '入力値を「"」（ダブルクォート）で囲んでみてください',
-        ],
-      },
-      {
-        pattern: /GAIA_IL23/,
-        title: "フィールドが見つかりません",
-        getMessage: () => "指定されたフィールドが存在しません。",
-        suggestions: [
-          "フィールドコードが正しいか確認してください",
-          "フィールドがアプリに存在するか確認してください",
-        ],
-      },
-      {
-        pattern: /GAIA_IL22/,
-        title: "クエリの構文エラー",
-        getMessage: () => "クエリの記述に誤りがあります。",
-        suggestions: [
-          "演算子や値の記述を確認してください",
-          '特殊文字が含まれる場合は「"」（ダブルクォート）で囲んでください',
-        ],
-      },
-      {
-        pattern: /400/,
-        title: "リクエストエラー",
-        getMessage: () => "クエリの内容に問題があります。",
-        suggestions: [
-          "検索条件の値や演算子を確認してください",
-          '特殊文字を含む値は「"」（ダブルクォート）で囲んでください',
-        ],
-      },
-      {
-        pattern: /401|403/,
-        title: "認証エラー",
-        getMessage: () => "アクセス権限がありません。",
-        suggestions: [
-          "ログイン情報を確認してください",
-          "アプリへのアクセス権限があるか確認してください",
-        ],
-      },
-    ];
-
+// 日時変換ユーティリティ（修正版）
+const dateTimeUtils = {
+  // 日本時間をUTCに変換
+  convertJSTToUTC: (jstDateString: string): string => {
     try {
-      const jsonMatch = errorMsg.match(/\{.*\}/);
-      if (jsonMatch) {
-        const errorObj = JSON.parse(jsonMatch[0]);
-        const pattern = errorPatterns.find((p) =>
-          p.pattern.test(errorObj.code),
-        );
-        if (pattern) {
-          return {
-            title: pattern.title,
-            message: pattern.getMessage(errorObj.message || errorMsg),
-            suggestions: pattern.suggestions,
-          };
+      // 日付のみの場合（YYYY-MM-DD）
+      if (/^\d{4}-\d{2}-\d{2}$/.test(jstDateString)) {
+        // 日本時間の日付として解釈し、UTCに変換
+        const jstDate = toZonedTime(jstDateString + "T00:00:00", "Asia/Tokyo");
+        const utcDate = fromZonedTime(jstDate, "Asia/Tokyo");
+        return format(utcDate, "yyyy-MM-dd'T'HH:mm:ss'Z'");
+      }
+
+      // 日時の場合
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(jstDateString)) {
+        if (jstDateString.includes("+") || jstDateString.includes("Z")) {
+          // タイムゾーン情報がある場合、Dateで解析してUTCに変換
+          const date = new Date(jstDateString);
+          return date.toISOString();
+        } else {
+          // タイムゾーン情報がない場合は日本時間として扱う
+          const jstZonedDate = toZonedTime(jstDateString, "Asia/Tokyo");
+          const utcDate = fromZonedTime(jstZonedDate, "Asia/Tokyo");
+          return format(utcDate, "yyyy-MM-dd'T'HH:mm:ss'Z'");
         }
       }
-    } catch {
-      // JSON解析失敗時は通常の処理を続行
-    }
 
-    for (const pattern of errorPatterns) {
-      if (pattern.pattern.test(errorMsg)) {
-        return {
-          title: pattern.title,
-          message: pattern.getMessage(errorMsg),
-          suggestions: pattern.suggestions,
-        };
-      }
+      return jstDateString;
+    } catch (error) {
+      console.error("Date conversion error:", error);
+      return jstDateString;
     }
-
-    return {
-      title: "エラーが発生しました",
-      message: errorMsg,
-      suggestions: [
-        "入力内容を確認してから再実行してください",
-        "問題が継続する場合は管理者にお問い合わせください",
-      ],
-    };
   },
 
+  // UTCから日本時間に変換（表示用）
+  convertUTCToJST: (utcDateString: string): string => {
+    try {
+      const utcDate = new Date(utcDateString);
+      const jstDate = toZonedTime(utcDate, "Asia/Tokyo");
+      return format(jstDate, "yyyy-MM-dd'T'HH:mm:ssXXX");
+    } catch (error) {
+      console.error("UTC to JST conversion error:", error);
+      return utcDateString;
+    }
+  },
+
+  // DateオブジェクトをJST形式の文字列に変換してUTCに変換
+  toJSTString: (date: Date): string => {
+    try {
+      if (date instanceof Date && !isNaN(date.getTime())) {
+        // JST時刻をUTCに変換してkintone用フォーマットで出力
+        const utcDate = fromZonedTime(date, "Asia/Tokyo");
+        return format(utcDate, "yyyy-MM-dd'T'HH:mm:ssXXX");
+      }
+      return "";
+    } catch (error) {
+      console.error("Date to JST string conversion error:", error);
+      return "";
+    }
+  },
+};
+
+// モダンなDateTimePickerコンポーネント（スクロール式時間選択）
+const ModernDateTimePicker: React.FC<{
+  value?: string;
+  onChange: (value: string) => void;
+  mode?: "date" | "datetime";
+  disabled?: boolean;
+}> = ({ value, onChange, mode = "date", disabled = false }) => {
+  const [open, setOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => {
+    if (value) {
+      try {
+        return new Date(value);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  });
+  const [selectedHour, setSelectedHour] = useState<number>(() => {
+    if (value && mode === "datetime") {
+      try {
+        const date = new Date(value);
+        const hours = date.getHours();
+        // NaNチェックを追加
+        if (isNaN(hours)) return 0;
+        return hours;
+      } catch {
+        return 0;
+      }
+    }
+    return 0;
+  });
+  const [selectedMinute, setSelectedMinute] = useState<number>(() => {
+    if (value && mode === "datetime") {
+      try {
+        const date = new Date(value);
+        const minute = date.getMinutes();
+        // NaNチェックを追加
+        if (isNaN(minute)) return 0;
+        // 5分刻みに丸める
+        return Math.round(minute / 5) * 5;
+      } catch {
+        return 0;
+      }
+    }
+    return 0;
+  });
+
+  // 時間・分の選択肢を生成
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = Array.from({ length: 12 }, (_, i) => i * 5); // 5分刻み（0, 5, 10, ...55）
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (!date) return;
+
+    setSelectedDate(date);
+
+    if (mode === "datetime") {
+      // datetimeの場合は時刻も含めて更新
+      date.setHours(selectedHour, selectedMinute, 0, 0);
+
+      // JST→UTC変換してkintone用フォーマットで出力
+      const formattedValue = dateTimeUtils.toJSTString(date);
+      onChange(formattedValue);
+    } else {
+      // dateの場合は日付のみ（UTC変換不要）
+      const formattedValue = format(date, "yyyy-MM-dd");
+      onChange(formattedValue);
+      setOpen(false); // 日付選択後に自動で閉じる
+    }
+  };
+
+  const handleTimeChange = (hour: number, minute: number) => {
+    setSelectedHour(hour);
+    setSelectedMinute(minute);
+
+    if (selectedDate && mode === "datetime") {
+      const newDate = new Date(selectedDate);
+      newDate.setHours(hour, minute, 0, 0);
+
+      // JST→UTC変換してkintone用フォーマットで出力
+      const formattedValue = dateTimeUtils.toJSTString(newDate);
+      onChange(formattedValue);
+    }
+  };
+
+  const handleHourChange = (hour: number) => {
+    handleTimeChange(hour, selectedMinute);
+  };
+
+  const handleMinuteChange = (minute: number) => {
+    handleTimeChange(selectedHour, minute);
+  };
+
+  const handleToday = () => {
+    const today = new Date();
+    handleDateSelect(today);
+  };
+
+  const handleNow = () => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = Math.round(now.getMinutes() / 5) * 5; // 5分刻みに丸める
+    setSelectedHour(currentHour);
+    setSelectedMinute(currentMinute);
+    handleTimeChange(currentHour, currentMinute);
+    if (!selectedDate) {
+      handleDateSelect(now);
+    }
+  };
+
+  const getButtonIcon = () => {
+    if (mode === "datetime") {
+      return <Clock className="h-4 w-4" />;
+    }
+    return <CalendarIcon className="h-4 w-4" />;
+  };
+
+  const getButtonTitle = () => {
+    if (mode === "datetime") {
+      return "日時を選択";
+    }
+    return "日付を選択";
+  };
+
+  // スクロール可能な時間選択コンポーネント
+  const TimeScrollPicker: React.FC<{
+    title: string;
+    value: number;
+    options: number[];
+    onChange: (value: number) => void;
+  }> = ({ title, value, options, onChange }) => {
+    // NaNチェックを追加
+    const safeValue = isNaN(value) ? 0 : value;
+
+    return (
+      <div className="flex flex-col items-center space-y-2">
+        <label className="text-xs font-medium text-gray-600">{title}</label>
+        <div className="h-32 w-16 overflow-y-auto rounded-md border bg-white">
+          <div className="py-2">
+            {options.map((option) => (
+              <button
+                key={option}
+                className={`w-full py-2 text-sm hover:bg-gray-100 ${
+                  safeValue === option
+                    ? "bg-blue-50 font-semibold text-blue-600"
+                    : "text-gray-700"
+                }`}
+                onClick={() => onChange(option)}
+              >
+                {option.toString().padStart(2, "0")}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-10 w-10 p-0"
+          disabled={disabled}
+          title={getButtonTitle()}
+          aria-label={getButtonTitle()}
+        >
+          {getButtonIcon()}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-fit p-0" align="start">
+        <div className="space-y-4 p-6">
+          {/* アクションボタン */}
+          <div className="flex justify-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleToday}
+              className="px-4 text-sm"
+            >
+              今日
+            </Button>
+            {mode === "datetime" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNow}
+                className="px-4 text-sm"
+              >
+                <Clock className="mr-2 h-4 w-4" />
+                現在時刻
+              </Button>
+            )}
+          </div>
+
+          {/* メインコンテンツエリア */}
+          <div
+            className={`flex gap-6 ${mode === "datetime" ? "items-start" : "justify-center"}`}
+          >
+            {/* カレンダー */}
+            <div className="flex-shrink-0">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={handleDateSelect}
+                locale={ja}
+                className="w-fit rounded-md border-0 text-base"
+              />
+            </div>
+
+            {/* 時刻選択（datetimeモードの場合のみ） */}
+            {mode === "datetime" && (
+              <div className="flex flex-col space-y-4 border-l pl-6">
+                <div className="text-center">
+                  <Label className="text-sm font-medium">時刻選択</Label>
+                  <div className="mt-1 text-lg font-semibold text-blue-600">
+                    {(isNaN(selectedHour) ? 0 : selectedHour)
+                      .toString()
+                      .padStart(2, "0")}
+                    :
+                    {(isNaN(selectedMinute) ? 0 : selectedMinute)
+                      .toString()
+                      .padStart(2, "0")}
+                  </div>
+                </div>
+                <div className="flex gap-4">
+                  <TimeScrollPicker
+                    title="時"
+                    value={selectedHour}
+                    options={hours}
+                    onChange={handleHourChange}
+                  />
+                  <TimeScrollPicker
+                    title="分"
+                    value={selectedMinute}
+                    options={minutes}
+                    onChange={handleMinuteChange}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 完了ボタン（datetimeモードの場合のみ） */}
+          {mode === "datetime" && (
+            <div className="flex justify-center border-t pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setOpen(false)}
+                className="px-8 text-sm"
+              >
+                完了
+              </Button>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// ユーティリティ関数
+const queryUtils = {
   // フィールド値のフォーマット
   formatFieldValue: (fieldData: unknown): string => {
     if (!fieldData) return "";
@@ -325,8 +530,7 @@ const queryUtils = {
     return errors;
   },
 
-  // クエリ生成（修正版）
-  // クエリ生成（修正版）
+  // クエリ生成（日時のUTC変換対応）
   generateQuery: (
     conditions: QueryCondition[],
     fields: KintoneField[],
@@ -379,6 +583,23 @@ const queryUtils = {
       );
     };
 
+    // 日時フィールドかどうかを判定
+    const isDateTimeField = (fieldCode: string): boolean => {
+      const field = fields.find((f) => f.code === fieldCode);
+      return (
+        field?.type === "DATETIME" ||
+        field?.type === "CREATED_TIME" ||
+        field?.type === "UPDATED_TIME" ||
+        fieldCode === "Created_datetime" ||
+        fieldCode === "Updated_datetime"
+      );
+    };
+
+    const isDateField = (fieldCode: string): boolean => {
+      const field = fields.find((f) => f.code === fieldCode);
+      return field?.type === "DATE";
+    };
+
     let query = "";
 
     validConditions.forEach((condition, index) => {
@@ -399,7 +620,12 @@ const queryUtils = {
           if (isKintoneFunction(v)) {
             return v; // 関数の場合はエスケープしない
           } else {
-            return `"${v.replace(/"/g, '\\"')}"`;
+            // 日時フィールドの場合はUTCに変換
+            let processedValue = v;
+            if (isDateTimeField(field) || isDateField(field)) {
+              processedValue = dateTimeUtils.convertJSTToUTC(v);
+            }
+            return `"${processedValue.replace(/"/g, '\\"')}"`;
           }
         });
 
@@ -412,37 +638,8 @@ const queryUtils = {
 
       const fieldInfo = fields.find((f) => f.code === field);
 
-      // システムフィールドの場合は日本語のフィールド名を使用
-      let displayFieldName: string;
-      if (fieldInfo) {
-        // システムフィールドかどうかを判定
-        const isSystemField = [
-          "CREATOR",
-          "MODIFIER",
-          "CREATED_TIME",
-          "UPDATED_TIME",
-          "RECORD_NUMBER",
-          "__ID__",
-        ].includes(fieldInfo.type);
-
-        if (isSystemField) {
-          // システムフィールドは日本語名を使用
-          const systemFieldMap: Record<string, string> = {
-            Created_by: "作成者",
-            Updated_by: "更新者",
-            Created_datetime: "作成日時",
-            Updated_datetime: "更新日時",
-            $id: "レコード番号",
-            $revision: "リビジョン",
-          };
-          displayFieldName = systemFieldMap[field] || fieldInfo.label || field;
-        } else {
-          // カスタムフィールドはフィールドコードを使用
-          displayFieldName = field;
-        }
-      } else {
-        displayFieldName = field;
-      }
+      // クエリでは常にフィールドコードを使用
+      const queryFieldCode: string = field;
 
       const isNumericField =
         fieldInfo?.type === "NUMBER" ||
@@ -461,13 +658,20 @@ const queryUtils = {
         const trimmedValue = value.trim();
         const isFunctionValue = isKintoneFunction(trimmedValue);
 
-        if (!isFunctionValue && !isNumericField) {
-          const escapedValue = value.replace(/"/g, '\\"');
-          value = `"${escapedValue}"`;
+        if (!isFunctionValue) {
+          // 日時フィールドの場合はUTCに変換
+          if (isDateTimeField(field) || isDateField(field)) {
+            value = dateTimeUtils.convertJSTToUTC(value);
+          }
+
+          if (!isNumericField) {
+            const escapedValue = value.replace(/"/g, '\\"');
+            value = `"${escapedValue}"`;
+          }
         }
       }
 
-      query += `${displayFieldName} ${operator} ${value}`;
+      query += `${queryFieldCode} ${operator} ${value}`;
     });
 
     if (options.sortField && options.sortField !== "none") {
@@ -484,46 +688,6 @@ const queryUtils = {
 
     return query;
   },
-};
-
-// 安全な日付パース関数
-const parseDate = (value: string): Date | undefined => {
-  if (!value) return undefined;
-
-  // Kintone関数の場合はundefinedを返す
-  const kintoneRegex = /^[A-Z_]+\([^)]*\)$/;
-  const knownFunctions = [
-    "LOGINUSER()",
-    "TODAY()",
-    "NOW()",
-    "YESTERDAY()",
-    "TOMORROW()",
-    "THIS_WEEK()",
-    "LAST_WEEK()",
-    "NEXT_WEEK()",
-    "THIS_MONTH()",
-    "LAST_MONTH()",
-    "NEXT_MONTH()",
-    "THIS_YEAR()",
-    "LAST_YEAR()",
-    "NEXT_YEAR()",
-    "PRIMARY_ORGANIZATION()",
-  ];
-
-  if (
-    kintoneRegex.test(value) ||
-    knownFunctions.includes(value) ||
-    /^FROM_TODAY\(\d+,\s*(DAYS|WEEKS|MONTHS|YEARS)\)$/.test(value)
-  ) {
-    return undefined;
-  }
-
-  try {
-    const date = new Date(value);
-    return !isNaN(date.getTime()) ? date : undefined;
-  } catch {
-    return undefined;
-  }
 };
 
 // コンポーネント定義
@@ -589,7 +753,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         "not in",
       ];
 
-      return operators.filter((op) =>
+      return operators.filter((op: { value: QueryOperator; label: string }) =>
         availableOperatorValues.includes(op.value),
       );
     },
@@ -604,24 +768,29 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       const field = fields.find((f) => f.code === fieldCode);
       const typeKey = field?.type || "";
 
-      // 重複を避けるためにSetを使用
-      const functionsSet = new Set<{
-        value: string;
-        label: string;
-        description: string;
-      }>();
+      // 重複を避けるためにMap を使用（valueをキーとする）
+      const functionsMap = new Map<
+        string,
+        { value: string; label: string; description: string }
+      >();
 
       // タイプベースの関数を追加
       if (typeKey && fieldTypeFunctions[typeKey]) {
-        fieldTypeFunctions[typeKey].forEach((func) => functionsSet.add(func));
+        fieldTypeFunctions[typeKey].forEach(
+          (func: { value: string; label: string; description: string }) =>
+            functionsMap.set(func.value, func),
+        );
       }
 
-      // フィールドコードベースの関数を追加
+      // フィールドコードベースの関数を追加（重複は上書きされる）
       if (fieldCode && fieldTypeFunctions[fieldCode]) {
-        fieldTypeFunctions[fieldCode].forEach((func) => functionsSet.add(func));
+        fieldTypeFunctions[fieldCode].forEach(
+          (func: { value: string; label: string; description: string }) =>
+            functionsMap.set(func.value, func),
+        );
       }
 
-      return Array.from(functionsSet);
+      return Array.from(functionsMap.values());
     },
     [fields],
   );
@@ -803,15 +972,17 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                 <SelectValue className="truncate" />
               </SelectTrigger>
               <SelectContent className="min-w-[200px]">
-                {getAvailableOperators(condition.field).map((op) => (
-                  <SelectItem
-                    key={op.value}
-                    value={op.value}
-                    className="whitespace-nowrap"
-                  >
-                    {op.label}
-                  </SelectItem>
-                ))}
+                {getAvailableOperators(condition.field).map(
+                  (op: { value: QueryOperator; label: string }) => (
+                    <SelectItem
+                      key={op.value}
+                      value={op.value}
+                      className="whitespace-nowrap"
+                    >
+                      {op.label}
+                    </SelectItem>
+                  ),
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -842,128 +1013,28 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                     <div className="flex gap-1">
                       {/* カレンダーボタン（日付フィールドの場合） */}
                       {isDateField && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-10 w-10 p-0"
-                              title="カレンダーから選択"
-                              aria-label="カレンダーから選択"
-                            >
-                              <Calendar className="h-4 w-4" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[340px] p-0">
-                            <CalendarComponent
-                              mode="single"
-                              selected={parseDate(value)}
-                              onSelect={(date) => {
-                                if (date) {
-                                  const formattedDate = format(
-                                    date,
-                                    "yyyy-MM-dd",
-                                  );
-                                  const newValues = [
-                                    ...(condition.values || [""]),
-                                  ];
-                                  newValues[valueIndex] = formattedDate;
-                                  onUpdate(index, { values: newValues });
-                                }
-                              }}
-                              locale={ja}
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        <ModernDateTimePicker
+                          mode="date"
+                          value={value}
+                          onChange={(newValue) => {
+                            const newValues = [...(condition.values || [""])];
+                            newValues[valueIndex] = newValue;
+                            onUpdate(index, { values: newValues });
+                          }}
+                        />
                       )}
 
                       {/* カレンダー+時刻ボタン（日時フィールドの場合） */}
                       {isDateTimeField && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-10 w-10 p-0"
-                              title="日時を選択"
-                              aria-label="日時を選択"
-                            >
-                              <CalendarIcon className="h-4 w-4" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <CalendarComponent
-                              mode="single"
-                              selected={parseDate(value)}
-                              onSelect={(date) => {
-                                if (date) {
-                                  // 既存の時刻を保持するか、デフォルト時刻を設定
-                                  const existingDate = parseDate(value);
-                                  if (
-                                    existingDate &&
-                                    !isNaN(existingDate.getTime())
-                                  ) {
-                                    date.setHours(
-                                      existingDate.getHours(),
-                                      existingDate.getMinutes(),
-                                    );
-                                  } else {
-                                    date.setHours(9, 0); // デフォルト時刻
-                                  }
-                                  const formattedDateTime = format(
-                                    date,
-                                    "yyyy-MM-dd'T'HH:mm:ssXXX",
-                                  );
-                                  const newValues = [
-                                    ...(condition.values || [""]),
-                                  ];
-                                  newValues[valueIndex] = formattedDateTime;
-                                  onUpdate(index, { values: newValues });
-                                }
-                              }}
-                              initialFocus
-                              locale={ja}
-                            />
-                            <div className="border-t p-3">
-                              <Label
-                                htmlFor={`time-${index}-${valueIndex}`}
-                                className="text-sm font-medium"
-                              >
-                                時刻
-                              </Label>
-                              <Input
-                                id={`time-${index}-${valueIndex}`}
-                                type="time"
-                                value={(() => {
-                                  const date = parseDate(value);
-                                  return date && !isNaN(date.getTime())
-                                    ? format(date, "HH:mm")
-                                    : "09:00";
-                                })()}
-                                onChange={(e) => {
-                                  const timeValue = e.target.value;
-                                  const [hours, minutes] = timeValue
-                                    .split(":")
-                                    .map(Number);
-                                  if (!isNaN(hours) && !isNaN(minutes)) {
-                                    const date = parseDate(value) || new Date();
-                                    date.setHours(hours, minutes);
-                                    const formattedDateTime = format(
-                                      date,
-                                      "yyyy-MM-dd'T'HH:mm:ssXXX",
-                                    );
-                                    const newValues = [
-                                      ...(condition.values || [""]),
-                                    ];
-                                    newValues[valueIndex] = formattedDateTime;
-                                    onUpdate(index, { values: newValues });
-                                  }
-                                }}
-                                className="mt-1"
-                              />
-                            </div>
-                          </PopoverContent>
-                        </Popover>
+                        <ModernDateTimePicker
+                          mode="datetime"
+                          value={value}
+                          onChange={(newValue) => {
+                            const newValues = [...(condition.values || [""])];
+                            newValues[valueIndex] = newValue;
+                            onUpdate(index, { values: newValues });
+                          }}
+                        />
                       )}
 
                       {/* ユーザー選択ボタン */}
@@ -1152,120 +1223,26 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                   <div className="flex gap-1">
                     {/* カレンダーボタン（日付フィールドの場合） */}
                     {isDateField && (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0"
-                            title="カレンダーから選択"
-                            aria-label="カレンダーから選択"
-                          >
-                            <Calendar className="h-4 w-4" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[340px] p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={parseDate(localValue)}
-                            onSelect={(date) => {
-                              if (date) {
-                                const formattedDate = format(
-                                  date,
-                                  "yyyy-MM-dd",
-                                );
-                                setLocalValue(formattedDate);
-                                onUpdate(index, { value: formattedDate });
-                              }
-                            }}
-                            locale={ja}
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <ModernDateTimePicker
+                        mode="date"
+                        value={localValue}
+                        onChange={(newValue) => {
+                          setLocalValue(newValue);
+                          onUpdate(index, { value: newValue });
+                        }}
+                      />
                     )}
 
                     {/* カレンダー+時刻ボタン（日時フィールドの場合） */}
                     {isDateTimeField && (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0"
-                            title="日時を選択"
-                            aria-label="日時を選択"
-                          >
-                            <CalendarIcon className="h-4 w-4" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={parseDate(localValue)}
-                            onSelect={(date) => {
-                              if (date) {
-                                // 既存の時刻を保持するか、デフォルト時刻を設定
-                                const existingDate = parseDate(localValue);
-                                if (
-                                  existingDate &&
-                                  !isNaN(existingDate.getTime())
-                                ) {
-                                  date.setHours(
-                                    existingDate.getHours(),
-                                    existingDate.getMinutes(),
-                                  );
-                                } else {
-                                  date.setHours(9, 0); // デフォルト時刻
-                                }
-                                const formattedDateTime = format(
-                                  date,
-                                  "yyyy-MM-dd'T'HH:mm:ssXXX",
-                                );
-                                setLocalValue(formattedDateTime);
-                                onUpdate(index, { value: formattedDateTime });
-                              }
-                            }}
-                            initialFocus
-                            locale={ja}
-                          />
-                          <div className="border-t p-3">
-                            <Label
-                              htmlFor={`time-single-${index}`}
-                              className="text-sm font-medium"
-                            >
-                              時刻
-                            </Label>
-                            <Input
-                              id={`time-single-${index}`}
-                              type="time"
-                              value={(() => {
-                                const date = parseDate(localValue);
-                                return date && !isNaN(date.getTime())
-                                  ? format(date, "HH:mm")
-                                  : "09:00";
-                              })()}
-                              onChange={(e) => {
-                                const timeValue = e.target.value;
-                                const [hours, minutes] = timeValue
-                                  .split(":")
-                                  .map(Number);
-                                if (!isNaN(hours) && !isNaN(minutes)) {
-                                  const date =
-                                    parseDate(localValue) || new Date();
-                                  date.setHours(hours, minutes);
-                                  const formattedDateTime = format(
-                                    date,
-                                    "yyyy-MM-dd'T'HH:mm:ssXXX",
-                                  );
-                                  setLocalValue(formattedDateTime);
-                                  onUpdate(index, { value: formattedDateTime });
-                                }
-                              }}
-                              className="mt-1"
-                            />
-                          </div>
-                        </PopoverContent>
-                      </Popover>
+                      <ModernDateTimePicker
+                        mode="datetime"
+                        value={localValue}
+                        onChange={(newValue) => {
+                          setLocalValue(newValue);
+                          onUpdate(index, { value: newValue });
+                        }}
+                      />
                     )}
 
                     {/* ユーザー選択ボタン */}
@@ -1518,9 +1495,7 @@ export default function QueryGeneratorPage({
 
     try {
       setUsersLoaded(true);
-      const result = await (
-        window as unknown as WindowWithKintoneAPI
-      ).kintoneAPI.getUsers(auth);
+      const result = await window.kintoneAPI.getUsers(auth);
 
       if (result.success && result.data) {
         setUsers(result.data);
@@ -1543,30 +1518,59 @@ export default function QueryGeneratorPage({
       setError("");
       setQueryResult(null);
 
-      const result = await (
-        window as unknown as WindowWithKintoneAPI
-      ).kintoneAPI.executeQuery(auth, app.appId, generatedQuery);
+      console.log("=== クエリ実行開始 ===");
+      console.log("App ID:", app.appId);
+      console.log("Query:", generatedQuery);
+
+      const result = await window.kintoneAPI.executeQuery(
+        auth,
+        app.appId,
+        generatedQuery,
+      );
+
+      // レスポンス全体をログ出力
+      console.log("=== クエリ実行結果 ===");
+      console.log("Full Response JSON:", JSON.stringify(result, null, 2));
+      console.log("===================");
 
       if (result.success && result.data) {
+        console.log("✅ クエリ実行成功");
+        console.log("取得レコード数:", result.data.records?.length || 0);
         setQueryResult({ records: result.data.records });
       } else {
-        const formattedError = queryUtils.formatErrorMessage(
-          result.error || "クエリの実行に失敗しました",
-        );
+        console.log("❌ クエリ実行エラー");
+        console.log("Error Details:", result.error);
+
+        // シンプルなエラー処理：文字列内のJSONを検出して整形
+        let errorForDisplay = result.error;
+
+        if (typeof result.error === "string") {
+          // 文字列内にJSONが含まれているかチェック
+          const jsonMatch = result.error.match(/\{.*\}/);
+          if (jsonMatch) {
+            try {
+              // JSONをパースして整形
+              const parsedError = JSON.parse(jsonMatch[0]);
+              errorForDisplay = parsedError;
+            } catch {
+              // パースに失敗した場合は元の文字列をそのまま使用
+              errorForDisplay = result.error;
+            }
+          }
+        }
+
         setQueryResult({
           records: [],
-          error: result.error || "クエリの実行に失敗しました",
-          formattedError: formattedError,
+          error: errorForDisplay,
         });
       }
     } catch (err) {
-      console.error("Error executing query:", err);
+      console.log("❌ クエリ実行例外エラー");
+      console.error("Exception Details:", err);
       const errorMessage = `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`;
-      const formattedError = queryUtils.formatErrorMessage(errorMessage);
       setQueryResult({
         records: [],
         error: errorMessage,
-        formattedError: formattedError,
       });
     } finally {
       setExecuting(false);
@@ -1643,19 +1647,34 @@ export default function QueryGeneratorPage({
         setLoading(true);
         setError("");
 
-        if (!(window as unknown as WindowWithKintoneAPI).kintoneAPI) {
+        if (!window.kintoneAPI) {
           setError(
             "KintoneAPIが利用できません。アプリケーションを再起動してください。",
           );
           return;
         }
 
-        const result = await (
-          window as unknown as WindowWithKintoneAPI
-        ).kintoneAPI.getAppFields(auth, app.appId);
+        const result = await window.kintoneAPI.getAppFields(auth, app.appId);
 
         if (result.success && result.data?.fields) {
           setFields(result.data.fields);
+
+          // フィールドの一覧をログ出力
+          console.log("=== フィールド一覧 ===");
+          console.log(`総フィールド数: ${result.data.fields.length}`);
+
+          // 基本情報
+          result.data.fields.forEach((field: KintoneField, index: number) => {
+            console.log(
+              `${index + 1}. ${field.label} (${field.code}) - Type: ${field.type}`,
+            );
+          });
+
+          // 詳細なフィールド情報（JSON形式）
+          console.log("\n=== 詳細フィールド情報 ===");
+          console.log(JSON.stringify(result.data.fields, null, 2));
+
+          console.log("==================");
         } else {
           setError(result.error || "フィールドの取得に失敗しました");
         }
@@ -2130,29 +2149,67 @@ export default function QueryGeneratorPage({
                     </CardHeader>
                     <CardContent>
                       {queryResult.error ? (
-                        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/20">
-                          <div className="mb-2 flex items-center gap-2">
+                        <div className="rounded-lg border bg-gray-50 p-4 dark:bg-gray-900/50">
+                          <div className="mb-3 flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                            <h3 className="font-medium text-red-800 dark:text-red-200">
-                              {queryResult.formattedError?.title || "エラー"}
+                            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              エラー詳細情報
                             </h3>
                           </div>
-                          <p className="mb-3 text-sm text-red-700 dark:text-red-300">
-                            {queryResult.formattedError?.message ||
-                              queryResult.error}
-                          </p>
-                          {queryResult.formattedError?.suggestions && (
-                            <div className="text-sm text-red-600 dark:text-red-400">
-                              <p className="mb-1 font-medium">解決方法:</p>
-                              <ul className="list-inside list-disc space-y-1">
-                                {queryResult.formattedError.suggestions.map(
-                                  (suggestion, index) => (
-                                    <li key={index}>{suggestion}</li>
-                                  ),
-                                )}
-                              </ul>
-                            </div>
-                          )}
+                          {(() => {
+                            // エラーがオブジェクトの場合（JSONパース済み）
+                            if (
+                              typeof queryResult.error === "object" &&
+                              queryResult.error !== null
+                            ) {
+                              const errorObj =
+                                queryResult.error as KintoneErrorResponse;
+                              return (
+                                <div className="space-y-3">
+                                  {errorObj.code && (
+                                    <div className="flex items-center gap-3">
+                                      <span className="min-w-[80px] text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        エラーコード
+                                      </span>
+                                      <span className="rounded bg-red-100 px-2 py-1 font-mono text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                                        {errorObj.code}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {errorObj.message && (
+                                    <div className="flex items-start gap-3">
+                                      <span className="min-w-[80px] pt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        メッセージ
+                                      </span>
+                                      <span className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                                        {errorObj.message}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {errorObj.id && (
+                                    <div className="flex items-center gap-3">
+                                      <span className="min-w-[80px] text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        リクエストID
+                                      </span>
+                                      <span className="rounded bg-gray-200 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                        {errorObj.id}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                            // エラーが文字列の場合
+                            else {
+                              return (
+                                <div className="text-sm text-gray-700 dark:text-gray-300">
+                                  <pre className="font-mono text-xs whitespace-pre-wrap">
+                                    {String(queryResult.error)}
+                                  </pre>
+                                </div>
+                              );
+                            }
+                          })()}
                         </div>
                       ) : (
                         <Tabs

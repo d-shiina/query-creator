@@ -280,8 +280,11 @@ export default function AppDataTable({
                 </TableCell>
                 <TableCell>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {app.name}
+                    <div
+                      className="truncate text-sm font-medium"
+                      title={app.name}
+                    >
+                      {cleanAndTruncateText(app.name, 40)}
                     </div>
                   </div>
                 </TableCell>

@@ -111,3 +111,10 @@ export interface KintoneUser {
   name: string;
   email: string;
 }
+
+export interface KintoneRecord {
+  [fieldCode: string]: {
+    type: string;
+    value: string | number | boolean | object | null;
+  };
+}

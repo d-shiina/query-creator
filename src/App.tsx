@@ -31,7 +31,7 @@ function App() {
 
   const handleSelectApp = (app: KintoneApp) => {
     setSelectedApp(app);
-    setCurrentState("queryGenerator");
+    // AppManagementPageの内部遷移に任せる（queryGeneratorに直接遷移しない）
   };
 
   const handleBackToApps = () => {

@@ -282,7 +282,7 @@ export function setupKintoneAPI() {
         console.log(`Requesting apps with offset: ${offset}, limit: ${limit}`);
 
         // offsetとlimitパラメータを追加
-        let endpoint = `apps.json?limit=${limit}&offset=${offset}`;
+        const endpoint = `apps.json?limit=${limit}&offset=${offset}`;
 
         const response = await makeKintoneRequest(auth, endpoint);
 

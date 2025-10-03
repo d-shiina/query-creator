@@ -1,8 +1,10 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerSquirrel } from "@electron-forge/maker-squirrel";
+// 一時的にSquirrelを無効化
+// import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerRpm } from "@electron-forge/maker-rpm";
+// import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
@@ -10,10 +12,24 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    icon: "./assets/icons/win/icon",
+    name: "kintone Query Creator",
+    executableName: "kintone-query-creator",
+    appBundleId: "com.kintone.query-creator",
+    appCopyright: "Copyright © 2025 marubeni-idigio.com",
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}, ["win32"]),
+    // 一時的にSquirrelを無効化してZIPのみでテスト
+    // new MakerSquirrel(
+    //   {
+    //     name: "kintone-query-creator",
+    //     setupIcon: "./assets/icons/win/icon.ico",
+    //     loadingGif: undefined, // ローディングGIFを無効化
+    //     noMsi: true, // MSIファイルを作成しない
+    //   },
+    //   ["win32"],
+    // ),
     new MakerZIP({}, ["darwin", "win32"]),
     new MakerRpm({}, ["linux"]),
     new MakerDeb({}, ["linux"]),

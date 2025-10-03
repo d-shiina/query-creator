@@ -9,6 +9,7 @@ import {
   KintoneApp,
   KintoneField,
   KintoneUser,
+  KintoneRecord,
 } from "./types/kintone";
 
 // Preload types
@@ -43,7 +44,7 @@ interface KintoneAPIContext {
     query: string,
   ) => Promise<{
     success: boolean;
-    data?: { records: any[]; totalCount: number };
+    data?: { records: KintoneRecord[]; totalCount: number };
     error?: string;
   }>;
   getUsers: (

@@ -86,7 +86,7 @@ export default function AppManagementPage({
         setLoading(true);
         setError("");
 
-        const allApps: any[] = [];
+        const allApps: KintoneApp[] = [];
         let offset = 0;
         const limit = 100;
         let hasMore = true;
@@ -131,7 +131,7 @@ export default function AppManagementPage({
 
         if (allApps.length > 0) {
           // ブックマーク状態を設定
-          const appsWithFavorites = allApps.map((app: any) => {
+          const appsWithFavorites = allApps.map((app: KintoneApp) => {
             console.log(`App ${app.appId} creator:`, app.creator);
             console.log(`App ${app.appId} modifier:`, app.modifier);
             return {
@@ -334,6 +334,7 @@ export default function AppManagementPage({
     console.log("handleAppSelect called with app:", app);
     setSelectedApp(app);
     setCurrentView("querySelection");
+    onSelectApp(app); // プロパティで渡された関数を呼び出し
     console.log("currentView set to querySelection");
   };
 
@@ -408,7 +409,7 @@ export default function AppManagementPage({
                 </div>
                 <div>
                   <h1 className="text-foreground text-xl font-bold">
-                    Kintone Query Creator
+                    kintone Query Creator
                   </h1>
                   <div className="text-muted-foreground flex items-center space-x-2 text-sm">
                     <span className="text-foreground/80 font-medium">
@@ -586,8 +587,8 @@ export default function AppManagementPage({
                     <CardHeader className="relative z-10 pb-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 space-y-2">
-                          <CardTitle className="text-foreground group-hover:text-foreground/90 truncate text-lg font-semibold transition-colors">
-                            {app.name}
+                          <CardTitle className="text-foreground group-hover:text-foreground/90 line-clamp-2 text-lg leading-tight font-semibold transition-colors">
+                            {cleanAndTruncateText(app.name, 50)}
                           </CardTitle>
                           <div className="flex items-center gap-2">
                             <Badge
