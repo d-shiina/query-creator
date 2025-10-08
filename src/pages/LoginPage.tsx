@@ -15,7 +15,7 @@ import ToggleTheme from "@/components/ToggleTheme";
 import { PageLoading } from "@/components/ui/page-loading";
 import { KintoneAuth, KintoneField, KintoneUser } from "@/types/kintone";
 import { Lock, User, Globe, AlertCircle, Loader2 } from "lucide-react";
-import iconUrl from "/icon.ico?url";
+const iconUrl = "/icon.ico";
 
 // Window型を拡張
 declare global {
