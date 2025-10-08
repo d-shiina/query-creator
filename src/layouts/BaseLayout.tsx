@@ -1,6 +1,7 @@
 import React from "react";
 import DragWindowRegion from "@/components/DragWindowRegion";
 import NavigationMenu from "@/components/template/NavigationMenu";
+import Footer from "@/components/template/Footer";
 
 export default function BaseLayout({
   children,
@@ -9,9 +10,10 @@ export default function BaseLayout({
 }) {
   return (
     <>
-      <DragWindowRegion title="electron-shadcn" />
+      <DragWindowRegion title="kintone Query Creator" />
       <NavigationMenu />
-      <main className="h-screen p-2 pb-20">{children}</main>
+      <main className="h-screen p-2 pb-20 sm:pb-16">{children}</main>
+      <Footer />
     </>
   );
 }

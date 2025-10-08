@@ -19,7 +19,7 @@
     "test:e2e": "playwright test",
     "test:all": "vitest run && playwright test"
   },
-  "author": "ROG <luan.roger.2003@gmail.com>",
+  "author": "MSYS",
   "license": "MIT",
   "homepage": "https://github.com/d-shiina/query-creator",
   "repository": {

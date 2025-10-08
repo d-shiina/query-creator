@@ -23,7 +23,6 @@ import {
   Info,
   Calendar,
   User,
-  Loader2,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -34,6 +33,7 @@ import {
   ChevronsRight,
 } from "lucide-react";
 import { cleanAndTruncateText } from "@/utils/text";
+import { ModernLoadingSpinner } from "@/components/ui/modern-loading";
 
 interface AppDataTableProps {
   apps: KintoneApp[];
@@ -384,198 +384,171 @@ export default function AppDataTable({
                           <Info className="h-3 w-3" />
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-md">
-                        <DialogHeader>
-                          <DialogTitle className="flex items-center gap-2">
-                            <Info className="h-5 w-5" />
-                            アプリ詳細情報
+                      <DialogContent className="max-h-[80vh] max-w-2xl overflow-hidden">
+                        <DialogHeader className="pb-4">
+                          <DialogTitle className="flex items-center gap-3 text-xl">
+                            <div>
+                              <div className="text-foreground text-lg font-bold">
+                                アプリ詳細情報
+                              </div>
+                            </div>
                           </DialogTitle>
-                          <DialogDescription>
-                            {app.name} の詳細情報
+                          <DialogDescription className="text-base">
+                            {app.name} の詳細情報を表示しています
                           </DialogDescription>
                         </DialogHeader>
-                        {appInfoLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin" />
-                            <span className="ml-2">読み込み中...</span>
-                          </div>
-                        ) : selectedAppInfo ? (
-                          <div className="space-y-6">
-                            {/* 基本情報セクション */}
-                            <div className="space-y-4">
-                              <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
-                                基本情報
-                              </h3>
-                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                  <label className="text-muted-foreground text-sm font-medium">
-                                    アプリ名
-                                  </label>
-                                  <div className="bg-muted/30 rounded-md border p-3">
-                                    <p className="text-sm font-medium">
-                                      {selectedAppInfo.name}
-                                    </p>
+
+                        <div className="scrollbar-thin max-h-[60vh] overflow-y-auto pr-2">
+                          {appInfoLoading ? (
+                            <ModernLoadingSpinner 
+                              message="詳細情報を読み込み中"
+                              size="md"
+                              variant="minimal"
+                            />
+                          ) : selectedAppInfo ? (
+                            <div className="space-y-6">
+                              {/* 基本情報セクション */}
+                              <div className="space-y-4">
+                                <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
+                                  基本情報
+                                </h3>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <label className="text-muted-foreground text-sm font-medium">
+                                      アプリ名
+                                    </label>
+                                    <div className="rounded-md border border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 p-3 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                      <p className="text-sm font-medium">
+                                        {selectedAppInfo.name}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-muted-foreground text-sm font-medium">
+                                      アプリID
+                                    </label>
+                                    <div className="bg-muted/30 rounded-md border p-3">
+                                      <p className="font-mono text-sm font-medium">
+                                        {selectedAppInfo.appId}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="space-y-2">
                                   <label className="text-muted-foreground text-sm font-medium">
-                                    アプリID
-                                  </label>
-                                  <div className="bg-muted/30 rounded-md border p-3">
-                                    <p className="font-mono text-sm font-medium">
-                                      {selectedAppInfo.appId}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-muted-foreground text-sm font-medium">
-                                  アプリコード
-                                </label>
-                                <div className="bg-muted/30 rounded-md border p-3">
-                                  <p className="font-mono text-sm">
-                                    {selectedAppInfo.code || (
-                                      <span className="text-muted-foreground italic">
-                                        未設定
-                                      </span>
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                  <label className="text-muted-foreground text-sm font-medium">
-                                    スペースID
+                                    アプリコード
                                   </label>
                                   <div className="bg-muted/30 rounded-md border p-3">
                                     <p className="font-mono text-sm">
-                                      {selectedAppInfo.spaceId &&
-                                      selectedAppInfo.spaceId !== "null" ? (
-                                        selectedAppInfo.spaceId
-                                      ) : (
+                                      {selectedAppInfo.code || (
                                         <span className="text-muted-foreground italic">
-                                          なし
-                                        </span>
-                                      )}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-muted-foreground text-sm font-medium">
-                                    スレッドID
-                                  </label>
-                                  <div className="bg-muted/30 rounded-md border p-3">
-                                    <p className="font-mono text-sm">
-                                      {selectedAppInfo.threadId &&
-                                      selectedAppInfo.threadId !== "null" ? (
-                                        selectedAppInfo.threadId
-                                      ) : (
-                                        <span className="text-muted-foreground italic">
-                                          なし
+                                          未設定
                                         </span>
                                       )}
                                     </p>
                                   </div>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* 説明セクション */}
-                            <div className="space-y-4">
-                              <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
-                                説明
-                              </h3>
-                              <div className="bg-muted/50 min-h-[80px] rounded-md border p-4 text-sm">
-                                {selectedAppInfo.description ? (
-                                  <p className="leading-relaxed whitespace-pre-wrap">
-                                    {cleanAndTruncateText(
-                                      selectedAppInfo.description,
-                                      500,
-                                    )}
-                                  </p>
-                                ) : (
-                                  <p className="text-muted-foreground py-4 text-center italic">
-                                    説明が設定されていません
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* 作成・更新情報セクション */}
-                            <div className="space-y-4">
-                              <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
-                                作成・更新情報
-                              </h3>
-                              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                                {/* 作成情報 */}
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <User className="h-4 w-4 text-green-600" />
-                                    <label className="text-muted-foreground text-sm font-medium">
-                                      作成者
-                                    </label>
-                                  </div>
-                                  <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950/20">
-                                    <p className="text-sm font-medium">
-                                      {(selectedAppInfo.creator?.name &&
-                                        selectedAppInfo.creator.name.trim()) ||
-                                        "情報なし"}
-                                    </p>
-                                    {selectedAppInfo.creator?.code &&
-                                      selectedAppInfo.creator.code.trim() && (
-                                        <p className="text-muted-foreground mt-1 text-xs">
-                                          ID: {selectedAppInfo.creator.code}
-                                        </p>
+                              {/* 説明セクション */}
+                              <div className="space-y-4">
+                                <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
+                                  説明
+                                </h3>
+                                <div className="min-h-[100px] rounded-md border border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 p-4 text-sm dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                  {selectedAppInfo.description ? (
+                                    <p className="leading-relaxed whitespace-pre-wrap">
+                                      {cleanAndTruncateText(
+                                        selectedAppInfo.description,
+                                        500,
                                       )}
-                                    <div className="mt-2 flex items-center gap-1">
-                                      <Calendar className="text-muted-foreground h-3 w-3" />
-                                      <p className="text-muted-foreground text-xs">
-                                        {selectedAppInfo.createdAt
-                                          ? new Date(
-                                              selectedAppInfo.createdAt,
-                                            ).toLocaleString("ja-JP")
-                                          : "情報なし"}
+                                    </p>
+                                  ) : (
+                                    <p className="text-muted-foreground py-4 text-center italic">
+                                      説明が設定されていません
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 作成・更新情報セクション */}
+                              <div className="space-y-4">
+                                <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
+                                  作成・更新情報
+                                </h3>
+                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                  {/* 作成情報 */}
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <User className="h-4 w-4 text-green-600" />
+                                      <label className="text-muted-foreground text-sm font-medium">
+                                        作成者
+                                      </label>
+                                    </div>
+                                    <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-4 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                      <p className="text-sm font-medium">
+                                        {(selectedAppInfo.creator?.name &&
+                                          selectedAppInfo.creator.name.trim()) ||
+                                          "-"}
                                       </p>
+                                      {selectedAppInfo.creator?.code &&
+                                        selectedAppInfo.creator.code.trim() && (
+                                          <p className="text-muted-foreground mt-1 text-xs">
+                                            ID:{" "}
+                                            {selectedAppInfo.creator.code}
+                                          </p>
+                                        )}
+                                      <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+                                        <Calendar className="text-muted-foreground h-3 w-3" />
+                                        <p className="text-muted-foreground text-xs">
+                                          {selectedAppInfo.createdAt
+                                            ? new Date(
+                                                selectedAppInfo.createdAt,
+                                              ).toLocaleString("ja-JP")
+                                            : "-"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* 更新情報 */}
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <User className="h-4 w-4 text-blue-600" />
+                                      <label className="text-muted-foreground text-sm font-medium">
+                                        最終更新者
+                                      </label>
+                                    </div>
+                                    <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-4 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                      <p className="text-sm font-medium">
+                                        {(selectedAppInfo.modifier?.name &&
+                                          selectedAppInfo.modifier.name.trim()) ||
+                                          "-"}
+                                      </p>
+                                      {selectedAppInfo.modifier?.code &&
+                                        selectedAppInfo.modifier.code.trim() && (
+                                          <p className="text-muted-foreground mt-1 text-xs">
+                                            ID:{" "}
+                                            {selectedAppInfo.modifier.code}
+                                          </p>
+                                        )}
+                                      <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+                                        <Calendar className="text-muted-foreground h-3 w-3" />
+                                        <p className="text-muted-foreground text-xs">
+                                          {selectedAppInfo.modifiedAt
+                                            ? new Date(
+                                                selectedAppInfo.modifiedAt,
+                                              ).toLocaleString("ja-JP")
+                                            : "-"}
+                                        </p>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-
-                                {/* 更新情報 */}
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <User className="h-4 w-4 text-blue-600" />
-                                    <label className="text-muted-foreground text-sm font-medium">
-                                      最終更新者
-                                    </label>
-                                  </div>
-                                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
-                                    <p className="text-sm font-medium">
-                                      {(selectedAppInfo.modifier?.name &&
-                                        selectedAppInfo.modifier.name.trim()) ||
-                                        "情報なし"}
-                                    </p>
-                                    {selectedAppInfo.modifier?.code &&
-                                      selectedAppInfo.modifier.code.trim() && (
-                                        <p className="text-muted-foreground mt-1 text-xs">
-                                          ID: {selectedAppInfo.modifier.code}
-                                        </p>
-                                      )}
-                                    <div className="mt-2 flex items-center gap-1">
-                                      <Calendar className="text-muted-foreground h-3 w-3" />
-                                      <p className="text-muted-foreground text-xs">
-                                        {selectedAppInfo.modifiedAt
-                                          ? new Date(
-                                              selectedAppInfo.modifiedAt,
-                                            ).toLocaleString("ja-JP")
-                                          : "情報なし"}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
                               </div>
                             </div>
-                          </div>
-                        ) : null}
+                          ) : null}
+                        </div>
                       </DialogContent>
                     </Dialog>
                   </div>

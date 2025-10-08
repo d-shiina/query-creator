@@ -42,6 +42,7 @@ import {
 } from "@/utils/favorites";
 import { cleanAndTruncateText } from "@/utils/text";
 import { getQueryCount } from "@/hooks/useQueryGenerator";
+import { PageLoading } from "@/components/ui/page-loading";
 
 interface AppManagementPageProps {
   auth: KintoneAuth;
@@ -404,9 +405,6 @@ export default function AppManagementPage({
           <div className="flex items-center justify-between py-6">
             <div className="flex items-center space-x-6">
               <div className="flex items-center space-x-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-600">
-                  <Grid3X3 className="h-4 w-4 text-white" />
-                </div>
                 <div>
                   <h1 className="text-foreground text-xl font-bold">
                     kintone Query Creator
@@ -465,24 +463,7 @@ export default function AppManagementPage({
 
         {/* ローディング */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="flex flex-col items-center gap-4">
-              <div className="relative">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-r from-slate-500 to-slate-600">
-                  <Loader2 className="h-6 w-6 animate-spin text-white" />
-                </div>
-                <div className="absolute inset-0 animate-pulse rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 opacity-30 blur-lg"></div>
-              </div>
-              <div className="text-center">
-                <p className="text-foreground text-lg font-medium">
-                  アプリを読み込み中...
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  Kintoneからアプリ情報を取得しています
-                </p>
-              </div>
-            </div>
-          </div>
+          <PageLoading message="アプリを読み込み中..." />
         ) : (
           <>
             {/* フィルター・検索エリア */}
@@ -700,9 +681,6 @@ export default function AppManagementPage({
                           <DialogContent className="max-h-[80vh] max-w-2xl overflow-hidden">
                             <DialogHeader className="pb-4">
                               <DialogTitle className="flex items-center gap-3 text-xl">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-600">
-                                  <Info className="h-4 w-4 text-white" />
-                                </div>
                                 <div>
                                   <div className="text-foreground text-lg font-bold">
                                     アプリ詳細情報

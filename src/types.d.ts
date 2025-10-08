@@ -52,8 +52,24 @@ interface KintoneAPIContext {
   ) => Promise<{ success: boolean; data?: KintoneUser[]; error?: string }>;
 }
 
+interface AppInfo {
+  version: string;
+  license: string;
+  author: string;
+  productName: string;
+  description: string;
+  homepage: string;
+  licenseExpiry: string;
+}
+
+interface ElectronAppAPIContext {
+  getAppInfo: () => Promise<AppInfo>;
+  updateLicenseExpiry: (newExpiry: string) => Promise<{ success: boolean; error?: string }>;
+}
+
 declare interface Window {
   themeMode: ThemeModeContext;
   electronWindow: ElectronWindow;
   kintoneAPI: KintoneAPIContext;
+  electronAppAPI: ElectronAppAPIContext;
 }

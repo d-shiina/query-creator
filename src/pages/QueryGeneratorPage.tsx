@@ -3,7 +3,6 @@ import {
   Database,
   Settings,
   Code,
-  Copy,
   Play,
   Loader2,
   Plus,
@@ -17,6 +16,9 @@ import {
   CalendarIcon,
   ChevronRight,
   Clock,
+  Clipboard,
+  ClipboardCheck,
+  FileText,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -61,6 +63,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
+import { BackButton } from "@/components/ui/back-button";
+import { PageLoading } from "@/components/ui/page-loading";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
 import {
@@ -209,6 +213,8 @@ const ModernDateTimePicker: React.FC<{
     }
     return undefined;
   });
+  const [calendarKey, setCalendarKey] = useState(0);
+
   const [selectedHour, setSelectedHour] = useState<number>(() => {
     if (value && mode === "datetime") {
       try {
@@ -238,6 +244,22 @@ const ModernDateTimePicker: React.FC<{
     }
     return 0;
   });
+
+  // valueが変更されたときにselectedDateを同期
+  useEffect(() => {
+    if (value) {
+      try {
+        const newDate = new Date(value);
+        if (!isNaN(newDate.getTime())) {
+          setSelectedDate(new Date(newDate));
+        }
+      } catch {
+        // 不正な日付の場合は何もしない
+      }
+    } else {
+      setSelectedDate(undefined);
+    }
+  }, [value]);
 
   // 時間・分の選択肢を生成
   const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -287,19 +309,23 @@ const ModernDateTimePicker: React.FC<{
 
   const handleToday = () => {
     const today = new Date();
+    console.log('Today button clicked:', today);
+    setSelectedDate(today);
     handleDateSelect(today);
+    // カレンダーの年月ドロップダウンを強制更新するためのキー更新
+    setCalendarKey(prev => prev + 1);
   };
 
   const handleNow = () => {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = Math.round(now.getMinutes() / 5) * 5; // 5分刻みに丸める
+    console.log('Now button clicked:', now, 'Time:', currentHour, currentMinute);
     setSelectedHour(currentHour);
     setSelectedMinute(currentMinute);
+    setSelectedDate(now);
     handleTimeChange(currentHour, currentMinute);
-    if (!selectedDate) {
-      handleDateSelect(now);
-    }
+    handleDateSelect(now);
   };
 
   const getButtonIcon = () => {
@@ -327,17 +353,17 @@ const ModernDateTimePicker: React.FC<{
     const safeValue = isNaN(value) ? 0 : value;
 
     return (
-      <div className="flex flex-col items-center space-y-2">
-        <label className="text-xs font-medium text-gray-600">{title}</label>
-        <div className="h-32 w-16 overflow-y-auto rounded-md border bg-white">
-          <div className="py-2">
+      <div className="flex flex-col items-center h-full min-h-0">
+        <label className="text-xs font-medium text-muted-foreground mb-2 flex-shrink-0">{title}</label>
+        <div className="flex-1 w-16 min-h-0 overflow-y-auto rounded-md border border-border bg-background shadow-sm">
+          <div className="py-1">
             {options.map((option) => (
               <button
                 key={option}
-                className={`w-full py-2 text-sm hover:bg-gray-100 ${
+                className={`w-full py-1.5 text-xs transition-colors hover:bg-accent hover:text-accent-foreground ${
                   safeValue === option
-                    ? "bg-blue-50 font-semibold text-blue-600"
-                    : "text-gray-700"
+                    ? "bg-accent text-accent-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => onChange(option)}
               >
@@ -351,8 +377,8 @@ const ModernDateTimePicker: React.FC<{
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <Button
           variant="outline"
           size="sm"
@@ -363,16 +389,35 @@ const ModernDateTimePicker: React.FC<{
         >
           {getButtonIcon()}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-fit p-0" align="start">
-        <div className="space-y-4 p-6">
-          {/* アクションボタン */}
-          <div className="flex justify-center gap-3">
+      </DialogTrigger>
+      <DialogContent 
+        className="max-w-[98vw] sm:max-w-fit max-h-[95vh] overflow-auto p-0 border-0 bg-transparent shadow-none"
+        showCloseButton={false}
+      >
+        <div className="bg-background rounded-xl border border-border shadow-lg">
+          {/* ダイアログヘッダー */}
+          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-border">
+            <h3 className="text-base sm:text-lg font-semibold">
+              {mode === "datetime" ? "日時を選択" : "日付を選択"}
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+              className="h-8 w-8 p-0 shrink-0"
+            >
+              ✕
+            </Button>
+          </div>
+          
+          <div className="space-y-3 p-3 sm:space-y-4 sm:p-5">
+            {/* アクションボタン */}
+            <div className="flex justify-center gap-2 sm:gap-3">
             <Button
               variant="outline"
               size="sm"
               onClick={handleToday}
-              className="px-4 text-sm"
+              className="px-2 text-xs sm:px-4 sm:text-sm border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary"
             >
               今日
             </Button>
@@ -381,9 +426,9 @@ const ModernDateTimePicker: React.FC<{
                 variant="outline"
                 size="sm"
                 onClick={handleNow}
-                className="px-4 text-sm"
+                className="px-2 text-xs sm:px-4 sm:text-sm border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary"
               >
-                <Clock className="mr-2 h-4 w-4" />
+                <Clock className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                 現在時刻
               </Button>
             )}
@@ -391,35 +436,62 @@ const ModernDateTimePicker: React.FC<{
 
           {/* メインコンテンツエリア */}
           <div
-            className={`flex gap-6 ${mode === "datetime" ? "items-start" : "justify-center"}`}
+            className={`flex ${mode === "datetime" 
+              ? "flex-col gap-3 sm:flex-row sm:gap-6 sm:items-start" 
+              : "justify-center"
+            }`}
           >
             {/* カレンダー */}
-            <div className="flex-shrink-0">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={handleDateSelect}
-                locale={ja}
-                className="w-fit rounded-md border-0 text-base"
-              />
+            <div className="flex-shrink-0 w-full sm:w-auto overflow-hidden max-w-full">
+              <div className="bg-card rounded-lg border border-border shadow-sm p-3 sm:p-4 h-72 sm:h-80 overflow-hidden max-w-full">
+                <Calendar
+                  key={calendarKey}
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={handleDateSelect}
+                  locale={ja}
+                  captionLayout="dropdown"
+                  fromYear={2000}
+                  toYear={2030}
+                  className="w-full max-w-full rounded-md bg-transparent h-full flex flex-col overflow-hidden"
+                  formatters={{
+                    formatMonthDropdown: (date) => `${date.getMonth() + 1}月`,
+                    formatYearDropdown: (date) => `${date.getFullYear()}年`,
+                  }}
+                  classNames={{
+                    months: "flex flex-col gap-2 h-full w-full max-w-full",
+                    month: "flex w-full max-w-full flex-col gap-2 h-full",
+                    nav: "hidden", // ナビゲーション矢印を非表示
+                    month_caption: "flex h-10 w-full items-center justify-center px-2 font-medium text-sm flex-shrink-0",
+                    weekdays: "grid grid-cols-7 mb-1 border-b border-border/20 pb-1 w-full flex-shrink-0 gap-0",
+                    weekday: "text-muted-foreground select-none text-xs font-medium py-0.5 text-center overflow-hidden text-ellipsis h-5",
+                    weeks: "grid grid-rows-6 gap-0 flex-1 min-h-0 w-full",
+                    week: "grid grid-cols-7 w-full gap-0 h-full",
+                    day: "group/day relative select-none p-0 text-center overflow-hidden flex items-center justify-center aspect-square max-h-7",
+                    table: "w-full max-w-full border-collapse flex-1 min-h-0"
+                  }}
+                />
+              </div>
             </div>
 
             {/* 時刻選択（datetimeモードの場合のみ） */}
             {mode === "datetime" && (
-              <div className="flex flex-col space-y-4 border-l pl-6">
-                <div className="text-center">
-                  <Label className="text-sm font-medium">時刻選択</Label>
-                  <div className="mt-1 text-lg font-semibold text-blue-600">
-                    {(isNaN(selectedHour) ? 0 : selectedHour)
-                      .toString()
-                      .padStart(2, "0")}
-                    :
-                    {(isNaN(selectedMinute) ? 0 : selectedMinute)
-                      .toString()
-                      .padStart(2, "0")}
+              <div className="bg-card rounded-lg border border-border shadow-sm p-3 sm:p-4 sm:ml-3 h-72 sm:h-80 flex flex-col overflow-hidden w-full sm:w-auto">
+                <div className="text-center mb-3 flex-shrink-0">
+                  <Label className="text-sm font-medium text-foreground">時刻選択</Label>
+                  <div className="mt-2 p-2 bg-accent/30 rounded-md border border-border">
+                    <div className="text-lg font-mono font-semibold text-foreground">
+                      {(isNaN(selectedHour) ? 0 : selectedHour)
+                        .toString()
+                        .padStart(2, "0")}
+                      <span className="text-muted-foreground mx-1">:</span>
+                      {(isNaN(selectedMinute) ? 0 : selectedMinute)
+                        .toString()
+                        .padStart(2, "0")}
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-4">
+                <div className="flex gap-4 justify-center flex-1 min-h-0">
                   <TimeScrollPicker
                     title="時"
                     value={selectedHour}
@@ -437,21 +509,21 @@ const ModernDateTimePicker: React.FC<{
             )}
           </div>
 
-          {/* 完了ボタン（datetimeモードの場合のみ） */}
-          {mode === "datetime" && (
-            <div className="flex justify-center border-t pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setOpen(false)}
-                className="px-8 text-sm"
-              >
-                完了
-              </Button>
-            </div>
-          )}
+          </div>
+          
+          {/* フッター */}
+          <div className="flex justify-center border-t border-border p-3 sm:p-4">
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              className="px-6 sm:px-8 w-full sm:w-auto text-sm border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary"
+            >
+              {mode === "datetime" ? "完了" : "選択"}
+            </Button>
+          </div>
         </div>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -692,12 +764,7 @@ const queryUtils = {
 
 // コンポーネント定義
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
-  <div className="bg-background flex min-h-screen items-center justify-center">
-    <div className="flex items-center space-x-3">
-      <Loader2 className="h-6 w-6 animate-spin" />
-      <span>{message}</span>
-    </div>
-  </div>
+  <PageLoading message={message} />
 );
 
 const ErrorAlert: React.FC<{ error: string }> = ({ error }) => (
@@ -1379,45 +1446,6 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   );
 };
 
-const AnimatedButton: React.FC<{
-  onClick: () => void;
-  disabled?: boolean;
-  animating: boolean;
-  children: React.ReactNode;
-  variant?: "default" | "outline";
-  size?: "default" | "sm";
-  className?: string;
-  "aria-label"?: string;
-}> = ({
-  onClick,
-  disabled,
-  animating,
-  children,
-  variant = "default",
-  size = "default",
-  className = "",
-  "aria-label": ariaLabel,
-}) => (
-  <Button
-    onClick={onClick}
-    disabled={disabled}
-    variant={variant}
-    size={size}
-    className={`relative overflow-hidden transition-all duration-300 ${
-      animating ? "border-green-500 bg-green-500 text-white shadow-lg" : ""
-    } ${className}`}
-    aria-label={ariaLabel}
-  >
-    {animating && (
-      <>
-        <div className="absolute inset-0 animate-ping rounded bg-green-400 opacity-75" />
-        <div className="absolute inset-0 animate-pulse rounded bg-green-300 opacity-50" />
-      </>
-    )}
-    <div className="relative flex items-center justify-center">{children}</div>
-  </Button>
-);
-
 export default function QueryGeneratorPage({
   auth,
   app,
@@ -1442,9 +1470,27 @@ export default function QueryGeneratorPage({
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [activeResultTab, setActiveResultTab] = useState("table");
   const [currentQueryName, setCurrentQueryName] = useState("");
+  const [currentQueryMemo, setCurrentQueryMemo] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
-  const [copyAnimating, setCopyAnimating] = useState(false);
+  const [currentSavedQueryId, setCurrentSavedQueryId] = useState<string | null>(null);
+
+  // キーボードショートカット for 戻る (Escape キー)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.ctrlKey && !event.metaKey) {
+        onBack();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onBack]);
+
   const [saveAnimating, setSaveAnimating] = useState(false);
+  const [clipboardCopied, setClipboardCopied] = useState(false);
+  const [queryExecuted, setQueryExecuted] = useState(false);
   const [users, setUsers] = useState<
     Array<{ code: string; name: string; email: string }>
   >([]);
@@ -1483,6 +1529,11 @@ export default function QueryGeneratorPage({
 
   const removeCondition = useCallback((index: number) => {
     setConditions((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // ソートフィールド変更時の処理
+  const handleSortFieldChange = useCallback((value: string) => {
+    setSortField(value);
   }, []);
 
   const fetchUsers = useCallback(async () => {
@@ -1586,19 +1637,26 @@ export default function QueryGeneratorPage({
     try {
       setSaveAnimating(true);
 
-      saveQuery(
+      const savedQuery = saveQuery(
         currentQueryName.trim(),
         conditions,
         sortField !== "none" ? sortField : "",
         generatedQuery,
         limit,
         offset,
-        editingQueryId,
+        currentSavedQueryId || editingQueryId,
+        currentQueryMemo.trim()
       );
+
+      // 保存後に更新モードに切り替え
+      if (savedQuery) {
+        setCurrentSavedQueryId(savedQuery.id);
+        setIsEditMode(true);
+      }
 
       setTimeout(() => {
         setSaveAnimating(false);
-      }, 1200);
+      }, 2000);
     } catch (error) {
       console.error("Error saving query:", error);
       setSaveAnimating(false);
@@ -1607,23 +1665,21 @@ export default function QueryGeneratorPage({
   }, [
     generatedQuery,
     currentQueryName,
+    currentQueryMemo,
     conditions,
     sortField,
     limit,
     offset,
+    currentSavedQueryId,
     editingQueryId,
     saveQuery,
   ]);
 
-  const handleCopyQuery = useCallback(async () => {
-    setCopyAnimating(true);
-    await navigator.clipboard.writeText(
-      JSON.stringify(generatedQuery).slice(1, -1),
-    );
-    setTimeout(() => setCopyAnimating(false), 1200);
-  }, [generatedQuery]);
 
-  // Effects
+
+
+
+  // Effects - 編集モードの初期化（editingQueryIdがある場合のみ）
   useEffect(() => {
     if (editingQueryId && savedQueries.length > 0) {
       const queryToEdit = savedQueries.find((q) => q.id === editingQueryId);
@@ -1633,13 +1689,19 @@ export default function QueryGeneratorPage({
         setLimit(queryToEdit.limit);
         setOffset(queryToEdit.offset);
         setCurrentQueryName(queryToEdit.name);
+        setCurrentQueryMemo(queryToEdit.memo || "");
+        setCurrentSavedQueryId(queryToEdit.id);
         setIsEditMode(true);
       }
-    } else {
+    } else if (editingQueryId && savedQueries.length === 0) {
+      // savedQueriesがまだ読み込まれていない場合は何もしない
+    } else if (!editingQueryId && !currentSavedQueryId) {
+      // 新規作成かつまだ保存されていない場合のみリセット
       setIsEditMode(false);
       setCurrentQueryName("");
+      setCurrentQueryMemo("");
     }
-  }, [editingQueryId, savedQueries]);
+  }, [editingQueryId, savedQueries, currentSavedQueryId]);
 
   useEffect(() => {
     const fetchFields = async () => {
@@ -1703,13 +1765,14 @@ export default function QueryGeneratorPage({
   return (
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 border-b backdrop-blur-xl">
+      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 border-b backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-6">
             <div className="flex items-center space-x-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-600">
-                <Code className="h-4 w-4 text-white" />
-              </div>
+              <BackButton
+                onClick={onBack}
+                label="クエリ管理に戻る"
+              />
               <div>
                 <h1 className="text-foreground text-lg font-semibold">
                   {app.name}
@@ -1738,6 +1801,84 @@ export default function QueryGeneratorPage({
             </div>
           </div>
         </div>
+
+        {/* Query Save Bar - ヘッダー直下 */}
+        {generatedQuery && (
+          <div className="border-b border-border/50 bg-gradient-to-r from-background via-accent/5 to-background backdrop-blur-md shadow-sm">
+            <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-6">
+                  <div className="flex items-center space-x-3">
+                    <div className="relative">
+                      <div className="h-3 w-3 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 shadow-sm"></div>
+                      <div className="absolute inset-0 h-3 w-3 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse opacity-75"></div>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-foreground">クエリ生成完了</span>
+                      <span className="text-xs text-muted-foreground">保存して後で再利用</span>
+                    </div>
+                  </div>
+                  <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-accent/30 rounded-full border border-border/40">
+                    <Code className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {generatedQuery.length > 40 
+                        ? `${generatedQuery.substring(0, 40)}...` 
+                        : generatedQuery}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="flex space-x-3">
+                    {/* クエリ名入力 - コードアイコン付き */}
+                    <div className="relative group">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
+                        <Code className="h-3.5 w-3.5 text-primary/70" />
+                      </div>
+                      <Input
+                        placeholder="クエリ名を入力"
+                        value={currentQueryName}
+                        onChange={(e) => setCurrentQueryName(e.target.value)}
+                        className="w-52 h-9 pl-10 pr-3 bg-background/95 border border-border/60 focus:border-primary/70 focus:ring-2 focus:ring-primary/20 transition-all duration-300 font-medium shadow-sm hover:shadow-md text-sm"
+                        aria-label="クエリ名を入力"
+                      />
+                    </div>
+
+                    {/* メモ入力 - ファイルテキストアイコン付き */}
+                    <div className="relative group">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
+                        <FileText className="h-3.5 w-3.5 text-blue-500/70" />
+                      </div>
+                      <Input
+                        placeholder="メモを入力"
+                        value={currentQueryMemo}
+                        onChange={(e) => setCurrentQueryMemo(e.target.value)}
+                        className="w-48 h-9 pl-10 pr-3 bg-background/95 border border-border/60 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-400/20 transition-all duration-300 text-sm shadow-sm hover:shadow-md"
+                        aria-label="メモを入力"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleSaveQuery}
+                    disabled={!generatedQuery || !currentQueryName.trim()}
+                    className="h-9 px-5 gap-2 rounded-lg font-semibold transition-all duration-300 shadow-md hover:shadow-lg flex items-center bg-gradient-to-r from-primary via-primary/90 to-primary text-primary-foreground hover:from-primary/90 hover:via-primary/80 hover:to-primary/90 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                    aria-label={isEditMode || currentSavedQueryId || editingQueryId ? "クエリを更新" : "クエリを保存"}
+                  >
+                    <div>
+                      {saveAnimating ? (
+                        <Check className="h-5 w-5" />
+                      ) : (
+                        <Save className="h-5 w-5" />
+                      )}
+                    </div>
+                    <span className="font-semibold">
+                      {(isEditMode || currentSavedQueryId || editingQueryId) ? "更新" : "保存"}
+                    </span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content */}
@@ -1849,7 +1990,7 @@ export default function QueryGeneratorPage({
                           </Label>
                           <Select
                             value={sortField}
-                            onValueChange={setSortField}
+                            onValueChange={handleSortFieldChange}
                           >
                             <SelectTrigger
                               className="w-full"
@@ -1919,16 +2060,16 @@ export default function QueryGeneratorPage({
                             max="500"
                             value={limit || ""}
                             placeholder="例: 100"
-                            onChange={(e) =>
-                              setLimit(
-                                e.target.value
-                                  ? Math.max(
-                                      1,
-                                      Math.min(500, Number(e.target.value)),
-                                    )
-                                  : undefined,
-                              )
-                            }
+                            onChange={(e) => {
+                              const value = e.target.value
+                                ? Math.max(
+                                    1,
+                                    Math.min(500, Number(e.target.value)),
+                                  )
+                                : undefined;
+                              setLimit(value);
+
+                            }}
                             aria-label="取得件数を入力"
                           />
                         </div>
@@ -1945,13 +2086,14 @@ export default function QueryGeneratorPage({
                             min="0"
                             value={offset || ""}
                             placeholder="例: 0"
-                            onChange={(e) =>
-                              setOffset(
-                                e.target.value
-                                  ? Math.max(0, Number(e.target.value))
-                                  : undefined,
-                              )
-                            }
+                            onChange={(e) => {
+                              const value = e.target.value
+                                ? Math.max(0, Number(e.target.value))
+                                : undefined;
+                              setOffset(value);
+                              
+
+                            }}
                             aria-label="スキップ件数を入力"
                           />
                         </div>
@@ -1978,53 +2120,59 @@ export default function QueryGeneratorPage({
                           <TabsTrigger value="api">APIプレビュー</TabsTrigger>
                         </TabsList>
                         <TabsContent value="query" className="space-y-4">
-                          <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">
-                            <code className="text-foreground text-sm whitespace-pre-wrap">
+                          <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4 relative">
+                            <code className="text-foreground text-sm whitespace-pre-wrap pr-20">
                               {JSON.stringify(generatedQuery).slice(1, -1)}
                             </code>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <AnimatedButton
-                              onClick={handleCopyQuery}
-                              variant="outline"
-                              size="sm"
-                              animating={copyAnimating}
-                              className="w-[120px]"
-                              aria-label="クエリをコピー"
-                            >
-                              <div
-                                className={`mr-2 transition-transform duration-300 ${
-                                  copyAnimating ? "scale-110 rotate-12" : ""
+                            <div className="absolute top-2 right-2 flex items-center space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  await executeQuery();
+                                  setQueryExecuted(true);
+                                  setTimeout(() => setQueryExecuted(false), 2000);
+                                }}
+                                disabled={executing}
+                                className={`h-8 w-8 p-0 rounded-md transition-all duration-300 hover:scale-105 ${
+                                  executing 
+                                    ? 'text-foreground bg-accent shadow-sm' 
+                                    : queryExecuted
+                                    ? 'text-foreground bg-accent shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                                 }`}
+                                aria-label="クエリを実行"
                               >
-                                {copyAnimating ? (
-                                  <Check className="h-4 w-4" />
+                                {executing ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
-                                  <Copy className="h-4 w-4" />
+                                  <Play className={`h-4 w-4 transition-all duration-300 ${queryExecuted ? 'fill-current scale-110' : ''}`} />
                                 )}
-                              </div>
-                              <span
-                                className={`transition-all duration-300 ${
-                                  copyAnimating ? "font-medium" : ""
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  await navigator.clipboard.writeText(JSON.stringify(generatedQuery).slice(1, -1));
+                                  setClipboardCopied(true);
+                                  setTimeout(() => setClipboardCopied(false), 2000);
+                                }}
+                                className={`h-8 w-8 p-0 rounded-md transition-all duration-300 hover:scale-105 ${
+                                  clipboardCopied 
+                                    ? 'text-foreground bg-accent shadow-sm' 
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                                 }`}
+                                aria-label="クエリをクリップボードにコピー"
                               >
-                                {copyAnimating ? "完了!" : "コピー"}
-                              </span>
-                            </AnimatedButton>
-                            <Button
-                              onClick={executeQuery}
-                              size="sm"
-                              disabled={executing}
-                              className="w-[100px] bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
-                              aria-label="クエリを実行"
-                            >
-                              {executing ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                <Play className="mr-2 h-4 w-4" />
-                              )}
-                              {executing ? "実行中..." : "実行"}
-                            </Button>
+                                <div className={`transition-all duration-300 ${clipboardCopied ? 'scale-110' : ''}`}>
+                                  {clipboardCopied ? (
+                                    <ClipboardCheck className="h-4 w-4" />
+                                  ) : (
+                                    <Clipboard className="h-4 w-4" />
+                                  )}
+                                </div>
+                              </Button>
+                            </div>
                           </div>
                         </TabsContent>
                         <TabsContent value="api" className="space-y-4">
@@ -2095,34 +2243,7 @@ export default function QueryGeneratorPage({
                                     </code>
                                   </pre>
                                 </div>
-                                <Button
-                                  onClick={() =>
-                                    navigator.clipboard.writeText(
-                                      JSON.stringify(
-                                        {
-                                          app: app.appId,
-                                          ...(generatedQuery && {
-                                            query: generatedQuery,
-                                          }),
-                                          ...(limit && {
-                                            size: parseInt(limit.toString()),
-                                          }),
-                                          ...(offset && {
-                                            offset: parseInt(offset.toString()),
-                                          }),
-                                        },
-                                        null,
-                                        2,
-                                      ),
-                                    )
-                                  }
-                                  variant="outline"
-                                  size="sm"
-                                  aria-label="JSONをコピー"
-                                >
-                                  <Copy className="mr-2 h-4 w-4" />
-                                  JSONコピー
-                                </Button>
+
                               </div>
                             </div>
                           </div>
@@ -2340,63 +2461,7 @@ export default function QueryGeneratorPage({
         </div>
       </div>
 
-      {/* Fixed Footer for Query Save */}
-      <footer className="border-border/40 bg-background/95 supports-[backdrop-filter]:bg-background/80 fixed right-0 bottom-0 left-0 z-40 border-t backdrop-blur-xl">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div className="text-muted-foreground flex items-center space-x-4 text-sm">
-              <span>クエリ: {generatedQuery ? "生成済み" : "未生成"}</span>
-              {generatedQuery && (
-                <span className="bg-muted/50 rounded-md px-2 py-1 font-mono text-xs">
-                  {generatedQuery.length > 50
-                    ? `${generatedQuery.substring(0, 50)}...`
-                    : generatedQuery}
-                </span>
-              )}
-            </div>
 
-            <div className="flex items-center space-x-3">
-              <Input
-                placeholder="クエリ名を入力..."
-                value={currentQueryName}
-                onChange={(e) => setCurrentQueryName(e.target.value)}
-                className="w-64"
-                aria-label="クエリ名を入力"
-              />
-              <AnimatedButton
-                onClick={handleSaveQuery}
-                disabled={!generatedQuery || !currentQueryName.trim()}
-                animating={saveAnimating}
-                className={`w-[80px] gap-2 shadow-md ${
-                  !saveAnimating
-                    ? "bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
-                    : ""
-                }`}
-                aria-label={isEditMode ? "クエリを更新" : "クエリを保存"}
-              >
-                <div
-                  className={`mr-2 transition-transform duration-300 ${
-                    saveAnimating ? "scale-110 rotate-12" : ""
-                  }`}
-                >
-                  {saveAnimating ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                </div>
-                <span
-                  className={`transition-all duration-300 ${
-                    saveAnimating ? "font-medium" : ""
-                  }`}
-                >
-                  {saveAnimating ? "完了!" : isEditMode ? "更新" : "保存"}
-                </span>
-              </AnimatedButton>
-            </div>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

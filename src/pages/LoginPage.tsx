@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PasswordInput } from "@/components/ui/password-input";
 import ToggleTheme from "@/components/ToggleTheme";
+import { PageLoading } from "@/components/ui/page-loading";
 import { KintoneAuth, KintoneField, KintoneUser } from "@/types/kintone";
-import { Lock, User, Globe, AlertCircle } from "lucide-react";
+import { Lock, User, Globe, AlertCircle, Loader2 } from "lucide-react";
 import iconUrl from "/icon.ico?url";
 
 // Window型を拡張
@@ -58,8 +59,22 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rememberCredentials, setRememberCredentials] = useState(false);
+
+  // スクロール防止
+  useEffect(() => {
+    // ページマウント時にスクロールを無効化
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    
+    // アンマウント時に元に戻す
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
 
   // LocalStorageから保存された認証情報を読み込み
   useEffect(() => {
@@ -132,17 +147,19 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           localStorage.removeItem("kintone-credentials");
         }
 
+        setIsLoading(false);
+        setIsTransitioning(true);
         onLogin(formData);
       } else {
         console.error("Login failed:", result.error);
         setError(`${result.error}`);
+        setIsLoading(false);
       }
     } catch (error) {
       console.error("Login error:", error);
       setError(
         `エラーが発生しました: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
-    } finally {
       setIsLoading(false);
     }
   };
@@ -156,27 +173,60 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     };
 
   return (
-    <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      <div className="absolute top-4 right-4">
+    <div className="bg-background fixed inset-0 flex items-center justify-center p-4 overflow-hidden">
+      {/* 装飾的な背景要素 */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-20 left-10 h-32 w-32 rounded-full bg-gradient-to-r from-slate-400/10 to-slate-500/10 blur-3xl"></div>
+        <div className="absolute bottom-20 right-10 h-40 w-40 rounded-full bg-gradient-to-r from-slate-500/10 to-slate-600/10 blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/3 h-24 w-24 rounded-full bg-gradient-to-r from-slate-300/5 to-slate-400/5 blur-2xl animate-pulse"></div>
+      </div>
+
+      <div className="absolute top-4 right-4 z-10">
         <ToggleTheme />
       </div>
 
-      <Card className="border-border bg-card/95 w-full max-w-md shadow-lg backdrop-blur-sm">
-        <CardHeader className="space-y-4 text-center">
+      <Card className="border-border bg-card/95 w-full max-w-md shadow-lg backdrop-blur-sm relative overflow-hidden">
+        {/* カード装飾 */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-400/30 to-transparent"></div>
+        <div className="absolute -top-10 -right-10 h-20 w-20 rounded-full bg-gradient-to-br from-slate-400/5 to-slate-500/5 blur-xl"></div>
+        <div className="absolute -bottom-10 -left-10 h-20 w-20 rounded-full bg-gradient-to-br from-slate-500/5 to-slate-600/5 blur-xl"></div>
+        
+        <CardHeader className="space-y-4 text-center relative z-10">
           <div className="flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center">
-              <img
-                src={iconUrl}
-                alt="App Icon"
-                className="h-16 w-16 object-contain"
-              />
+            <div className="group relative">
+              {/* 外側のグロー効果 - テーマ対応 */}
+              <div className="absolute -inset-3 rounded-2xl bg-gradient-to-r from-orange-400 via-yellow-500 to-orange-600 opacity-10 blur-lg transition-all duration-500 group-hover:opacity-20 group-hover:blur-xl dark:from-orange-300 dark:via-yellow-400 dark:to-orange-500 dark:opacity-15 dark:group-hover:opacity-25"></div>
+              
+              {/* メインアイコンコンテナ */}
+              <div className="relative flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-white via-gray-50 to-gray-100 p-2 shadow-2xl transition-all duration-300 group-hover:shadow-3xl group-hover:scale-105 dark:from-slate-800 dark:via-slate-700 dark:to-slate-900 border border-gray-200/50 dark:border-slate-600/50">
+                {/* 内側のフレーム */}
+                <div className="absolute inset-1.5 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-900 dark:to-slate-800 border border-gray-300/30 dark:border-slate-700/30"></div>
+                
+                {/* アイコン背景 - オレンジグラデーション */}
+                <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-yellow-400 via-orange-500 to-red-600 shadow-lg transition-all duration-300 group-hover:shadow-xl">
+                  <img
+                    src={iconUrl}
+                    alt="App Icon"
+                    className="h-12 w-12 object-contain transition-all duration-300 group-hover:scale-105 drop-shadow-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 回転する外側フレーム - テーマ対応 */}
+              <div className="absolute inset-0 animate-spin rounded-2xl border-2 border-orange-500/30 border-dashed dark:border-orange-400/40" style={{ animationDuration: '15s' }}></div>
+              
+              {/* 反対回転する中間フレーム - テーマ対応 */}
+              <div className="absolute inset-1 animate-spin rounded-xl border border-blue-500/20 dark:border-cyan-400/30" style={{ animationDuration: '10s', animationDirection: 'reverse' }}></div>
+              
+              {/* 内側の微細フレーム - テーマ対応 */}
+              <div className="absolute inset-2 animate-spin rounded-lg border border-green-500/15 dark:border-green-400/25" style={{ animationDuration: '6s' }}></div>
             </div>
           </div>
           <div className="space-y-2">
-            <CardTitle className="text-foreground text-2xl font-bold">
+            <CardTitle className="text-2xl font-bold bg-gradient-to-r from-slate-700 to-slate-900 bg-clip-text text-transparent dark:from-slate-200 dark:to-slate-400">
               kintone Query Creator
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-muted-foreground">
               kintoneアカウントでログインしてください
             </CardDescription>
           </div>
@@ -272,15 +322,25 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+              className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
               disabled={isLoading}
               size="lg"
             >
-              {isLoading ? "ログイン中..." : "ログイン"}
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>認証中...</span>
+                </div>
+              ) : (
+                "ログイン"
+              )}
             </Button>
           </form>
         </CardContent>
       </Card>
+      {isTransitioning && (
+        <PageLoading message="アプリ一覧を読み込んでいます..." />
+      )}
     </div>
   );
 }

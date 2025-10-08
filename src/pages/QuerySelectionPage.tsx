@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Database,
@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import ToggleTheme from "@/components/ToggleTheme";
+import { BackButton } from "@/components/ui/back-button";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
 import { KintoneAuth, KintoneApp } from "@/types/kintone";
@@ -89,6 +90,20 @@ export default function QuerySelectionPage({
   // Add useQueryGenerator hook with delete function
   const { savedQueries, deleteQuery } = useQueryGenerator(app.appId);
 
+  // キーボードショートカット for 戻る (Escape キー)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.ctrlKey && !event.metaKey) {
+        onBack();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onBack]);
+
   // お気に入り切り替え関数
   const toggleQueryFavorite = (queryId: string) => {
     if (isQueryFavorite(queryId)) {
@@ -130,13 +145,14 @@ export default function QuerySelectionPage({
   return (
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 border-b backdrop-blur-xl">
+      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 border-b backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-6">
             <div className="flex items-center space-x-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-600">
-                <Database className="h-4 w-4 text-white" />
-              </div>
+              <BackButton
+                onClick={onBack}
+                label="アプリ一覧に戻る"
+              />
               <div>
                 <h1 className="text-foreground text-lg font-semibold">
                   {app.name}
@@ -267,6 +283,7 @@ export default function QuerySelectionPage({
                       <TableRow>
                         <TableHead className="w-8"></TableHead>
                         <TableHead>クエリ名</TableHead>
+                        <TableHead>メモ</TableHead>
                         <TableHead>生成されたクエリ</TableHead>
                         <TableHead>作成日</TableHead>
                         <TableHead className="text-right">操作</TableHead>
@@ -295,7 +312,12 @@ export default function QuerySelectionPage({
                             {query.name}
                           </TableCell>
                           <TableCell>
-                            <code className="bg-muted rounded px-2 py-1 font-mono text-xs">
+                            <div className="text-muted-foreground max-w-[200px] truncate text-sm" title={query.memo}>
+                              {query.memo || "メモなし"}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <code className="bg-muted rounded px-2 py-1 font-mono text-xs max-w-[300px] block truncate" title={query.generatedQuery || generateQueryFromConditions(query.conditions, query.orderBy) || "クエリなし"}>
                               {query.generatedQuery ||
                                 generateQueryFromConditions(
                                   query.conditions,

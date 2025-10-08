@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import LoginPage from "@/pages/LoginPage";
 import AppManagementPage from "@/pages/AppManagementPage";
 import QueryGeneratorPage from "@/pages/QueryGeneratorPage";
+import SimpleFooter from "@/components/template/SimpleFooter";
 import { KintoneAuth, KintoneApp } from "@/types/kintone";
 import { syncThemeWithLocal } from "@/helpers/theme_helpers";
 import "./styles/global.css";
@@ -73,9 +74,10 @@ function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="scrollbar-thin flex-1 overflow-auto">
+      <div className="scrollbar-thin flex-1 overflow-auto pb-16">
         {renderContent()}
       </div>
+      <SimpleFooter />
     </div>
   );
 }

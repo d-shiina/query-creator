@@ -1,6 +1,7 @@
 import { app, BrowserWindow, nativeImage, dialog } from "electron";
 import registerListeners from "./helpers/ipc/listeners-register";
 import { setupKintoneAPI } from "./main/kintone-api";
+import { registerAppInfoHandlers } from "./main/app-info";
 // "electron-squirrel-startup" seems broken when packaging with vite
 //import started from "electron-squirrel-startup";
 import path from "path";
@@ -119,6 +120,9 @@ app.whenReady().then(async () => {
 
 // Kintone API handlers
 setupKintoneAPI();
+
+// App info handlers
+registerAppInfoHandlers();
 
 //osX only
 app.on("window-all-closed", () => {

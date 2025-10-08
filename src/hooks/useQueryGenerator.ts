@@ -4,6 +4,7 @@ import { QueryCondition } from "@/types/kintone";
 interface SavedQuery {
   id: string;
   name: string;
+  memo?: string;
   conditions: QueryCondition[];
   orderBy: string;
   limit?: number;
@@ -23,7 +24,8 @@ interface UseQueryGeneratorReturn {
     limit?: number,
     offset?: number,
     editingId?: string,
-  ) => void;
+    memo?: string,
+  ) => SavedQuery | void;
   loadQuery: (query: SavedQuery) => void;
   deleteQuery: (queryId: string) => void;
   generateStorageKey: (appId: string) => string;
@@ -92,9 +94,11 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
     limit?: number,
     offset?: number,
     editingId?: string, // 編集中のクエリID
-  ) => {
+    memo?: string, // メモフィールド
+  ): SavedQuery | void => {
     const queryData = {
       name,
+      memo: memo || undefined, // 空文字の場合はundefinedにする
       conditions: conditions.filter((c) => c.field && c.operator && c.value), // Only save valid conditions
       orderBy,
       limit,
@@ -105,17 +109,21 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
 
     if (editingId) {
       // 上書き保存（既存のクエリを更新）
+      let updatedQuery: SavedQuery | undefined;
       setSavedQueries((prev) =>
-        prev.map((q) =>
-          q.id === editingId
-            ? {
-                ...queryData,
-                id: editingId,
-                createdAt: q.createdAt, // 作成日は保持
-              }
-            : q,
-        ),
+        prev.map((q) => {
+          if (q.id === editingId) {
+            updatedQuery = {
+              ...queryData,
+              id: editingId,
+              createdAt: q.createdAt, // 作成日は保持
+            };
+            return updatedQuery;
+          }
+          return q;
+        }),
       );
+      return updatedQuery;
     } else {
       // 新規保存
       const newQuery: SavedQuery = {
@@ -124,6 +132,7 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
         createdAt: new Date().toISOString(),
       };
       setSavedQueries((prev) => [newQuery, ...prev]);
+      return newQuery;
     }
   };
 
