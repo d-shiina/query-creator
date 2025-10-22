@@ -15,7 +15,8 @@ import ToggleTheme from "@/components/ToggleTheme";
 import { PageLoading } from "@/components/ui/page-loading";
 import { KintoneAuth, KintoneField, KintoneUser } from "@/types/kintone";
 import { Lock, User, Globe, AlertCircle, Loader2 } from "lucide-react";
-const iconUrl = "/icon.ico";
+import { AppIcon } from "@/components/ui/app-icon";
+import { AppLogo } from "@/components/ui/app-logo";
 
 // Window型を拡張
 declare global {
@@ -186,44 +187,17 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       </div>
 
       <Card className="border-border bg-card/95 w-full max-w-md shadow-lg backdrop-blur-sm relative overflow-hidden">
-        {/* カード装飾 */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-400/30 to-transparent"></div>
-        <div className="absolute -top-10 -right-10 h-20 w-20 rounded-full bg-gradient-to-br from-slate-400/5 to-slate-500/5 blur-xl"></div>
-        <div className="absolute -bottom-10 -left-10 h-20 w-20 rounded-full bg-gradient-to-br from-slate-500/5 to-slate-600/5 blur-xl"></div>
-        
-        <CardHeader className="space-y-4 text-center relative z-10">
-          <div className="flex justify-center">
-            <div className="group relative">
-              {/* 外側のグロー効果 - テーマ対応 */}
-              <div className="absolute -inset-3 rounded-2xl bg-gradient-to-r from-orange-400 via-yellow-500 to-orange-600 opacity-10 blur-lg transition-all duration-500 group-hover:opacity-20 group-hover:blur-xl dark:from-orange-300 dark:via-yellow-400 dark:to-orange-500 dark:opacity-15 dark:group-hover:opacity-25"></div>
-              
-              {/* メインアイコンコンテナ */}
-              <div className="relative flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-white via-gray-50 to-gray-100 p-2 shadow-2xl transition-all duration-300 group-hover:shadow-3xl group-hover:scale-105 dark:from-slate-800 dark:via-slate-700 dark:to-slate-900 border border-gray-200/50 dark:border-slate-600/50">
-                {/* 内側のフレーム */}
-                <div className="absolute inset-1.5 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-900 dark:to-slate-800 border border-gray-300/30 dark:border-slate-700/30"></div>
-                
-                {/* アイコン背景 - オレンジグラデーション */}
-                <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-yellow-400 via-orange-500 to-red-600 shadow-lg transition-all duration-300 group-hover:shadow-xl">
-                  <img
-                    src={iconUrl}
-                    alt="App Icon"
-                    className="h-12 w-12 object-contain transition-all duration-300 group-hover:scale-105 drop-shadow-sm"
-                  />
-                </div>
-              </div>
-
-              {/* 回転する外側フレーム - テーマ対応 */}
-              <div className="absolute inset-0 animate-spin rounded-2xl border-2 border-orange-500/30 border-dashed dark:border-orange-400/40" style={{ animationDuration: '15s' }}></div>
-              
-              {/* 反対回転する中間フレーム - テーマ対応 */}
-              <div className="absolute inset-1 animate-spin rounded-xl border border-blue-500/20 dark:border-cyan-400/30" style={{ animationDuration: '10s', animationDirection: 'reverse' }}></div>
-              
-              {/* 内側の微細フレーム - テーマ対応 */}
-              <div className="absolute inset-2 animate-spin rounded-lg border border-green-500/15 dark:border-green-400/25" style={{ animationDuration: '6s' }}></div>
+        <CardHeader className="space-y-4 text-center">
+          <div className="flex justify-center mb-6">
+            <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary/10 p-2 transition-all duration-200 hover:bg-primary/20">
+              <AppLogo
+                size={40}
+                className="transition-all duration-200 hover:scale-105"
+              />
             </div>
           </div>
           <div className="space-y-2">
-            <CardTitle className="text-2xl font-bold bg-gradient-to-r from-slate-700 to-slate-900 bg-clip-text text-transparent dark:from-slate-200 dark:to-slate-400">
+            <CardTitle className="text-2xl font-bold text-foreground">
               kintone Query Creator
             </CardTitle>
             <CardDescription className="text-muted-foreground">

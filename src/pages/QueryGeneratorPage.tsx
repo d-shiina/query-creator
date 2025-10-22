@@ -19,6 +19,7 @@ import {
   Clipboard,
   ClipboardCheck,
   FileText,
+  RotateCcw,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -1531,6 +1532,14 @@ export default function QueryGeneratorPage({
     setConditions((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const resetConditions = useCallback(() => {
+    setConditions([{ field: "", operator: "=", value: "", logicalOperator: "and" }]);
+    setSortField("none");
+    setSortDirection("asc");
+    setLimit(undefined);
+    setOffset(undefined);
+  }, []);
+
   // ソートフィールド変更時の処理
   const handleSortFieldChange = useCallback((value: string) => {
     setSortField(value);
@@ -1802,88 +1811,12 @@ export default function QueryGeneratorPage({
           </div>
         </div>
 
-        {/* Query Save Bar - ヘッダー直下 */}
-        {generatedQuery && (
-          <div className="border-b border-border/50 bg-gradient-to-r from-background via-accent/5 to-background backdrop-blur-md shadow-sm">
-            <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-6">
-                  <div className="flex items-center space-x-3">
-                    <div className="relative">
-                      <div className="h-3 w-3 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 shadow-sm"></div>
-                      <div className="absolute inset-0 h-3 w-3 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse opacity-75"></div>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-foreground">クエリ生成完了</span>
-                      <span className="text-xs text-muted-foreground">保存して後で再利用</span>
-                    </div>
-                  </div>
-                  <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-accent/30 rounded-full border border-border/40">
-                    <Code className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {generatedQuery.length > 40 
-                        ? `${generatedQuery.substring(0, 40)}...` 
-                        : generatedQuery}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <div className="flex space-x-3">
-                    {/* クエリ名入力 - コードアイコン付き */}
-                    <div className="relative group">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
-                        <Code className="h-3.5 w-3.5 text-primary/70" />
-                      </div>
-                      <Input
-                        placeholder="クエリ名を入力"
-                        value={currentQueryName}
-                        onChange={(e) => setCurrentQueryName(e.target.value)}
-                        className="w-52 h-9 pl-10 pr-3 bg-background/95 border border-border/60 focus:border-primary/70 focus:ring-2 focus:ring-primary/20 transition-all duration-300 font-medium shadow-sm hover:shadow-md text-sm"
-                        aria-label="クエリ名を入力"
-                      />
-                    </div>
 
-                    {/* メモ入力 - ファイルテキストアイコン付き */}
-                    <div className="relative group">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
-                        <FileText className="h-3.5 w-3.5 text-blue-500/70" />
-                      </div>
-                      <Input
-                        placeholder="メモを入力"
-                        value={currentQueryMemo}
-                        onChange={(e) => setCurrentQueryMemo(e.target.value)}
-                        className="w-48 h-9 pl-10 pr-3 bg-background/95 border border-border/60 focus:border-blue-400/70 focus:ring-2 focus:ring-blue-400/20 transition-all duration-300 text-sm shadow-sm hover:shadow-md"
-                        aria-label="メモを入力"
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleSaveQuery}
-                    disabled={!generatedQuery || !currentQueryName.trim()}
-                    className="h-9 px-5 gap-2 rounded-lg font-semibold transition-all duration-300 shadow-md hover:shadow-lg flex items-center bg-gradient-to-r from-primary via-primary/90 to-primary text-primary-foreground hover:from-primary/90 hover:via-primary/80 hover:to-primary/90 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                    aria-label={isEditMode || currentSavedQueryId || editingQueryId ? "クエリを更新" : "クエリを保存"}
-                  >
-                    <div>
-                      {saveAnimating ? (
-                        <Check className="h-5 w-5" />
-                      ) : (
-                        <Save className="h-5 w-5" />
-                      )}
-                    </div>
-                    <span className="font-semibold">
-                      {(isEditMode || currentSavedQueryId || editingQueryId) ? "更新" : "保存"}
-                    </span>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </header>
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 py-8 pb-32 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <nav className="mb-6" aria-label="パンくずナビゲーション">
             <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
@@ -1935,10 +1868,24 @@ export default function QueryGeneratorPage({
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>検索条件</CardTitle>
-                    <CardDescription>
-                      フィールドと条件を指定してください
-                    </CardDescription>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>検索条件</CardTitle>
+                        <CardDescription>
+                          フィールドと条件を指定してください
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={resetConditions}
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label="条件をリセット"
+                      >
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        リセット
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -2461,7 +2408,39 @@ export default function QueryGeneratorPage({
         </div>
       </div>
 
-
+      {/* シンプルなクエリ保存エリア - フッター上 */}
+      {generatedQuery && (
+        <div className="fixed bottom-7 left-0 right-0 bg-background/95 backdrop-blur-lg border-t border-border/50 shadow-lg z-40">
+          <div className="px-6 py-3">
+            <div className="flex items-center justify-center space-x-4 max-w-4xl mx-auto">
+              <Input
+                placeholder="クエリ名"
+                value={currentQueryName}
+                onChange={(e) => setCurrentQueryName(e.target.value)}
+                className="w-64 h-9 bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              />
+              <Input
+                placeholder="メモ（任意）"
+                value={currentQueryMemo}
+                onChange={(e) => setCurrentQueryMemo(e.target.value)}
+                className="w-64 h-9 bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+              />
+              <Button
+                onClick={handleSaveQuery}
+                disabled={!generatedQuery || !currentQueryName.trim()}
+                className="h-9 px-6 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saveAnimating ? (
+                  <Check className="h-4 w-4 mr-2" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                {(isEditMode || currentSavedQueryId || editingQueryId) ? "更新" : "保存"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

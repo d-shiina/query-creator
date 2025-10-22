@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, app } from 'electron';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -44,7 +44,16 @@ export function registerAppInfoHandlers() {
       return { success: true };
     } catch (error) {
       console.error('Failed to update license expiry:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // アプリケーション終了ハンドラー
+  ipcMain.handle('app:quit', () => {
+    try {
+      app.quit();
+    } catch (error) {
+      console.error('Failed to quit application:', error);
     }
   });
 }

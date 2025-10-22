@@ -21,5 +21,8 @@ export function exposeAppContext() {
     // ライセンス期限を更新（管理者機能）
     updateLicenseExpiry: (newExpiry: string): Promise<{ success: boolean; error?: string }> => 
       ipcRenderer.invoke('app:update-license-expiry', newExpiry),
+    
+    // アプリケーションを終了
+    quit: (): Promise<void> => ipcRenderer.invoke('app:quit'),
   });
 }

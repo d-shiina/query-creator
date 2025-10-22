@@ -4,6 +4,12 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+// 静的ファイルの型定義
+declare module "*.ico" {
+  const src: string;
+  export default src;
+}
+
 import {
   KintoneAuth,
   KintoneApp,
@@ -65,6 +71,7 @@ interface AppInfo {
 interface ElectronAppAPIContext {
   getAppInfo: () => Promise<AppInfo>;
   updateLicenseExpiry: (newExpiry: string) => Promise<{ success: boolean; error?: string }>;
+  quit: () => Promise<void>;
 }
 
 declare interface Window {

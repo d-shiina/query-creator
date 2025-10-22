@@ -1,6 +1,5 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
-// 一時的にSquirrelを無効化
-// import { MakerSquirrel } from "@electron-forge/maker-squirrel";
+import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerRpm } from "@electron-forge/maker-rpm";
@@ -17,19 +16,32 @@ const config: ForgeConfig = {
     executableName: "kintone-query-creator",
     appBundleId: "com.kintone.query-creator",
     appCopyright: "Copyright © 2025 marubeni-idigio.com",
+    // Windows用のコードサイニング設定
+    win32metadata: {
+      CompanyName: "Marubeni Information Systems Co.,Ltd.",
+      FileDescription: "kintone Query Creator",
+      OriginalFilename: "kintone-query-creator.exe",
+      ProductName: "kintone Query Creator",
+      InternalName: "kintone-query-creator"
+    },
+    // コードサイニングは外部スクリプト（sign-files.bat）で処理
   },
   rebuildConfig: {},
   makers: [
-    // 一時的にSquirrelを無効化してZIPのみでテスト
-    // new MakerSquirrel(
-    //   {
-    //     name: "kintone-query-creator",
-    //     setupIcon: "./assets/icons/win/icon.ico",
-    //     loadingGif: undefined, // ローディングGIFを無効化
-    //     noMsi: true, // MSIファイルを作成しない
-    //   },
-    //   ["win32"],
-    // ),
+    new MakerSquirrel(
+      {
+        name: "kintone-query-creator",
+        setupIcon: "./assets/icons/win/icon.ico",
+        loadingGif: undefined, // ローディングGIFを無効化
+        noMsi: true, // MSIファイルを作成しない
+        // コードサイニング設定（サムプリント使用）
+        // 注意: signtoolが必要です。Windows SDKをインストールしてください
+        signWithParams: process.env.WINDOWS_SIGN_CERT_THUMBPRINT ? 
+          `/sha1 "${process.env.WINDOWS_SIGN_CERT_THUMBPRINT}" /fd ${process.env.WINDOWS_SIGN_HASH_ALGORITHM || 'sha256'} /tr ${process.env.WINDOWS_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com'} /td sha256` : 
+          undefined,
+      },
+      ["win32"],
+    ),
     new MakerZIP({}, ["darwin", "win32"]),
     new MakerRpm({}, ["linux"]),
     new MakerDeb({}, ["linux"]),

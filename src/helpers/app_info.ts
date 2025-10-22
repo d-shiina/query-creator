@@ -4,7 +4,6 @@
 
 export interface AppInfo {
   version: string;
-  license: string;
   author: string;
   productName: string;
   licenseExpiry: Date;
@@ -14,10 +13,9 @@ export interface AppInfo {
 export const getAppInfo = (): AppInfo => {
   return {
     version: "1.0.0", // 将来的にはpackage.jsonから取得
-    license: "MIT",
-    author: "MSYS",
+    author: "Marubeni I-Digio",
     productName: "kintone Query Creator",
-    licenseExpiry: new Date(2026, 9, 4), // 2026年10月4日（仮の期限）
+    licenseExpiry: new Date(2025, 11, 31), // 2025年12月31日
   };
 };
 
@@ -34,7 +32,7 @@ export const getLicenseStatus = (expiryDate: Date) => {
       message: '期限切れ',
       className: 'text-destructive'
     };
-  } else if (daysUntilExpiry <= 30) {
+  } else if (daysUntilExpiry <= 10) {
     return {
       status: 'expiring' as const,
       message: 'まもなく期限',
