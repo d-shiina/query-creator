@@ -96,10 +96,27 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
     editingId?: string, // 編集中のクエリID
     memo?: string, // メモフィールド
   ): SavedQuery | void => {
+    console.log("保存処理開始:", { name, conditions, editingId });
+    
+    // 各条件の詳細をログ出力
+    conditions.forEach((condition, index) => {
+      console.log(`条件 ${index}:`, {
+        field: condition.field,
+        operator: condition.operator,
+        value: condition.value,
+        values: condition.values,
+        logicalOperator: condition.logicalOperator
+      });
+    });
+    
+    // 有効な条件のみ保存（fieldが設定されている条件）
+    const validConditions = conditions.filter((c) => c.field);
+    console.log("保存される条件:", validConditions);
+    
     const queryData = {
       name,
       memo: memo || undefined, // 空文字の場合はundefinedにする
-      conditions: conditions.filter((c) => c.field && c.operator && c.value), // Only save valid conditions
+      conditions: validConditions,
       orderBy,
       limit,
       offset,
@@ -109,6 +126,7 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
 
     if (editingId) {
       // 上書き保存（既存のクエリを更新）
+      console.log("既存クエリを更新:", editingId);
       let updatedQuery: SavedQuery | undefined;
       setSavedQueries((prev) =>
         prev.map((q) => {
@@ -118,6 +136,7 @@ export const useQueryGenerator = (appId: string): UseQueryGeneratorReturn => {
               id: editingId,
               createdAt: q.createdAt, // 作成日は保持
             };
+            console.log("更新されたクエリ:", updatedQuery);
             return updatedQuery;
           }
           return q;

@@ -70,8 +70,10 @@ interface AppInfo {
 
 interface ElectronAppAPIContext {
   getAppInfo: () => Promise<AppInfo>;
+  checkTrialExpiry: () => Promise<boolean>;
   updateLicenseExpiry: (newExpiry: string) => Promise<{ success: boolean; error?: string }>;
   quit: () => Promise<void>;
+  openExternalURL: (url: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare interface Window {

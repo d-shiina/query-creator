@@ -12,16 +12,16 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     icon: "./assets/icons/win/icon",
-    name: "kintone Query Creator",
+    name: "kintone API Query Creator",
     executableName: "kintone-query-creator",
     appBundleId: "com.kintone.query-creator",
     appCopyright: "Copyright © 2025 marubeni-idigio.com",
     // Windows用のコードサイニング設定
     win32metadata: {
       CompanyName: "Marubeni Information Systems Co.,Ltd.",
-      FileDescription: "kintone Query Creator",
+      FileDescription: "kintone API Query Creator",
       OriginalFilename: "kintone-query-creator.exe",
-      ProductName: "kintone Query Creator",
+      ProductName: "kintone API Query Creator",
       InternalName: "kintone-query-creator"
     },
     // コードサイニングは外部スクリプト（sign-files.bat）で処理

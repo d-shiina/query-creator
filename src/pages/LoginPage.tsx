@@ -198,7 +198,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           </div>
           <div className="space-y-2">
             <CardTitle className="text-2xl font-bold text-foreground">
-              kintone Query Creator
+              kintone API Query Creator
             </CardTitle>
             <CardDescription className="text-muted-foreground">
               kintoneアカウントでログインしてください

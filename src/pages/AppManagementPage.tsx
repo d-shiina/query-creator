@@ -407,7 +407,7 @@ export default function AppManagementPage({
               <div className="flex items-center space-x-3">
                 <div>
                   <h1 className="text-foreground text-xl font-bold">
-                    kintone Query Creator
+                    kintone API Query Creator
                   </h1>
                   <div className="text-muted-foreground flex items-center space-x-2 text-sm">
                     <span className="text-foreground/80 font-medium">

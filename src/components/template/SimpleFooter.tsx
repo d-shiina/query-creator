@@ -1,22 +1,103 @@
 import React, { useEffect, useState } from "react";
-import { getAppInfo, getLicenseStatus } from "@/helpers/app_info";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
+interface AppInfo {
+  version: string;
+  license: string;
+  author: string;
+  productName: string;
+  description: string;
+  homepage: string;
+  licenseExpiry: string;
+}
+
+// ライセンス期限のステータスを判定
+const getLicenseStatus = (expiryDate: Date) => {
+  const now = new Date();
+  const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (now > expiryDate) {
+    return {
+      status: 'expired' as const,
+      message: '期限切れ',
+      className: 'text-destructive'
+    };
+  } else if (daysUntilExpiry <= 10) {
+    return {
+      status: 'expiring' as const,
+      message: 'まもなく期限',
+      className: 'text-yellow-600 dark:text-yellow-400'
+    };
+  } else {
+    return {
+      status: 'valid' as const,
+      message: '有効',
+      className: 'text-green-600 dark:text-green-400'
+    };
+  }
+};
+
 export default function SimpleFooter() {
-  const appInfo = getAppInfo();
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isLicenseExpired, setIsLicenseExpired] = useState(false);
-  const licenseStatus = getLicenseStatus(appInfo.licenseExpiry);
 
   useEffect(() => {
-    if (licenseStatus.status === 'expired') {
-      setIsLicenseExpired(true);
+    console.log('SimpleFooter component mounted');
+    const fetchAppInfo = async () => {
+      try {
+        console.log('Checking electronAppAPI:', !!window.electronAppAPI);
+        if (window.electronAppAPI) {
+          const info = await window.electronAppAPI.getAppInfo();
+          console.log('App info received:', info);
+          setAppInfo(info);
+        } else {
+          console.log('electronAppAPI not available, using fallback');
+          // フォールバック情報
+          setAppInfo({
+            version: "1.0.0",
+            license: "MIT",
+            author: "Marubeni I-DIGIO",
+            productName: "kintone API Query Creator",
+            description: "kintone Custom Query Generator Tool",
+            homepage: "",
+            licenseExpiry: new Date(2025, 10, 1).toISOString(), // 2025年11月1日
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching app info:', error);
+        // エラー時のフォールバック
+        setAppInfo({
+          version: "1.0.0",
+          license: "MIT",
+          author: "Marubeni I-DIGIO",
+          productName: "kintone API Query Creator",
+          description: "kintone Custom Query Generator Tool",
+          homepage: "",
+          licenseExpiry: new Date(2025, 10, 1).toISOString(), // 2025年11月1日
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAppInfo();
+  }, []);
+
+  useEffect(() => {
+    if (appInfo) {
+      const licenseExpiryDate = new Date(appInfo.licenseExpiry);
+      const licenseStatus = getLicenseStatus(licenseExpiryDate);
+      if (licenseStatus.status === 'expired') {
+        setIsLicenseExpired(true);
+      }
     }
-  }, [licenseStatus.status]);
+  }, [appInfo]);
 
   const handleAppExit = () => {
-    if ((window as any).electronAppAPI?.quit) {
-      (window as any).electronAppAPI.quit();
+    if (window.electronAppAPI?.quit) {
+      window.electronAppAPI.quit();
     } else {
       window.close();
     }
@@ -25,6 +106,21 @@ export default function SimpleFooter() {
   const formatDate = (date: Date) => {
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   };
+
+  if (loading || !appInfo) {
+    return (
+      <footer className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t border-border z-50">
+        <div className="flex items-center justify-center px-4 py-2 text-xs text-muted-foreground">
+          Loading...
+        </div>
+      </footer>
+    );
+  }
+
+  console.log('SimpleFooter rendering with app info:', appInfo);
+
+  const licenseExpiryDate = new Date(appInfo.licenseExpiry);
+  const licenseStatus = getLicenseStatus(licenseExpiryDate);
 
   return (
     <>
@@ -68,7 +164,7 @@ export default function SimpleFooter() {
             <div className="flex items-center gap-1 sm:gap-2">
               <span>ライセンス期限:</span>
               <span className={`font-medium ${licenseStatus.className}`}>
-                {formatDate(appInfo.licenseExpiry)}
+                {formatDate(licenseExpiryDate)}
                 {licenseStatus.status === 'expiring' && ' (まもなく期限切れ)'}
               </span>
             </div>

@@ -10,7 +10,7 @@ export default function BaseLayout({
 }) {
   return (
     <>
-      <DragWindowRegion title="kintone Query Creator" />
+      <DragWindowRegion title="kintone API Query Creator" />
       <NavigationMenu />
       <main className="h-screen p-2 pb-20 sm:pb-16">{children}</main>
       <Footer />

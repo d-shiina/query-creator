@@ -9,12 +9,22 @@ import {
   ChevronRight,
   Star,
   X,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -86,6 +96,10 @@ export default function QuerySelectionPage({
   // States
   const [searchTerm, setSearchTerm] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [selectedQueries, setSelectedQueries] = useState<string[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [queryToDelete, setQueryToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Add useQueryGenerator hook with delete function
   const { savedQueries, deleteQuery } = useQueryGenerator(app.appId);
@@ -113,6 +127,62 @@ export default function QuerySelectionPage({
     }
     // 状態更新のためのフォース更新（再レンダリング）
     setSearchTerm((prev) => prev);
+  };
+
+  // チェックボックス選択関連
+  const handleSelectQuery = (queryId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedQueries(prev => [...prev, queryId]);
+    } else {
+      setSelectedQueries(prev => prev.filter(id => id !== queryId));
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedQueries(filteredQueries.map(query => query.id));
+    } else {
+      setSelectedQueries([]);
+    }
+  };
+
+  // 削除関連の関数
+  const handleDeleteSingle = (queryId: string) => {
+    setQueryToDelete(queryId);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedQueries.length === 0) return;
+    setQueryToDelete(null); // 一括削除の場合はnull
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      if (queryToDelete) {
+        // 単一削除
+        await deleteQuery(queryToDelete);
+      } else {
+        // 一括削除
+        for (const queryId of selectedQueries) {
+          await deleteQuery(queryId);
+        }
+        setSelectedQueries([]);
+      }
+    } catch (error) {
+      console.error('削除に失敗しました:', error);
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+      setQueryToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteDialog(false);
+    setQueryToDelete(null);
   };
 
   // フィルタリング済みクエリ
@@ -240,6 +310,19 @@ export default function QuerySelectionPage({
                 />
                 <span>お気に入り</span>
               </Button>
+
+              {/* 一括削除ボタン */}
+              {selectedQueries.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteSelected}
+                  className="flex items-center space-x-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>選択削除 ({selectedQueries.length})</span>
+                </Button>
+              )}
             </div>
 
             {/* 新規作成ボタン */}
@@ -281,6 +364,13 @@ export default function QuerySelectionPage({
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8">
+                          <Checkbox
+                            checked={selectedQueries.length === filteredQueries.length && filteredQueries.length > 0}
+                            onCheckedChange={handleSelectAll}
+                            aria-label="すべて選択"
+                          />
+                        </TableHead>
                         <TableHead className="w-8"></TableHead>
                         <TableHead>クエリ名</TableHead>
                         <TableHead>メモ</TableHead>
@@ -292,6 +382,13 @@ export default function QuerySelectionPage({
                     <TableBody>
                       {filteredQueries.map((query) => (
                         <TableRow key={query.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedQueries.includes(query.id)}
+                              onCheckedChange={(checked) => handleSelectQuery(query.id, checked as boolean)}
+                              aria-label={`${query.name}を選択`}
+                            />
+                          </TableCell>
                           <TableCell>
                             <Button
                               variant="ghost"
@@ -346,7 +443,7 @@ export default function QuerySelectionPage({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => deleteQuery(query.id)}
+                                onClick={() => handleDeleteSingle(query.id)}
                                 className="text-destructive hover:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -363,6 +460,61 @@ export default function QuerySelectionPage({
           </div>
         </div>
       </div>
+
+      {/* 削除確認ダイアログ */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              <span>削除の確認</span>
+            </DialogTitle>
+            <DialogDescription className="space-y-3 pt-2">
+              {queryToDelete ? (
+                <p>
+                  クエリ「<strong>{savedQueries.find(q => q.id === queryToDelete)?.name}</strong>」を削除しますか？
+                </p>
+              ) : (
+                <p>
+                  選択した<strong>{selectedQueries.length}件</strong>のクエリを削除しますか？
+                </p>
+              )}
+              <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-lg">
+                <p className="text-sm text-destructive">
+                  <strong>⚠️ 注意：</strong>この操作は取り消せません。削除されたクエリは復元できません。
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end space-x-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={cancelDelete}
+              disabled={isDeleting}
+            >
+              キャンセル
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="flex items-center space-x-2"
+            >
+              {isDeleting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>削除中...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  <span>削除</span>
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

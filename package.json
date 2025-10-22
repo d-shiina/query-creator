@@ -1,6 +1,6 @@
 {
   "name": "kintone-query-creator",
-  "productName": "kintone Query Creator",
+  "productName": "kintone API Query Creator",
   "version": "1.0.0",
   "description": "kintone Custom Query Generator Tool",
   "main": ".vite/build/main.js",

@@ -20,6 +20,10 @@ import {
   ClipboardCheck,
   FileText,
   RotateCcw,
+  Copy,
+  Edit,
+  ArrowRight,
+  ExternalLink,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -75,6 +79,15 @@ import {
   QueryCondition,
   QueryOperator,
 } from "@/types/kintone";
+
+// Window型の拡張
+declare global {
+  interface Window {
+    electronAppAPI: {
+      openExternalURL: (url: string) => Promise<{ success: boolean; error?: string }>;
+    };
+  }
+}
 
 interface QueryGeneratorPageProps {
   auth: KintoneAuth;
@@ -871,8 +884,59 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
     [fields, condition.field],
   );
 
+  // フィールド名やラベルからユーザー選択フィールドを推測するパターン
+  const userFieldPatterns = [
+    /^担当者?$/i,
+    /^責任者$/i,
+    /^管理者$/i,
+    /^承認者$/i,
+    /^作成者$/i,
+    /^更新者$/i,
+    /^ユーザー$/i,
+    /担当$/i,
+    /責任$/i,
+    /管理$/i,
+    /承認$/i,
+    /営業$/i,
+    /商談担当$/i,
+    /プロジェクト.*担当$/i,
+    /^user$/i,
+    /^assignee$/i,
+    /^owner$/i,
+    /^manager$/i,
+    /^admin$/i,
+    /responsible$/i,
+    /creator$/i,
+    /modifier$/i
+  ];
+
+  const isUserFieldByName = fieldInfo && userFieldPatterns.some(pattern => 
+    pattern.test(fieldInfo.code) || pattern.test(fieldInfo.label)
+  );
+
   const isUserField =
-    fieldInfo?.type === "CREATOR" || fieldInfo?.type === "MODIFIER";
+    fieldInfo?.type === "CREATOR" || 
+    fieldInfo?.type === "MODIFIER" ||
+    fieldInfo?.type === "USER_SELECT" ||
+    fieldInfo?.type === "ORGANIZATION_SELECT" ||
+    fieldInfo?.type === "GROUP_SELECT" ||
+    fieldInfo?.type === "STATUS_ASSIGNEE" ||
+    isUserFieldByName;
+
+  // デバッグログ：ユーザーフィールド判定の結果
+  React.useEffect(() => {
+    if (fieldInfo && isUserField) {
+      console.log(`🟢 ユーザーフィールド検出:`, {
+        code: fieldInfo.code,
+        label: fieldInfo.label,
+        type: fieldInfo.type,
+        byType: fieldInfo.type === "CREATOR" || fieldInfo.type === "MODIFIER" || 
+               fieldInfo.type === "USER_SELECT" || fieldInfo.type === "ORGANIZATION_SELECT" ||
+               fieldInfo.type === "GROUP_SELECT" || fieldInfo.type === "STATUS_ASSIGNEE",
+        byName: isUserFieldByName
+      });
+    }
+  }, [fieldInfo, isUserField, isUserFieldByName]);
   const isDateField = fieldInfo?.type === "DATE";
   const isDateTimeField =
     fieldInfo?.type === "DATETIME" ||
@@ -915,7 +979,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       return '日付を入力 (例: "2024-07-10") または関数';
     }
     return "値を入力";
-  }, [fieldInfo, isUserField, isDateField, isDateTimeField]);
+  }, [fieldInfo, isUserField, isUserFieldByName, isDateField, isDateTimeField]);
 
   return (
     <div className="bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words">
@@ -1139,11 +1203,17 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                       key={user.code}
                                       value={user.code}
                                       onSelect={() => {
-                                        const newValues = [
-                                          ...(condition.values || [""]),
-                                        ];
-                                        newValues[valueIndex] = user.code;
-                                        onUpdate(index, { values: newValues });
+                                        if (isInOperator) {
+                                          // 複数値の場合
+                                          const newValues = [
+                                            ...(condition.values || [""]),
+                                          ];
+                                          newValues[valueIndex] = user.code;
+                                          onUpdate(index, { values: newValues });
+                                        } else {
+                                          // 単一値の場合
+                                          onUpdate(index, { value: user.code });
+                                        }
                                       }}
                                     >
                                       <div className="flex flex-col">
@@ -1490,6 +1560,8 @@ export default function QueryGeneratorPage({
   }, [onBack]);
 
   const [saveAnimating, setSaveAnimating] = useState(false);
+  const [saveAsAnimating, setSaveAsAnimating] = useState(false);
+  const [navigatingToQueryList, setNavigatingToQueryList] = useState(false);
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const [queryExecuted, setQueryExecuted] = useState(false);
   const [users, setUsers] = useState<
@@ -1498,6 +1570,20 @@ export default function QueryGeneratorPage({
   const [usersLoaded, setUsersLoaded] = useState(false);
 
   const { savedQueries, saveQuery } = useQueryGenerator(app.appId);
+
+  // kintoneアプリをブラウザで開く関数
+  const openAppInBrowser = useCallback(async () => {
+    const kintoneAppUrl = `https://${auth.subdomain}.cybozu.com/k/${app.appId}/`;
+    
+    try {
+      // OS既定のブラウザで直接アプリページを開く
+      await window.electronAppAPI.openExternalURL(kintoneAppUrl);
+    } catch (error) {
+      console.error('Failed to open app URL:', error);
+      // フォールバック：従来のwindow.openを使用
+      window.open(kintoneAppUrl, '_blank');
+    }
+  }, [auth.subdomain, app.appId]);
 
   const queryOptions = useMemo(
     (): QueryOptions => ({
@@ -1663,12 +1749,21 @@ export default function QueryGeneratorPage({
         setIsEditMode(true);
       }
 
+      // 0.8秒後にローディング状態に切り替え
       setTimeout(() => {
         setSaveAnimating(false);
-      }, 2000);
+        setNavigatingToQueryList(true);
+        
+        // さらに0.5秒後に画面遷移
+        setTimeout(() => {
+          setNavigatingToQueryList(false);
+          onBack();
+        }, 500);
+      }, 800);
     } catch (error) {
       console.error("Error saving query:", error);
       setSaveAnimating(false);
+      setNavigatingToQueryList(false);
       alert("クエリの保存に失敗しました");
     }
   }, [
@@ -1682,6 +1777,64 @@ export default function QueryGeneratorPage({
     currentSavedQueryId,
     editingQueryId,
     saveQuery,
+    onBack,
+  ]);
+
+  // 別名保存用の関数
+  const handleSaveAsQuery = useCallback(async () => {
+    if (!generatedQuery || !currentQueryName.trim()) {
+      alert("クエリ名とクエリ内容が必要です");
+      return;
+    }
+
+    try {
+      setSaveAsAnimating(true);
+
+      // 別名保存時はeditingIdを渡さない（新規として保存）
+      const savedQuery = saveQuery(
+        currentQueryName.trim(),
+        conditions,
+        sortField !== "none" ? sortField : "",
+        generatedQuery,
+        limit,
+        offset,
+        undefined, // 新規として保存
+        currentQueryMemo.trim()
+      );
+
+      // 保存後に新しいクエリを編集モードに切り替え
+      if (savedQuery) {
+        setCurrentSavedQueryId(savedQuery.id);
+        setIsEditMode(true);
+      }
+
+      // 0.8秒後にローディング状態に切り替え
+      setTimeout(() => {
+        setSaveAsAnimating(false);
+        setNavigatingToQueryList(true);
+        
+        // さらに0.5秒後に画面遷移
+        setTimeout(() => {
+          setNavigatingToQueryList(false);
+          onBack();
+        }, 500);
+      }, 800);
+    } catch (error) {
+      console.error("Error saving query as new:", error);
+      setSaveAsAnimating(false);
+      setNavigatingToQueryList(false);
+      alert("クエリの別名保存に失敗しました");
+    }
+  }, [
+    generatedQuery,
+    currentQueryName,
+    currentQueryMemo,
+    conditions,
+    sortField,
+    limit,
+    offset,
+    saveQuery,
+    onBack,
   ]);
 
 
@@ -1690,10 +1843,44 @@ export default function QueryGeneratorPage({
 
   // Effects - 編集モードの初期化（editingQueryIdがある場合のみ）
   useEffect(() => {
-    if (editingQueryId && savedQueries.length > 0) {
+    console.log("編集モード初期化:", { 
+      editingQueryId, 
+      savedQueriesLength: savedQueries.length, 
+      fieldsLength: fields.length,
+      loading 
+    });
+    
+    // フィールドが読み込まれ、savedQueriesが存在し、編集対象IDがある場合のみ実行
+    if (editingQueryId && savedQueries.length > 0 && fields.length > 0 && !loading) {
       const queryToEdit = savedQueries.find((q) => q.id === editingQueryId);
+      console.log("編集対象クエリ:", queryToEdit);
+      
       if (queryToEdit) {
-        setConditions(queryToEdit.conditions);
+        console.log("編集クエリの条件:", queryToEdit.conditions);
+        
+        // 各条件の詳細をログ出力
+        queryToEdit.conditions.forEach((condition, index) => {
+          console.log(`読み込み条件 ${index}:`, {
+            field: condition.field,
+            operator: condition.operator,
+            value: condition.value,
+            values: condition.values,
+            logicalOperator: condition.logicalOperator
+          });
+        });
+        
+        // 条件が有効かチェック（フィールドが存在するか）
+        const validConditions = queryToEdit.conditions.map(condition => {
+          const fieldExists = fields.find(f => f.code === condition.field);
+          if (!fieldExists && condition.field) {
+            console.warn(`フィールド ${condition.field} が見つかりません`);
+            return { ...condition, field: "" }; // フィールドが見つからない場合はリセット
+          }
+          return condition;
+        });
+        
+        console.log("設定される条件:", validConditions);
+        setConditions(validConditions);
         setSortField(queryToEdit.orderBy || "none");
         setLimit(queryToEdit.limit);
         setOffset(queryToEdit.offset);
@@ -1701,16 +1888,24 @@ export default function QueryGeneratorPage({
         setCurrentQueryMemo(queryToEdit.memo || "");
         setCurrentSavedQueryId(queryToEdit.id);
         setIsEditMode(true);
+        console.log("編集モード設定完了");
       }
-    } else if (editingQueryId && savedQueries.length === 0) {
-      // savedQueriesがまだ読み込まれていない場合は何もしない
+    } else if (editingQueryId && (savedQueries.length === 0 || fields.length === 0 || loading)) {
+      // データがまだ読み込まれていない場合は何もしない
+      console.log("データがまだ読み込まれていません");
     } else if (!editingQueryId && !currentSavedQueryId) {
       // 新規作成かつまだ保存されていない場合のみリセット
       setIsEditMode(false);
       setCurrentQueryName("");
       setCurrentQueryMemo("");
+      console.log("新規モードに設定");
     }
-  }, [editingQueryId, savedQueries, currentSavedQueryId]);
+  }, [editingQueryId, savedQueries, currentSavedQueryId, fields, loading]);
+
+  // デバッグ用: conditions状態の変化を追跡
+  useEffect(() => {
+    console.log("条件状態が変更されました:", conditions);
+  }, [conditions]);
 
   useEffect(() => {
     const fetchFields = async () => {
@@ -1782,18 +1977,32 @@ export default function QueryGeneratorPage({
                 onClick={onBack}
                 label="クエリ管理に戻る"
               />
-              <div>
-                <h1 className="text-foreground text-lg font-semibold">
-                  {app.name}
-                </h1>
-                <div className="text-muted-foreground flex items-center space-x-2 text-sm">
-                  <Database className="h-3 w-3" />
-                  <span>アプリID: {app.appId}</span>
-                  <span className="text-muted-foreground/60">•</span>
-                  <Settings className="h-3 w-3" />
-                  <span className="text-muted-foreground">
-                    {isEditMode ? "クエリ編集" : "新規作成"}
-                  </span>
+              <div className="flex items-center space-x-3">
+                <div>
+                  <div className="flex items-center space-x-3">
+                    <h1 className="text-foreground text-lg font-semibold">
+                      {app.name}
+                    </h1>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openAppInBrowser}
+                      className="h-8 px-3 text-sm"
+                      title={`${app.name}をブラウザで開く`}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      ブラウザで開く
+                    </Button>
+                  </div>
+                  <div className="text-muted-foreground flex items-center space-x-2 text-sm">
+                    <Database className="h-3 w-3" />
+                    <span>アプリID: {app.appId}</span>
+                    <span className="text-muted-foreground/60">•</span>
+                    <Settings className="h-3 w-3" />
+                    <span className="text-muted-foreground">
+                      {isEditMode ? "クエリ編集" : "新規作成"}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2067,59 +2276,69 @@ export default function QueryGeneratorPage({
                           <TabsTrigger value="api">APIプレビュー</TabsTrigger>
                         </TabsList>
                         <TabsContent value="query" className="space-y-4">
-                          <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4 relative">
-                            <code className="text-foreground text-sm whitespace-pre-wrap pr-20">
+                          <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">
+                            <code className="text-foreground text-sm whitespace-pre-wrap">
                               {JSON.stringify(generatedQuery).slice(1, -1)}
                             </code>
-                            <div className="absolute top-2 right-2 flex items-center space-x-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={async () => {
-                                  await executeQuery();
-                                  setQueryExecuted(true);
-                                  setTimeout(() => setQueryExecuted(false), 2000);
-                                }}
-                                disabled={executing}
-                                className={`h-8 w-8 p-0 rounded-md transition-all duration-300 hover:scale-105 ${
-                                  executing 
-                                    ? 'text-foreground bg-accent shadow-sm' 
-                                    : queryExecuted
-                                    ? 'text-foreground bg-accent shadow-sm'
-                                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                                }`}
-                                aria-label="クエリを実行"
-                              >
-                                {executing ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Play className={`h-4 w-4 transition-all duration-300 ${queryExecuted ? 'fill-current scale-110' : ''}`} />
-                                )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={async () => {
-                                  await navigator.clipboard.writeText(JSON.stringify(generatedQuery).slice(1, -1));
-                                  setClipboardCopied(true);
-                                  setTimeout(() => setClipboardCopied(false), 2000);
-                                }}
-                                className={`h-8 w-8 p-0 rounded-md transition-all duration-300 hover:scale-105 ${
-                                  clipboardCopied 
-                                    ? 'text-foreground bg-accent shadow-sm' 
-                                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                                }`}
-                                aria-label="クエリをクリップボードにコピー"
-                              >
-                                <div className={`transition-all duration-300 ${clipboardCopied ? 'scale-110' : ''}`}>
-                                  {clipboardCopied ? (
-                                    <ClipboardCheck className="h-4 w-4" />
-                                  ) : (
-                                    <Clipboard className="h-4 w-4" />
-                                  )}
-                                </div>
-                              </Button>
-                            </div>
+                          </div>
+                          
+                          {/* 実行・コピーボタン */}
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={async () => {
+                                await executeQuery();
+                                setQueryExecuted(true);
+                                setTimeout(() => setQueryExecuted(false), 2000);
+                              }}
+                              disabled={executing}
+                              size="sm"
+                              className={`flex-1 h-8 text-sm transition-all duration-300 ${
+                                executing 
+                                  ? 'bg-primary text-primary-foreground' 
+                                  : queryExecuted
+                                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                              }`}
+                            >
+                              {executing ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                  実行中
+                                </>
+                              ) : (
+                                <>
+                                  <Play className={`h-3 w-3 mr-1 transition-all duration-300 ${queryExecuted ? 'fill-current' : ''}`} />
+                                  実行
+                                </>
+                              )}
+                            </Button>
+                            
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                await navigator.clipboard.writeText(JSON.stringify(generatedQuery).slice(1, -1));
+                                setClipboardCopied(true);
+                                setTimeout(() => setClipboardCopied(false), 2000);
+                              }}
+                              className={`flex-1 h-8 text-sm transition-all duration-300 ${
+                                clipboardCopied 
+                                  ? 'bg-green-50 border-green-200 text-green-700 dark:bg-green-950 dark:border-green-800 dark:text-green-300' 
+                                  : 'hover:bg-accent'
+                              }`}
+                            >
+                              {clipboardCopied ? (
+                                <>
+                                  <ClipboardCheck className="h-3 w-3 mr-1" />
+                                  完了
+                                </>
+                              ) : (
+                                <>
+                                  <Clipboard className="h-3 w-3 mr-1" />
+                                  コピー
+                                </>
+                              )}
+                            </Button>
                           </div>
                         </TabsContent>
                         <TabsContent value="api" className="space-y-4">
@@ -2310,23 +2529,23 @@ export default function QueryGeneratorPage({
                           <TabsContent value="table" className="space-y-4">
                             {queryResult.records.length > 0 ? (
                               <div
-                                className="scrollbar-thin max-h-96 overflow-x-auto"
+                                className="scrollbar-thin max-h-[32rem] overflow-auto rounded-md border"
                                 style={{ direction: "ltr" }}
                               >
                                 <table
-                                  className="w-full border-collapse text-sm"
+                                  className="w-full min-w-max border-collapse text-sm"
                                   style={{
                                     writingMode: "horizontal-tb",
                                     textOrientation: "mixed",
                                   }}
                                 >
                                   <thead>
-                                    <tr className="bg-muted/50 border-b">
+                                    <tr className="bg-muted border-b sticky top-0 z-10">
                                       {Object.keys(queryResult.records[0]).map(
                                         (fieldCode) => (
                                           <th
                                             key={fieldCode}
-                                            className="border-r p-2 text-left font-medium"
+                                            className="border-r p-3 text-left font-medium whitespace-nowrap min-w-[120px]"
                                             style={{
                                               writingMode: "horizontal-tb",
                                             }}
@@ -2341,7 +2560,7 @@ export default function QueryGeneratorPage({
                                   </thead>
                                   <tbody>
                                     {queryResult.records
-                                      .slice(0, 10)
+                                      .slice(0, 50)
                                       .map(
                                         (
                                           record: Record<string, unknown>,
@@ -2355,15 +2574,18 @@ export default function QueryGeneratorPage({
                                               ([fieldCode, fieldData]) => (
                                                 <td
                                                   key={fieldCode}
-                                                  className="max-w-48 overflow-hidden border-r p-2 text-ellipsis"
+                                                  className="border-r p-3 min-w-[120px] max-w-[300px] overflow-hidden text-ellipsis"
                                                   style={{
                                                     writingMode:
                                                       "horizontal-tb",
                                                   }}
+                                                  title={queryUtils.formatFieldValue(fieldData)}
                                                 >
-                                                  {queryUtils.formatFieldValue(
-                                                    fieldData,
-                                                  )}
+                                                  <div className="truncate">
+                                                    {queryUtils.formatFieldValue(
+                                                      fieldData,
+                                                    )}
+                                                  </div>
                                                 </td>
                                               ),
                                             )}
@@ -2425,18 +2647,105 @@ export default function QueryGeneratorPage({
                 onChange={(e) => setCurrentQueryMemo(e.target.value)}
                 className="w-64 h-9 bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary text-sm"
               />
-              <Button
-                onClick={handleSaveQuery}
-                disabled={!generatedQuery || !currentQueryName.trim()}
-                className="h-9 px-6 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saveAnimating ? (
-                  <Check className="h-4 w-4 mr-2" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                {(isEditMode || currentSavedQueryId || editingQueryId) ? "更新" : "保存"}
-              </Button>
+              {/* 保存ボタン */}
+              {(isEditMode || currentSavedQueryId || editingQueryId) ? (
+                // 編集モード：上書き保存と別名保存
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleSaveQuery}
+                    disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
+                    className="h-9 px-4 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {navigatingToQueryList ? (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        移動中
+                      </>
+                    ) : saveAnimating ? (
+                      <>
+                        <Check className="h-3 w-3 mr-1" />
+                        完了
+                      </>
+                    ) : (
+                      <>
+                        <Edit className="h-3 w-3 mr-1" />
+                        上書き
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleSaveAsQuery}
+                    disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
+                    variant="outline"
+                    className="h-9 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {navigatingToQueryList ? (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        移動中
+                      </>
+                    ) : saveAsAnimating ? (
+                      <>
+                        <Check className="h-3 w-3 mr-1" />
+                        完了
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3 mr-1" />
+                        別名保存
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                // 新規モード：通常の保存
+                <Button
+                  onClick={handleSaveQuery}
+                  disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
+                  className="h-9 px-6 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {navigatingToQueryList ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      移動中
+                    </>
+                  ) : saveAnimating ? (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      完了
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      保存
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ナビゲーション中のローディングオーバーレイ */}
+      {navigatingToQueryList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-background border rounded-lg p-8 shadow-xl max-w-sm w-full mx-4">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="flex items-center space-x-3">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                <Database className="h-6 w-6 text-primary" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-lg font-medium">クエリ管理画面へ移動中</h3>
+                <p className="text-muted-foreground text-sm mt-1">
+                  保存したクエリを確認しています...
+                </p>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2">
+                <div className="bg-primary h-2 rounded-full animate-pulse w-full"></div>
+              </div>
             </div>
           </div>
         </div>

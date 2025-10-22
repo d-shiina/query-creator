@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage, dialog } from "electron";
+import { app, BrowserWindow, nativeImage, dialog, shell, ipcMain } from "electron";
 import registerListeners from "./helpers/ipc/listeners-register";
 import { setupKintoneAPI } from "./main/kintone-api";
 import { registerAppInfoHandlers } from "./main/app-info";
@@ -18,24 +18,29 @@ if (inDevelopment) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
 }
 
-// 体験版の期限をチェックする関数
-function checkTrialExpiry(): boolean {
-  const currentDate = new Date();
-  const expiryDate = new Date(2025, 10, 1); // 2025年11月1日 (月は0から始まるので10は11月)
-
-  return currentDate >= expiryDate;
+// 体験版の期限をチェックする関数（IPC経由）
+async function checkTrialExpiry(): Promise<boolean> {
+  try {
+    const currentDate = new Date();
+    const expiryDate = new Date(2025, 9, 1); // 2025年11月1日 (月は0から始まるので10は11月)
+    return currentDate >= expiryDate;
+  } catch (error) {
+    console.error('Failed to check trial expiry:', error);
+    return false;
+  }
 }
 
 // 体験版終了メッセージを表示してアプリを終了
 async function showTrialExpiredAndExit(): Promise<void> {
-  await dialog.showMessageBox({
+  const result = await dialog.showMessageBox({
     type: "warning",
     title: "体験版終了",
-    message: "kintone Query Creator - 体験版終了",
+    message: "kintone API Query Creator - 体験版終了",
     detail:
-      "体験版の利用期間が終了しました。\n正式版をご利用いただくには、ライセンスをご購入ください。\n\nご利用いただき、ありがとうございました。",
-    buttons: ["OK"],
-    defaultId: 0,
+      "体験版の利用期間が終了しました。\n製品版のお問い合わせはこちらからお願いします。\n\nご利用いただき、ありがとうございました。",
+    buttons: ["お問い合わせページを開く", "アプリを終了"],
+    defaultId: 1,
+    cancelId: 1,
     icon: fs.existsSync(
       path.join(process.cwd(), "assets", "icons", "win", "icon.ico"),
     )
@@ -44,6 +49,16 @@ async function showTrialExpiredAndExit(): Promise<void> {
         )
       : undefined,
   });
+
+  // ユーザーが「お問い合わせページを開く」を選択した場合
+  if (result.response === 0) {
+    try {
+      await shell.openExternal("https://go.marubeni-sys.com/l/551742/2024-11-06/23j5hs");
+      console.log("Opened inquiry page in default browser");
+    } catch (error) {
+      console.error("Failed to open inquiry page:", error);
+    }
+  }
 
   console.log("Trial expired, closing application...");
   app.quit();
@@ -94,6 +109,33 @@ function createWindow() {
   });
   registerListeners(mainWindow);
 
+  // 外部リンクを既定のブラウザで開くように設定
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.log('Window open handler triggered for URL:', url);
+    // 外部URLの場合は既定のブラウザで開く
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      console.log('Opening external URL in default browser:', url);
+      shell.openExternal(url);
+      return { action: 'deny' }; // Electronでは開かない
+    }
+    return { action: 'allow' }; // 内部リンクは許可
+  });
+
+  // ナビゲーション前にチェック（外部サイトへの移動を防ぐ）
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    console.log('Will navigate to:', navigationUrl);
+    // アプリの内部URL以外への移動を防ぐ
+    const parsedUrl = new URL(navigationUrl);
+    if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+      // 開発サーバーまたはローカルファイルでない場合は外部ブラウザで開く
+      if (!navigationUrl.includes('localhost') && !navigationUrl.includes('127.0.0.1') && !navigationUrl.startsWith('file://')) {
+        console.log('Preventing navigation and opening in external browser:', navigationUrl);
+        event.preventDefault();
+        shell.openExternal(navigationUrl);
+      }
+    }
+  });
+
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
@@ -105,7 +147,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   // 体験版の期限をチェック
-  if (checkTrialExpiry()) {
+  if (await checkTrialExpiry()) {
     await showTrialExpiredAndExit();
     return;
   }
@@ -123,6 +165,19 @@ setupKintoneAPI();
 
 // App info handlers
 registerAppInfoHandlers();
+
+// External URL handler - OS既定のブラウザでURLを開く
+ipcMain.handle('open-external-url', async (event, url: string) => {
+  try {
+    console.log('IPC: Opening external URL:', url);
+    await shell.openExternal(url);
+    console.log('IPC: Successfully opened external URL');
+    return { success: true };
+  } catch (error) {
+    console.error('IPC: Failed to open external URL:', error);
+    return { success: false, error: String(error) };
+  }
+});
 
 //osX only
 app.on("window-all-closed", () => {
