@@ -1,5 +1,5 @@
 {
-  "name": "kintone-query-creator",
+  "name": "kintone-api-query-creator",
   "productName": "kintone API Query Creator",
   "version": "1.0.0",
   "description": "kintone Custom Query Generator Tool",
@@ -10,7 +10,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "make:signed": "npm run make && npm run sign",
-    "sign": "sign-files.bat",
+  "sign": "powershell -ExecutionPolicy Bypass -File ./scripts/sign-files.ps1",
     "publish": "electron-forge publish",
     "lint": "eslint .",
     "format": "prettier --check .",
@@ -21,8 +21,8 @@
     "test:e2e": "playwright test",
     "test:all": "vitest run && playwright test"
   },
-  "author": "MSYS",
-  "license": "MIT",
+  "author": "Marubeni-I-DIGIO",
+  "license": "UNLICENSED",
   "homepage": "https://github.com/d-shiina/query-creator",
   "repository": {
     "type": "git",

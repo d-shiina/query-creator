@@ -100,6 +100,7 @@ export default function QuerySelectionPage({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [queryToDelete, setQueryToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [favoritesVersion, setFavoritesVersion] = useState(0);
 
   // Add useQueryGenerator hook with delete function
   const { savedQueries, deleteQuery } = useQueryGenerator(app.appId);
@@ -125,8 +126,7 @@ export default function QuerySelectionPage({
     } else {
       addQueryToFavorites(queryId, app.appId);
     }
-    // 状態更新のためのフォース更新（再レンダリング）
-    setSearchTerm((prev) => prev);
+    setFavoritesVersion((prev) => prev + 1);
   };
 
   // チェックボックス選択関連
@@ -205,7 +205,7 @@ export default function QuerySelectionPage({
 
       return true;
     });
-  }, [savedQueries, searchTerm, showFavoritesOnly]);
+  }, [savedQueries, searchTerm, showFavoritesOnly, favoritesVersion]);
   console.log("savedQueries:", savedQueries);
   console.log("savedQueries type:", typeof savedQueries);
   console.log("savedQueries length:", savedQueries?.length);

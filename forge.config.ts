@@ -13,38 +13,35 @@ const config: ForgeConfig = {
     asar: true,
     icon: "./assets/icons/win/icon",
     name: "kintone API Query Creator",
-    executableName: "kintone-query-creator",
+    executableName: "kintone-api-query-creator",
     appBundleId: "com.kintone.query-creator",
     appCopyright: "Copyright © 2025 marubeni-idigio.com",
     // Windows用のコードサイニング設定
     win32metadata: {
       CompanyName: "Marubeni Information Systems Co.,Ltd.",
       FileDescription: "kintone API Query Creator",
-      OriginalFilename: "kintone-query-creator.exe",
+      OriginalFilename: "kintone-api-query-creator.exe",
       ProductName: "kintone API Query Creator",
-      InternalName: "kintone-query-creator"
+      InternalName: "kintone-api-query-creator"
     },
     // コードサイニングは外部スクリプト（sign-files.bat）で処理
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel(
-      {
-        name: "kintone-query-creator",
-        setupIcon: "./assets/icons/win/icon.ico",
-        loadingGif: undefined, // ローディングGIFを無効化
-        noMsi: true, // MSIファイルを作成しない
-        // コードサイニング設定（サムプリント使用）
-        // 注意: signtoolが必要です。Windows SDKをインストールしてください
-        signWithParams: process.env.WINDOWS_SIGN_CERT_THUMBPRINT ? 
-          `/sha1 "${process.env.WINDOWS_SIGN_CERT_THUMBPRINT}" /fd ${process.env.WINDOWS_SIGN_HASH_ALGORITHM || 'sha256'} /tr ${process.env.WINDOWS_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com'} /td sha256` : 
-          undefined,
-      },
-      ["win32"],
-    ),
-    new MakerZIP({}, ["darwin", "win32"]),
-    new MakerRpm({}, ["linux"]),
-    new MakerDeb({}, ["linux"]),
+    new MakerSquirrel({
+      name: "kintone-api-query-creator",
+      setupIcon: "./assets/icons/win/icon.ico",
+      loadingGif: undefined, // ローディングGIFを無効化
+      noMsi: true, // MSIファイルを作成しない
+      // コードサイニング設定（サムプリント使用）
+      // 注意: signtoolが必要です。Windows SDKをインストールしてください
+      signWithParams: process.env.WINDOWS_SIGN_CERT_THUMBPRINT ? 
+        `/sha1 "${process.env.WINDOWS_SIGN_CERT_THUMBPRINT}" /fd ${process.env.WINDOWS_SIGN_HASH_ALGORITHM || 'sha256'} /tr ${process.env.WINDOWS_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com'} /td sha256` : 
+        undefined,
+    }),
+    new MakerZIP({}),
+    new MakerRpm({}),
+    new MakerDeb({}),
   ],
   plugins: [
     new VitePlugin({

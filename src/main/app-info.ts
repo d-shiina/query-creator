@@ -3,6 +3,15 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 /**
+ * ライセンス期限の設定（一元管理）
+ */
+export const LICENSE_EXPIRY_DATE = new Date(2026, 11, 31); // 2026年12月31日
+
+/**
+ * フォールバック用のアプリケーション情報
+ */
+
+/**
  * アプリケーション情報を取得するIPCハンドラー
  */
 export function registerAppInfoHandlers() {
@@ -11,7 +20,6 @@ export function registerAppInfoHandlers() {
     try {
       const packagePath = join(__dirname, '../../package.json');
       const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
-      
       return {
         version: packageJson.version,
         license: packageJson.license,
@@ -19,19 +27,11 @@ export function registerAppInfoHandlers() {
         productName: packageJson.productName,
         description: packageJson.description,
         homepage: packageJson.homepage,
-        // ライセンス期限は設定ファイルから取得（今回は仮の値）
-        licenseExpiry: new Date(2025, 10, 1).toISOString(), // 2025年11月1日
+        licenseExpiry: LICENSE_EXPIRY_DATE.toISOString(),
       };
     } catch (error) {
       console.error('Failed to read package.json:', error);
-      return {
-        version: '1.0.0',
-        author: 'Marubeni I-DIGIO',
-        productName: 'kintone API Query Creator',
-        description: 'kintone Custom Query Generator Tool',
-        homepage: '',
-        licenseExpiry: new Date(2025, 10, 1).toISOString(), // 2025年11月1日
-      };
+      return null;
     }
   });
 
@@ -39,7 +39,7 @@ export function registerAppInfoHandlers() {
   ipcMain.handle('app:check-trial-expiry', () => {
     try {
       const currentDate = new Date();
-      const expiryDate = new Date(2025, 10, 1); // 2025年11月1日
+      const expiryDate = LICENSE_EXPIRY_DATE;
       return currentDate >= expiryDate;
     } catch (error) {
       console.error('Failed to check trial expiry:', error);

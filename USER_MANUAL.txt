@@ -29,7 +29,7 @@ kintone API Query Creatorは、kintoneアプリのカスタムクエリを視覚
 1. アプリの起動
 -------------------------------------------------------------------------------
 
-・kintone-query-creator.exeを実行します
+・kintone-api-query-creator.exeを実行します
 ・ログイン画面が表示されます
 
 2. kintoneログイン

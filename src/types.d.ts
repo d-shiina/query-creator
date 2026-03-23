@@ -70,6 +70,7 @@ interface AppInfo {
 
 interface ElectronAppAPIContext {
   getAppInfo: () => Promise<AppInfo>;
+  getFallbackInfo: () => Promise<AppInfo>;
   checkTrialExpiry: () => Promise<boolean>;
   updateLicenseExpiry: (newExpiry: string) => Promise<{ success: boolean; error?: string }>;
   quit: () => Promise<void>;

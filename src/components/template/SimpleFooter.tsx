@@ -48,35 +48,18 @@ export default function SimpleFooter() {
     const fetchAppInfo = async () => {
       try {
         console.log('Checking electronAppAPI:', !!window.electronAppAPI);
-        if (window.electronAppAPI) {
-          const info = await window.electronAppAPI.getAppInfo();
+        const api = (window as any).electronAppAPI;
+        if (api && typeof api.getAppInfo === 'function') {
+          const info = await api.getAppInfo();
           console.log('App info received:', info);
           setAppInfo(info);
         } else {
-          console.log('electronAppAPI not available, using fallback');
-          // フォールバック情報
-          setAppInfo({
-            version: "1.0.0",
-            license: "MIT",
-            author: "Marubeni I-DIGIO",
-            productName: "kintone API Query Creator",
-            description: "kintone Custom Query Generator Tool",
-            homepage: "",
-            licenseExpiry: new Date(2025, 10, 1).toISOString(), // 2025年11月1日
-          });
+          console.log('electronAppAPI not available, cannot get app info');
+          // フォールバック情報は不要なので何もしない
         }
       } catch (error) {
         console.error('Error fetching app info:', error);
-        // エラー時のフォールバック
-        setAppInfo({
-          version: "1.0.0",
-          license: "MIT",
-          author: "Marubeni I-DIGIO",
-          productName: "kintone API Query Creator",
-          description: "kintone Custom Query Generator Tool",
-          homepage: "",
-          licenseExpiry: new Date(2025, 10, 1).toISOString(), // 2025年11月1日
-        });
+        // フォールバック情報は不要なので何もしない
       } finally {
         setLoading(false);
       }
@@ -86,7 +69,7 @@ export default function SimpleFooter() {
   }, []);
 
   useEffect(() => {
-    if (appInfo) {
+    if (appInfo && appInfo.licenseExpiry) {
       const licenseExpiryDate = new Date(appInfo.licenseExpiry);
       const licenseStatus = getLicenseStatus(licenseExpiryDate);
       if (licenseStatus.status === 'expired') {
@@ -96,8 +79,8 @@ export default function SimpleFooter() {
   }, [appInfo]);
 
   const handleAppExit = () => {
-    if (window.electronAppAPI?.quit) {
-      window.electronAppAPI.quit();
+    if ((window.electronAppAPI as any)?.quit) {
+      (window.electronAppAPI as any).quit();
     } else {
       window.close();
     }
@@ -119,8 +102,8 @@ export default function SimpleFooter() {
 
   console.log('SimpleFooter rendering with app info:', appInfo);
 
-  const licenseExpiryDate = new Date(appInfo.licenseExpiry);
-  const licenseStatus = getLicenseStatus(licenseExpiryDate);
+  const licenseExpiryDate = appInfo.licenseExpiry ? new Date(appInfo.licenseExpiry) : null;
+  const licenseStatus = licenseExpiryDate ? getLicenseStatus(licenseExpiryDate) : null;
 
   return (
     <>
@@ -161,13 +144,20 @@ export default function SimpleFooter() {
         
         {/* 右側：ライセンス期限と作者情報 */}
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
-            <div className="flex items-center gap-1 sm:gap-2">
-              <span>ライセンス期限:</span>
-              <span className={`font-medium ${licenseStatus.className}`}>
-                {formatDate(licenseExpiryDate)}
-                {licenseStatus.status === 'expiring' && ' (まもなく期限切れ)'}
-              </span>
-            </div>
+            {licenseExpiryDate && licenseStatus ? (
+              <div className="flex items-center gap-1 sm:gap-2">
+                <span>ライセンス期限:</span>
+                <span className={`font-medium ${licenseStatus.className}`}>
+                  {formatDate(licenseExpiryDate)}
+                  {licenseStatus.status === 'expiring' && ' (まもなく期限切れ)'}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 sm:gap-2">
+                <span>ライセンス期限:</span>
+                <span className="font-medium text-muted-foreground">取得中...</span>
+              </div>
+            )}
             <span className="text-muted-foreground/70 hidden md:inline">
               Made by {appInfo.author}
             </span>

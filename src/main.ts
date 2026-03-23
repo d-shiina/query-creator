@@ -1,9 +1,7 @@
 import { app, BrowserWindow, nativeImage, dialog, shell, ipcMain } from "electron";
 import registerListeners from "./helpers/ipc/listeners-register";
 import { setupKintoneAPI } from "./main/kintone-api";
-import { registerAppInfoHandlers } from "./main/app-info";
-// "electron-squirrel-startup" seems broken when packaging with vite
-//import started from "electron-squirrel-startup";
+import { registerAppInfoHandlers, LICENSE_EXPIRY_DATE } from "./main/app-info";
 import path from "path";
 import fs from "fs";
 
@@ -18,11 +16,11 @@ if (inDevelopment) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
 }
 
-// 体験版の期限をチェックする関数（IPC経由）
+// 体験版の期限をチェックする関数
 async function checkTrialExpiry(): Promise<boolean> {
   try {
     const currentDate = new Date();
-    const expiryDate = new Date(2025, 9, 1); // 2025年11月1日 (月は0から始まるので10は11月)
+    const expiryDate = LICENSE_EXPIRY_DATE;
     return currentDate >= expiryDate;
   } catch (error) {
     console.error('Failed to check trial expiry:', error);

@@ -1,52 +1,64 @@
-# コードサイニング設定ガイド
+# コードサイニング設定ガイド（ZIP配布版）
 
 ## 概要
-このドキュメントでは、kintone API Query CreatorアプリケーションにWindowsコードサイニング証明書を設定する方法を説明します。
+このドキュメントでは、kintone API Query CreatorアプリケーションのZIP配布版にWindowsコードサイニング証明書を適用する方法を説明します。
 
 ## 必要なもの
-1. 有効なコードサイニング証明書（.pfxまたは.p12ファイル）
-2. 証明書のパスワード
+1. 有効なコードサイニング証明書（証明書ストアにインストール済み）
+2. Windows SDK（signtool.exe）
 
 ## 設定手順
 
-### 1. 環境変数ファイルの作成
-`.env`ファイルをプロジェクトルートに作成し、以下の内容を設定してください：
+### 1. 証明書の準備
+証明書をWindowsの証明書ストアにインストールし、サムプリントを確認してください。
 
-```env
-# Windows Code Signing Configuration
-WINDOWS_SIGN_CERT_PATH=path/to/your/certificate.pfx
-WINDOWS_SIGN_CERT_PASSWORD=your_certificate_password
-WINDOWS_SIGN_CERT_SUBJECT_NAME=Your Company Name
-WINDOWS_SIGN_TIMESTAMP_URL=http://timestamp.digicert.com
-WINDOWS_SIGN_HASH_ALGORITHM=sha256
+### 2. 環境変数の設定（オプション）
+PowerShellまたはシステム環境変数で設定：
+
+```powershell
+$env:WINDOWS_SIGN_CERT_THUMBPRINT = "YOUR_CERTIFICATE_THUMBPRINT"
+$env:WINDOWS_SIGN_TIMESTAMP_URL = "http://timestamp.digicert.com"
 ```
 
-### 2. 証明書ファイルの配置
-コードサイニング証明書ファイル（.pfxまたは.p12）を安全な場所に配置し、`WINDOWS_SIGN_CERT_PATH`にそのパスを設定してください。
-
-### 3. ビルドの実行
-環境変数が設定されていれば、通常のビルドコマンドでコードサイニングが自動的に適用されます：
+### 3. ビルドと署名の実行
 
 ```bash
-npm run make
+# ビルドと署名を同時実行
+npm run make:signed
+
+# または個別実行
+npm run make     # ビルドのみ
+npm run sign     # 署名のみ
 ```
 
-## セキュリティ注意事項
+## ZIP配布でのコードサイニング
 
-1. **証明書ファイルは絶対にGitリポジトリにコミットしないでください**
-2. **パスワードは`.env`ファイルに直接書かず、環境変数として設定することを推奨します**
-3. **CI/CDパイプラインでは、証明書とパスワードをセキュアな環境変数として設定してください**
+1. `npm run make` でアプリケーションをビルド
+2. `npm run sign` で `out/kintone API Query Creator-win32-x64/kintone-query-creator.exe` に署名
+3. `out/make/zip/` のZIPファイルを配布
+
+## スクリプト設定
+
+コードサイニングスクリプト: `scripts/sign-files.ps1`
+- デフォルト証明書サムプリント: `F54ED66C29666B0315EBB1940CD04234544B1238`
+- 環境変数 `WINDOWS_SIGN_CERT_THUMBPRINT` で上書き可能
 
 ## トラブルシューティング
 
-### 問題: コードサイニングが失敗する
-- 証明書のパスが正しいか確認してください
-- 証明書のパスワードが正しいか確認してください
-- 証明書が有効期限内であることを確認してください
+### 問題: PowerShell実行ポリシーエラー
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
 
-### 問題: タイムスタンプエラー
-- インターネット接続を確認してください
-- タイムスタンプサーバーのURLが正しいか確認してください
+### 問題: signtool.exeが見つからない
+Windows SDKをインストールするか、`scripts/sign-files.ps1`内のパスを更新してください。
+
+### 問題: 証明書が見つからない
+```powershell
+# 証明書ストアの確認
+Get-ChildItem -Path Cert:\CurrentUser\My
+Get-ChildItem -Path Cert:\LocalMachine\My
+```
 
 ## 推奨設定
 

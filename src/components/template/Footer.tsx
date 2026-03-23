@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { getLicenseStatus, formatDateJP } from "@/helpers/app_info";
 
 interface AppInfo {
   version: string;
@@ -15,6 +14,41 @@ export default function Footer() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // ライセンス期限のステータスを判定
+  const getLicenseStatus = (expiryDate: Date) => {
+    const now = new Date();
+    const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (now > expiryDate) {
+      return {
+        status: 'expired' as const,
+        message: '期限切れ',
+        className: 'text-destructive'
+      };
+    } else if (daysUntilExpiry <= 10) {
+      return {
+        status: 'expiring' as const,
+        message: 'まもなく期限',
+        className: 'text-yellow-600 dark:text-yellow-400'
+      };
+    } else {
+      return {
+        status: 'valid' as const,
+        message: '有効',
+        className: 'text-green-600 dark:text-green-400'
+      };
+    }
+  };
+
+  // 日付を日本語形式でフォーマット
+  const formatDateJP = (date: Date): string => {
+    return date.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  };
+
   useEffect(() => {
     console.log('Footer component mounted');
     const fetchAppInfo = async () => {
@@ -25,30 +59,12 @@ export default function Footer() {
           console.log('App info received:', info);
           setAppInfo(info);
         } else {
-          console.log('electronAppAPI not available, using fallback');
-          // フォールバック情報
-          setAppInfo({
-            version: "1.0.0",
-            license: "MIT",
-            author: "MSYS",
-            productName: "kintone API Query Creator",
-            description: "",
-            homepage: "",
-            licenseExpiry: new Date(2026, 9, 4).toISOString(),
-          });
+          console.log('electronAppAPI not available, cannot get app info');
+          // フォールバック情報は不要なので何もしない
         }
       } catch (error) {
         console.error('Failed to fetch app info:', error);
-        // フォールバック情報
-        setAppInfo({
-          version: "1.0.0",
-          license: "MIT",
-          author: "MSYS",
-          productName: "kintone API Query Creator",
-          description: "",
-          homepage: "",
-          licenseExpiry: new Date(2026, 9, 4).toISOString(),
-        });
+        // フォールバック情報は不要なので何もしない
       } finally {
         setLoading(false);
       }
@@ -70,8 +86,8 @@ export default function Footer() {
 
   console.log('Footer rendering with app info:', appInfo);
 
-  const licenseExpiryDate = new Date(appInfo.licenseExpiry);
-  const licenseStatus = getLicenseStatus(licenseExpiryDate);
+  const licenseExpiryDate = appInfo.licenseExpiry ? new Date(appInfo.licenseExpiry) : null;
+  const licenseStatus = licenseExpiryDate ? getLicenseStatus(licenseExpiryDate) : null;
 
   return (
     <footer className="fixed bottom-0 left-0 right-0 bg-blue-500/95 backdrop-blur supports-[backdrop-filter]:bg-blue-500/60 border-t border-border z-50">
@@ -85,13 +101,20 @@ export default function Footer() {
         
         {/* 右側：ライセンス期限と作者情報 */}
         <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <span>License期限:</span>
-            <span className={`font-medium ${licenseStatus.className}`}>
-              {formatDateJP(licenseExpiryDate)}
-              {licenseStatus.status !== 'valid' && ` (${licenseStatus.message})`}
-            </span>
-          </div>
+          {licenseExpiryDate && licenseStatus ? (
+            <div className="flex items-center gap-1 sm:gap-2">
+              <span>License期限:</span>
+              <span className={`font-medium ${licenseStatus.className}`}>
+                {formatDateJP(licenseExpiryDate)}
+                {licenseStatus.status !== 'valid' && ` (${licenseStatus.message})`}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 sm:gap-2">
+              <span>License期限:</span>
+              <span className="font-medium text-muted-foreground">取得中...</span>
+            </div>
+          )}
           <span className="text-muted-foreground/70 hidden md:inline">
             Made by {appInfo.author} 
           </span>

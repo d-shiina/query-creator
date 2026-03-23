@@ -18,6 +18,9 @@ export function exposeAppContext() {
     // アプリケーション情報を取得
     getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke('app:get-info'),
     
+    // フォールバック情報を取得
+    getFallbackInfo: (): Promise<AppInfo> => ipcRenderer.invoke('app:get-fallback-info'),
+    
     // 体験版期限をチェック
     checkTrialExpiry: (): Promise<boolean> => ipcRenderer.invoke('app:check-trial-expiry'),
     

@@ -1563,6 +1563,8 @@ export default function QueryGeneratorPage({
   const [saveAsAnimating, setSaveAsAnimating] = useState(false);
   const [navigatingToQueryList, setNavigatingToQueryList] = useState(false);
   const [clipboardCopied, setClipboardCopied] = useState(false);
+  const [appIdCopied, setAppIdCopied] = useState(false);
+  const [spaceIdCopied, setSpaceIdCopied] = useState(false);
   const [queryExecuted, setQueryExecuted] = useState(false);
   const [users, setUsers] = useState<
     Array<{ code: string; name: string; email: string }>
@@ -1997,11 +1999,48 @@ export default function QueryGeneratorPage({
                   <div className="text-muted-foreground flex items-center space-x-2 text-sm">
                     <Database className="h-3 w-3" />
                     <span>アプリID: {app.appId}</span>
-                    <span className="text-muted-foreground/60">•</span>
-                    <Settings className="h-3 w-3" />
-                    <span className="text-muted-foreground">
-                      {isEditMode ? "クエリ編集" : "新規作成"}
-                    </span>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 ml-1"
+                      title="アプリIDをコピー"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(app.appId);
+                        setAppIdCopied(true);
+                        setTimeout(() => setAppIdCopied(false), 1500);
+                      }}
+                    >
+                      {appIdCopied ? (
+                        <ClipboardCheck className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Clipboard className="h-4 w-4" />
+                      )}
+                    </Button>
+                    {app.spaceId && (
+                      <>
+                        <span className="text-muted-foreground/60"></span>
+                        <span>ゲストスペースID: {app.spaceId}</span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 ml-1"
+                          title="ゲストスペースIDをコピー"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(app.spaceId!);
+                            setSpaceIdCopied(true);
+                            setTimeout(() => setSpaceIdCopied(false), 1500);
+                          }}
+                        >
+                          {spaceIdCopied ? (
+                            <ClipboardCheck className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Clipboard className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
