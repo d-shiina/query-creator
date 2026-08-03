@@ -32,9 +32,13 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
-  --font-sans: Geist, sans-serif;
-  --font-mono: Geist Mono, monospace;
-  --font-tomorrow: Tomorrow, sans-serif;
+  /* 日本語UIを前提としたフォントスタック（Windows: Segoe UI + Yu Gothic UI / macOS: Hiragino） */
+  --font-sans:
+    system-ui, "Segoe UI", "Yu Gothic UI", "Hiragino Kaku Gothic ProN",
+    "Hiragino Sans", "Meiryo", sans-serif;
+  --font-mono:
+    "Geist Mono", Consolas, "Yu Gothic UI", "Hiragino Kaku Gothic ProN",
+    monospace;
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -60,43 +64,6 @@
     }
   }
 
-  @keyframes liquid-morph {
-    0% {
-      border-radius: 8px;
-      transform: scale(1);
-    }
-    25% {
-      border-radius: 20px;
-      transform: scale(1.05) skewX(2deg);
-    }
-    50% {
-      border-radius: 50px;
-      transform: scale(1.1) skewX(-1deg);
-    }
-    75% {
-      border-radius: 30px;
-      transform: scale(1.05) skewX(1deg);
-    }
-    100% {
-      border-radius: 8px;
-      transform: scale(1);
-    }
-  }
-
-  @keyframes liquid-ripple {
-    0% {
-      background: linear-gradient(45deg, #3b82f6, #8b5cf6);
-      box-shadow: 0 0 0 rgba(59, 130, 246, 0.5);
-    }
-    50% {
-      background: linear-gradient(45deg, #06b6d4, #3b82f6);
-      box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-    }
-    100% {
-      background: linear-gradient(45deg, #3b82f6, #8b5cf6);
-      box-shadow: 0 0 0 rgba(59, 130, 246, 0.5);
-    }
-  }
 }
 
 @utility container {
@@ -112,109 +79,80 @@
 
 @layer base {
   @font-face {
-    font-family: "Geist";
-
-    src: url("../assets/fonts/geist/geist.ttf") format("truetype");
-  }
-  @font-face {
     font-family: "Geist Mono";
     font-display: swap;
 
     src: url("../assets/fonts/geist-mono/geist-mono.ttf") format("truetype");
   }
-
-  @font-face {
-    font-family: "Tomorrow";
-    font-weight: 400;
-    font-style: normal;
-
-    src: url("../assets/fonts/tomorrow/tomorrow-regular.ttf") format("truetype");
-  }
-  @font-face {
-    font-family: "Tomorrow";
-    font-weight: 400;
-    font-style: italic;
-
-    src: url("../assets/fonts/tomorrow/tomorrow-italic.ttf") format("truetype");
-  }
-  @font-face {
-    font-family: "Tomorrow";
-    font-weight: 700;
-    font-style: normal;
-
-    src: url("../assets/fonts/tomorrow/tomorrow-bold.ttf") format("truetype");
-  }
-  @font-face {
-    font-family: "Tomorrow";
-    font-weight: 700;
-    font-style: italic;
-
-    src: url("../assets/fonts/tomorrow/tomorrow-bold-italic.ttf")
-      format("truetype");
-  }
 }
 
 @layer base {
+  /*
+   * モダンな日本語SaaS（SmartHR / freee 系）を意識した配色。
+   * - プライマリは鮮やかで信頼感のあるブルー
+   * - ページ背景はごく薄いグレー、面は白、罫線はヘアライン
+   * - 角丸8px・柔らかい影で軽やかに
+   */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 220 20% 98%;
+    --foreground: 222 22% 16%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 22% 16%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 222 22% 16%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 220 16% 94%;
+    --secondary-foreground: 222 18% 28%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 10% 46%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 217 91% 95%;
+    --accent-foreground: 221 83% 45%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 220 13% 90%;
+    --input: 220 13% 84%;
+    --ring: 221 83% 53%;
 
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 222 22% 9%;
+    --foreground: 220 15% 92%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 222 20% 13%;
+    --card-foreground: 220 15% 92%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 222 20% 12%;
+    --popover-foreground: 220 15% 92%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 217 91% 62%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 222 14% 20%;
+    --secondary-foreground: 220 15% 88%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 222 14% 18%;
+    --muted-foreground: 220 9% 60%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 219 50% 24%;
+    --accent-foreground: 217 91% 80%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 66% 54%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 222 12% 22%;
+    --input: 222 12% 30%;
+    --ring: 217 91% 62%;
   }
 }
 

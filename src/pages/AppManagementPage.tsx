@@ -34,6 +34,7 @@ import {
   Table2,
   Code2,
   Save,
+  AlertCircle,
 } from "lucide-react";
 import {
   addToFavorites,
@@ -43,6 +44,8 @@ import {
 import { cleanAndTruncateText } from "@/utils/text";
 import { getQueryCount } from "@/hooks/useQueryGenerator";
 import { PageLoading } from "@/components/ui/page-loading";
+import { useToast } from "@/components/ui/toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface AppManagementPageProps {
   auth: KintoneAuth;
@@ -55,6 +58,7 @@ export default function AppManagementPage({
   onSelectApp,
   onLogout,
 }: AppManagementPageProps) {
+  const { toast } = useToast();
   const [apps, setApps] = useState<KintoneApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -232,11 +236,12 @@ export default function AppManagementPage({
           modifiedAt: existingApp.modifiedAt,
         });
       } else {
-        alert("アプリ情報が見つかりません");
+        toast("アプリ情報が見つかりません", "error");
       }
     } catch (error) {
-      alert(
+      toast(
         `エラーが発生しました: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "error",
       );
     } finally {
       setAppInfoLoading(false);
@@ -400,34 +405,25 @@ export default function AppManagementPage({
   return (
     <div className="bg-background min-h-screen">
       {/* ヘッダー */}
-      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 border-b backdrop-blur-xl">
+      <header className="border-border bg-card sticky top-0 z-50 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-6">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-3">
-                <div>
-                  <h1 className="text-foreground text-xl font-bold">
-                    kintone API Query Creator
-                  </h1>
-                  <div className="text-muted-foreground flex items-center space-x-2 text-sm">
-                    <span className="text-foreground/80 font-medium">
-                      {auth.subdomain}.cybozu.com
-                    </span>
-                    <span className="text-muted-foreground/60">•</span>
-                    <span className="bg-muted/50 rounded-md px-2 py-0.5 font-mono text-xs">
-                      {apps.length} アプリ
-                    </span>
-                  </div>
-                </div>
+          <div className="flex items-center justify-between py-3">
+            <div className="flex items-center gap-4">
+              <h1 className="text-foreground text-base font-semibold">
+                kintone API Query Creator
+              </h1>
+              <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                <span className="font-medium">
+                  {auth.subdomain}.cybozu.com
+                </span>
+                <span className="border-border bg-muted rounded-sm border px-1.5 py-0.5">
+                  {apps.length} アプリ
+                </span>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-2">
               <ToggleTheme />
-              <Button
-                variant="outline"
-                onClick={onLogout}
-                className="hover:bg-muted/60 transition-colors"
-              >
+              <Button variant="outline" size="sm" onClick={onLogout}>
                 ログアウト
               </Button>
             </div>
@@ -435,39 +431,70 @@ export default function AppManagementPage({
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* エラー表示 */}
         {error && (
-          <div className="mb-8 rounded-lg border border-red-200 bg-gradient-to-r from-red-50 to-orange-50 p-6 shadow-sm dark:border-red-800 dark:from-red-950/20 dark:to-orange-950/20">
-            <div className="mb-3 flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-slate-500 to-slate-600">
-                <span className="text-sm font-bold text-white">!</span>
-              </div>
-              <h3 className="text-lg font-semibold text-red-800 dark:text-red-200">
+          <div
+            role="alert"
+            className="border-destructive bg-card mb-6 border border-l-4 p-4 shadow-sm"
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <AlertCircle className="text-destructive h-4 w-4" />
+              <h3 className="text-foreground text-sm font-semibold">
                 エラーが発生しました
               </h3>
             </div>
-            <p className="mb-4 leading-relaxed text-red-700 dark:text-red-300">
+            <p className="text-muted-foreground mb-3 text-sm leading-relaxed">
               {error}
             </p>
             <Button
               onClick={() => window.location.reload()}
               variant="outline"
               size="sm"
-              className="border-red-300 bg-white text-red-700 hover:bg-red-50 dark:border-red-600 dark:bg-gray-800 dark:text-red-300 dark:hover:bg-red-950/20"
             >
               再読み込み
             </Button>
           </div>
         )}
 
-        {/* ローディング */}
+        {/* ローディング: 実際のレイアウトを模したスケルトン */}
         {loading ? (
-          <PageLoading message="アプリを読み込み中..." />
+          <div aria-busy="true" aria-label="アプリを読み込み中">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row">
+              <Skeleton className="h-9 flex-1" />
+              <div className="flex gap-3">
+                <Skeleton className="h-9 w-20" />
+                <Skeleton className="h-9 w-32" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="border-border bg-card space-y-4 rounded-lg border p-6 shadow-sm"
+                >
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-3/4" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-16" />
+                      <Skeleton className="h-5 w-14" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                  <div className="space-y-1.5 pt-2">
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
           <>
             {/* フィルター・検索エリア */}
-            <div className="mb-8 space-y-6">
+            <div className="mb-6 space-y-4">
               {/* 検索とフィルター */}
               <div className="flex flex-col gap-4 sm:flex-row">
                 <div className="relative flex-1">
@@ -481,7 +508,7 @@ export default function AppManagementPage({
                         searchTerm: e.target.value,
                       }))
                     }
-                    className="bg-background/50 border-border/60 hover:border-border focus:bg-background h-11 pl-10 transition-colors"
+                    className="bg-card h-9 pl-10"
                   />
                 </div>
                 <div className="flex gap-3">
@@ -491,7 +518,7 @@ export default function AppManagementPage({
                     onValueChange={(value) =>
                       value && setViewMode(value as "grid" | "table")
                     }
-                    className="bg-muted border-border/60 rounded-lg border p-1"
+                    className="bg-muted border-border rounded-md border p-0.5"
                   >
                     <ToggleGroupItem
                       value="grid"
@@ -516,14 +543,14 @@ export default function AppManagementPage({
                         showFavoritesOnly: !prev.showFavoritesOnly,
                       }))
                     }
-                    className={`h-11 whitespace-nowrap transition-all duration-200 ${
+                    className={`h-9 whitespace-nowrap ${
                       filter.showFavoritesOnly
-                        ? "border-slate-600 text-slate-700 dark:text-slate-300"
-                        : "border-border/60 hover:bg-muted/60 hover:border-border text-foreground"
+                        ? "border-primary text-primary"
+                        : "text-foreground"
                     }`}
                   >
                     <Star
-                      className={`mr-2 h-4 w-4 ${filter.showFavoritesOnly ? "fill-current text-slate-700 dark:text-slate-300" : "text-foreground"}`}
+                      className={`mr-2 h-4 w-4 ${filter.showFavoritesOnly ? "fill-current text-primary" : "text-foreground"}`}
                     />
                     ブックマーク
                   </Button>
@@ -532,7 +559,7 @@ export default function AppManagementPage({
 
               {/* 検索結果の説明 */}
               {(filter.searchTerm || filter.showFavoritesOnly) && (
-                <div className="text-muted-foreground bg-muted/30 border-border/40 flex items-center gap-2 rounded-lg border px-4 py-2 text-sm">
+                <div className="text-muted-foreground bg-card border-border flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                   <Search className="h-4 w-4" />
                   <span>
                     {filter.searchTerm && (
@@ -556,32 +583,36 @@ export default function AppManagementPage({
 
             {/* アプリ一覧 */}
             {viewMode === "grid" ? (
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredApps.map((app) => (
                   <Card
                     key={app.appId}
-                    className="group border-border/60 hover:border-border bg-card/50 hover:bg-card relative flex h-full flex-col overflow-hidden backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-black/5"
+                    onClick={() => handleAppSelect(app)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAppSelect(app);
+                    }}
+                    className="group border-border bg-card hover:border-primary/40 relative flex h-full cursor-pointer flex-col overflow-hidden transition-all hover:shadow-md hover:shadow-black/5"
                   >
-                    {/* カード背景のグラデーション効果 */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-500/5 to-slate-600/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
                     <CardHeader className="relative z-10 pb-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 space-y-2">
-                          <CardTitle className="text-foreground group-hover:text-foreground/90 line-clamp-2 text-lg leading-tight font-semibold transition-colors">
+                          <CardTitle className="text-foreground line-clamp-2 text-base leading-tight font-semibold">
                             {cleanAndTruncateText(app.name, 50)}
                           </CardTitle>
                           <div className="flex items-center gap-2">
                             <Badge
                               variant="secondary"
-                              className="bg-muted/60 hover:bg-muted font-mono text-xs transition-colors"
+                              className="bg-muted font-mono text-xs"
                             >
                               ID: {app.appId}
                             </Badge>
                             {app.code && (
                               <Badge
                                 variant="outline"
-                                className="border-border/60 h-5 px-2 py-0 text-xs"
+                                className="h-5 px-2 py-0 text-xs"
                               >
                                 {app.code}
                               </Badge>
@@ -592,7 +623,7 @@ export default function AppManagementPage({
                                 queryCount > 0 && (
                                   <Badge
                                     variant="outline"
-                                    className="h-5 border-slate-300 bg-slate-50 px-2 py-0 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300"
+                                    className="border-primary/40 text-primary h-5 px-2 py-0 text-xs"
                                   >
                                     <Save className="mr-1 h-3 w-3" />
                                     {queryCount}
@@ -605,7 +636,10 @@ export default function AppManagementPage({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => toggleFavorite(app.appId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavorite(app.appId);
+                          }}
                           className="group/star h-8 w-8 flex-shrink-0 p-0 transition-colors hover:bg-yellow-50 dark:hover:bg-yellow-950/20"
                         >
                           {app.isFavorite ? (
@@ -629,7 +663,7 @@ export default function AppManagementPage({
                       </CardDescription>
 
                       {/* メタ情報 */}
-                      <div className="mb-6 space-y-2">
+                      <div className="mb-4 space-y-1.5">
                         {app.creator?.name && (
                           <div className="text-muted-foreground flex items-center gap-2 text-xs">
                             <User className="h-3 w-3" />
@@ -655,7 +689,7 @@ export default function AppManagementPage({
                       <div className="mt-auto flex gap-2">
                         <Button
                           onClick={() => handleAppSelect(app)}
-                          className="flex-1 bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+                          className="flex-1"
                           size="sm"
                         >
                           <Code2 className="mr-2 h-4 w-4" />
@@ -672,8 +706,11 @@ export default function AppManagementPage({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="border-border/60 hover:bg-muted/60 hover:border-border px-3 transition-colors"
-                              onClick={() => fetchAppInfo(app.appId)}
+                              className="px-3"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                fetchAppInfo(app.appId);
+                              }}
                             >
                               <Info className="h-4 w-4" />
                             </Button>
@@ -710,7 +747,7 @@ export default function AppManagementPage({
                                         <label className="text-muted-foreground text-sm font-medium">
                                           アプリ名
                                         </label>
-                                        <div className="rounded-md border border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 p-3 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                        <div className="border-border bg-muted/40 rounded-md border p-3">
                                           <p className="text-sm font-medium">
                                             {selectedAppInfo.name}
                                           </p>
@@ -748,7 +785,7 @@ export default function AppManagementPage({
                                     <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
                                       説明
                                     </h3>
-                                    <div className="min-h-[100px] rounded-md border border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 p-4 text-sm dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                    <div className="border-border bg-muted/40 min-h-[100px] rounded-md border p-4 text-sm">
                                       {selectedAppInfo.description ? (
                                         <p className="leading-relaxed whitespace-pre-wrap">
                                           {cleanAndTruncateText(
@@ -773,12 +810,12 @@ export default function AppManagementPage({
                                       {/* 作成情報 */}
                                       <div className="space-y-3">
                                         <div className="flex items-center gap-2">
-                                          <User className="h-4 w-4 text-green-600" />
+                                          <User className="text-muted-foreground h-4 w-4" />
                                           <label className="text-muted-foreground text-sm font-medium">
                                             作成者
                                           </label>
                                         </div>
-                                        <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-4 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                        <div className="border-border bg-muted/40 rounded-md border p-4">
                                           <p className="text-sm font-medium">
                                             {(selectedAppInfo.creator?.name &&
                                               selectedAppInfo.creator.name.trim()) ||
@@ -791,7 +828,7 @@ export default function AppManagementPage({
                                                 {selectedAppInfo.creator.code}
                                               </p>
                                             )}
-                                          <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+                                          <div className="mt-3 flex items-center gap-1 border-border border-t pt-2">
                                             <Calendar className="text-muted-foreground h-3 w-3" />
                                             <p className="text-muted-foreground text-xs">
                                               {selectedAppInfo.createdAt
@@ -807,12 +844,12 @@ export default function AppManagementPage({
                                       {/* 更新情報 */}
                                       <div className="space-y-3">
                                         <div className="flex items-center gap-2">
-                                          <User className="h-4 w-4 text-blue-600" />
+                                          <User className="text-muted-foreground h-4 w-4" />
                                           <label className="text-muted-foreground text-sm font-medium">
                                             最終更新者
                                           </label>
                                         </div>
-                                        <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-4 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                        <div className="border-border bg-muted/40 rounded-md border p-4">
                                           <p className="text-sm font-medium">
                                             {(selectedAppInfo.modifier?.name &&
                                               selectedAppInfo.modifier.name.trim()) ||
@@ -825,7 +862,7 @@ export default function AppManagementPage({
                                                 {selectedAppInfo.modifier.code}
                                               </p>
                                             )}
-                                          <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+                                          <div className="mt-3 flex items-center gap-1 border-border border-t pt-2">
                                             <Calendar className="text-muted-foreground h-3 w-3" />
                                             <p className="text-muted-foreground text-xs">
                                               {selectedAppInfo.modifiedAt
@@ -861,8 +898,8 @@ export default function AppManagementPage({
             {filteredApps.length === 0 && !loading && viewMode === "grid" && (
               <div className="py-20 text-center">
                 <div className="flex flex-col items-center gap-6">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900/20 dark:to-slate-800/20">
-                    <Search className="h-8 w-8 text-slate-500" />
+                  <div className="flex h-16 w-16 items-center justify-center border-border bg-muted rounded-md border">
+                    <Search className="text-muted-foreground h-8 w-8" />
                   </div>
                   <div className="space-y-2">
                     <h3 className="text-foreground text-xl font-semibold">

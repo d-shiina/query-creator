@@ -48,7 +48,11 @@ export function exposeKintoneAPI() {
       }
     },
 
-    getAppFields: async (auth: KintoneAuth, appId: string) => {
+    getAppFields: async (
+      auth: KintoneAuth,
+      appId: string,
+      spaceId?: string | null,
+    ) => {
       try {
         console.log(
           "Preload: Calling main process getAppFields for app:",
@@ -58,6 +62,7 @@ export function exposeKintoneAPI() {
           "kintone:getAppFields",
           auth,
           appId,
+          spaceId,
         );
         return result;
       } catch (error) {
@@ -72,7 +77,12 @@ export function exposeKintoneAPI() {
       }
     },
 
-    executeQuery: async (auth: KintoneAuth, appId: string, query: string) => {
+    executeQuery: async (
+      auth: KintoneAuth,
+      appId: string,
+      query: string,
+      spaceId?: string | null,
+    ) => {
       try {
         console.log(
           "Preload: Calling main process executeQuery for app:",
@@ -83,6 +93,7 @@ export function exposeKintoneAPI() {
           auth,
           appId,
           query,
+          spaceId,
         );
         return result;
       } catch (error) {

@@ -21,6 +21,7 @@ import {
   FileText,
   RotateCcw,
   Copy,
+  GripVertical,
   Edit,
   ArrowRight,
   ExternalLink,
@@ -71,6 +72,8 @@ import {
   QUERY_OUTPUT_FORMATS,
   type QueryOutputFormat,
 } from "@/utils/query-format";
+import { getOperatorHint } from "@/utils/query-operator-hints";
+import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
@@ -127,6 +130,8 @@ interface ConditionInputProps {
   index: number;
   onUpdate: (index: number, updates: Partial<QueryCondition>) => void;
   onRemove: (index: number) => void;
+  onDuplicate: (index: number) => void;
+  onMove: (from: number, to: number) => void;
   fields: KintoneField[];
   users: Array<{ code: string; name: string; email: string }>;
   usersLoaded: boolean;
@@ -801,6 +806,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   index,
   onUpdate,
   onRemove,
+  onDuplicate,
+  onMove,
   fields,
   users,
   usersLoaded,
@@ -808,6 +815,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   canRemove,
 }) => {
   const [localValue, setLocalValue] = useState(condition.value);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [fieldComboboxOpen, setFieldComboboxOpen] = useState(false);
   const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
 
@@ -948,6 +956,14 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
     fieldInfo?.type === "DATETIME" ||
     fieldInfo?.type === "CREATED_TIME" ||
     fieldInfo?.type === "UPDATED_TIME";
+  // 選択肢を持つフィールドは自由入力ではなく選択式にする
+  const optionChoices = fieldInfo?.options ?? [];
+  const isOptionField =
+    (fieldInfo?.type === "DROP_DOWN" ||
+      fieldInfo?.type === "RADIO_BUTTON" ||
+      fieldInfo?.type === "CHECK_BOX" ||
+      fieldInfo?.type === "MULTI_SELECT") &&
+    optionChoices.length > 0;
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
@@ -988,9 +1004,37 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   }, [fieldInfo, isUserField, isUserFieldByName, isDateField, isDateTimeField]);
 
   return (
-    <div className="bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words">
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+        if (!Number.isNaN(from) && from !== index) onMove(from, index);
+      }}
+      className={`bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words transition-shadow ${
+        isDragOver ? "ring-primary/60 ring-2" : ""
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
+          <span
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/plain", String(index));
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            title="ドラッグして並び替え"
+            aria-label={`条件 ${index + 1} をドラッグして並び替え`}
+            className="text-muted-foreground/60 hover:text-muted-foreground -ml-1 cursor-grab p-1 active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" />
+          </span>
           <Badge variant="outline" className="text-xs">
             条件 {index + 1}
           </Badge>
@@ -1011,16 +1055,28 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             </Select>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onRemove(index)}
-          className="text-destructive hover:text-destructive h-7 w-7 p-0"
-          disabled={!canRemove}
-          aria-label="条件を削除"
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDuplicate(index)}
+            className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
+            title="この条件を複製"
+            aria-label="条件を複製"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRemove(index)}
+            className="text-destructive hover:text-destructive h-7 w-7 p-0"
+            disabled={!canRemove}
+            aria-label="条件を削除"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -1123,8 +1179,24 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                 )}
               </SelectContent>
             </Select>
+            {getOperatorHint(condition.operator) && (
+              <p className="text-muted-foreground mt-1 text-xs leading-snug">
+                {getOperatorHint(condition.operator)}
+              </p>
+            )}
           </div>
         </div>
+
+        {/* 未入力の条件はクエリに含まれないことを知らせる */}
+        {condition.field &&
+          !isNullOperator &&
+          (isInOperator
+            ? (condition.values || []).every((v) => !v.trim())
+            : !localValue.trim()) && (
+            <p className="text-xs text-yellow-700 dark:text-yellow-400">
+              値が未入力のため、この条件はクエリに含まれません
+            </p>
+          )}
 
         {/* 値入力エリア */}
         {!isNullOperator && (
@@ -1134,18 +1206,43 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               <div className="space-y-2">
                 {(condition.values || [""]).map((value, valueIndex) => (
                   <div key={valueIndex} className="flex gap-2">
-                    {/* 入力フィールド */}
-                    <Input
-                      value={value}
-                      onChange={(e) => {
-                        const newValues = [...(condition.values || [""])];
-                        newValues[valueIndex] = e.target.value;
-                        onUpdate(index, { values: newValues });
-                      }}
-                      placeholder={getPlaceholder()}
-                      className="flex-1"
-                      aria-label={`値 ${valueIndex + 1}`}
-                    />
+                    {/* 入力フィールド（選択肢フィールドは選択式） */}
+                    {isOptionField ? (
+                      <Select
+                        value={value || undefined}
+                        onValueChange={(newValue) => {
+                          const newValues = [...(condition.values || [""])];
+                          newValues[valueIndex] = newValue;
+                          onUpdate(index, { values: newValues });
+                        }}
+                      >
+                        <SelectTrigger
+                          className="flex-1"
+                          aria-label={`値 ${valueIndex + 1} を選択`}
+                        >
+                          <SelectValue placeholder="選択肢から選ぶ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {optionChoices.map((choice) => (
+                            <SelectItem key={choice} value={choice}>
+                              {choice}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={value}
+                        onChange={(e) => {
+                          const newValues = [...(condition.values || [""])];
+                          newValues[valueIndex] = e.target.value;
+                          onUpdate(index, { values: newValues });
+                        }}
+                        placeholder={getPlaceholder()}
+                        className="flex-1"
+                        aria-label={`値 ${valueIndex + 1}`}
+                      />
+                    )}
 
                     {/* ボタン群 */}
                     <div className="flex gap-1">
@@ -1302,7 +1399,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                       <div className="text-muted-foreground text-xs">
                                         {func.description}
                                       </div>
-                                      <div className="mt-1 font-mono text-xs text-blue-600">
+                                      <div className="mt-1 text-primary font-mono text-xs">
                                         {func.value}
                                       </div>
                                     </div>
@@ -1354,14 +1451,35 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               /* 単一値入力 */
               <div className="space-y-2">
                 <div className="flex gap-2">
-                  {/* 入力フィールド */}
-                  <Input
-                    value={localValue}
-                    onChange={(e) => setLocalValue(e.target.value)}
-                    placeholder={getPlaceholder()}
-                    className="flex-1"
-                    aria-label="値を入力"
-                  />
+                  {/* 入力フィールド（選択肢フィールドは選択式） */}
+                  {isOptionField ? (
+                    <Select
+                      value={localValue || undefined}
+                      onValueChange={(value) => {
+                        setLocalValue(value);
+                        onUpdate(index, { value });
+                      }}
+                    >
+                      <SelectTrigger className="flex-1" aria-label="値を選択">
+                        <SelectValue placeholder="選択肢から選ぶ" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {optionChoices.map((choice) => (
+                          <SelectItem key={choice} value={choice}>
+                            {choice}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      value={localValue}
+                      onChange={(e) => setLocalValue(e.target.value)}
+                      placeholder={getPlaceholder()}
+                      className="flex-1"
+                      aria-label="値を入力"
+                    />
+                  )}
 
                   {/* ボタン群 */}
                   <div className="flex gap-1">
@@ -1501,7 +1619,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                     <div className="text-muted-foreground text-xs">
                                       {func.description}
                                     </div>
-                                    <div className="mt-1 font-mono text-xs text-blue-600">
+                                    <div className="mt-1 text-primary font-mono text-xs">
                                       {func.value}
                                     </div>
                                   </div>
@@ -1531,6 +1649,7 @@ export default function QueryGeneratorPage({
   onLogout,
   editingQueryId,
 }: QueryGeneratorPageProps) {
+  const { toast } = useToast();
   // State管理
   const [loading, setLoading] = useState(true);
   const [fields, setFields] = useState<KintoneField[]>([]);
@@ -1548,16 +1667,45 @@ export default function QueryGeneratorPage({
   const [offset, setOffset] = useState<number>();
   const [executing, setExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState("table");
   const [currentQueryName, setCurrentQueryName] = useState("");
   const [currentQueryMemo, setCurrentQueryMemo] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentSavedQueryId, setCurrentSavedQueryId] = useState<string | null>(null);
 
+  // 編集中の入力があるか（リセット・離脱の確認に使用）
+  const hasUnsavedInput = useMemo(
+    () =>
+      conditions.some(
+        (c) =>
+          c.field || c.value.trim() || (c.values || []).some((v) => v.trim()),
+      ) ||
+      sortField !== "none" ||
+      limit !== undefined ||
+      offset !== undefined,
+    [conditions, sortField, limit, offset],
+  );
+
   // キーボードショートカット for 戻る (Escape キー)
+  // - ポップオーバーやダイアログが開いている間はRadix側のEscape（閉じる）を優先する
+  // - IME変換中のEscapeでは反応しない
+  // - 編集中の入力がある場合は即座に離脱せず確認ダイアログを挟む
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.ctrlKey && !event.metaKey) {
+      if (event.key !== "Escape" || event.ctrlKey || event.metaKey) return;
+      if (event.isComposing) return;
+      if (event.defaultPrevented) return;
+
+      const hasOpenLayer = document.querySelector(
+        '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
+      );
+      if (hasOpenLayer) return;
+
+      if (hasUnsavedInput) {
+        setLeaveDialogOpen(true);
+      } else {
         onBack();
       }
     };
@@ -1566,7 +1714,7 @@ export default function QueryGeneratorPage({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onBack]);
+  }, [onBack, hasUnsavedInput]);
 
   const [saveAnimating, setSaveAnimating] = useState(false);
   const [saveAsAnimating, setSaveAsAnimating] = useState(false);
@@ -1629,6 +1777,27 @@ export default function QueryGeneratorPage({
     setConditions((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const duplicateCondition = useCallback((index: number) => {
+    setConditions((prev) => {
+      const next = [...prev];
+      const source = prev[index];
+      next.splice(index + 1, 0, {
+        ...source,
+        values: source.values ? [...source.values] : undefined,
+      });
+      return next;
+    });
+  }, []);
+
+  const moveCondition = useCallback((from: number, to: number) => {
+    setConditions((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }, []);
+
   const resetConditions = useCallback(() => {
     setConditions([{ field: "", operator: "=", value: "", logicalOperator: "and" }]);
     setSortField("none");
@@ -1666,7 +1835,7 @@ export default function QueryGeneratorPage({
 
   const executeQuery = useCallback(async () => {
     if (!generatedQuery) {
-      alert("クエリが生成されていません");
+      toast("クエリが生成されていません", "error");
       return;
     }
 
@@ -1683,6 +1852,7 @@ export default function QueryGeneratorPage({
         auth,
         app.appId,
         generatedQuery,
+        app.spaceId,
       );
 
       // レスポンス全体をログ出力
@@ -1732,11 +1902,25 @@ export default function QueryGeneratorPage({
     } finally {
       setExecuting(false);
     }
-  }, [generatedQuery, auth, app.appId]);
+  }, [generatedQuery, auth, app.appId, app.spaceId]);
+
+  // Ctrl+Enter（macはCmd+Enter）でクエリ実行
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        if (generatedQuery && !executing) {
+          e.preventDefault();
+          executeQuery();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [generatedQuery, executing, executeQuery]);
 
   const handleSaveQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
-      alert("クエリ名とクエリ内容が必要です");
+      toast("クエリ名とクエリ内容が必要です", "error");
       return;
     }
 
@@ -1775,7 +1959,7 @@ export default function QueryGeneratorPage({
       console.error("Error saving query:", error);
       setSaveAnimating(false);
       setNavigatingToQueryList(false);
-      alert("クエリの保存に失敗しました");
+      toast("クエリの保存に失敗しました", "error");
     }
   }, [
     generatedQuery,
@@ -1794,7 +1978,7 @@ export default function QueryGeneratorPage({
   // 別名保存用の関数
   const handleSaveAsQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
-      alert("クエリ名とクエリ内容が必要です");
+      toast("クエリ名とクエリ内容が必要です", "error");
       return;
     }
 
@@ -1834,7 +2018,7 @@ export default function QueryGeneratorPage({
       console.error("Error saving query as new:", error);
       setSaveAsAnimating(false);
       setNavigatingToQueryList(false);
-      alert("クエリの別名保存に失敗しました");
+      toast("クエリの別名保存に失敗しました", "error");
     }
   }, [
     generatedQuery,
@@ -1931,7 +2115,11 @@ export default function QueryGeneratorPage({
           return;
         }
 
-        const result = await window.kintoneAPI.getAppFields(auth, app.appId);
+        const result = await window.kintoneAPI.getAppFields(
+          auth,
+          app.appId,
+          app.spaceId,
+        );
 
         if (result.success && result.data?.fields) {
           setFields(result.data.fields);
@@ -1966,7 +2154,7 @@ export default function QueryGeneratorPage({
     };
 
     fetchFields();
-  }, [auth, app.appId]);
+  }, [auth, app.appId, app.spaceId]);
 
   useEffect(() => {
     const query = queryUtils.generateQuery(conditions, fields, queryOptions);
@@ -1980,9 +2168,9 @@ export default function QueryGeneratorPage({
   return (
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 border-b backdrop-blur-xl">
+      <header className="border-border bg-card sticky top-0 z-40 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-6">
+          <div className="flex items-center justify-between py-3">
             <div className="flex items-center space-x-3">
               <BackButton
                 onClick={onBack}
@@ -2060,7 +2248,7 @@ export default function QueryGeneratorPage({
               <Button
                 variant="outline"
                 onClick={onLogout}
-                className="hover:bg-muted/60 transition-colors"
+                size="sm"
               >
                 ログアウト
               </Button>
@@ -2135,13 +2323,85 @@ export default function QueryGeneratorPage({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={resetConditions}
+                        onClick={() => {
+                          if (hasUnsavedInput) {
+                            setResetDialogOpen(true);
+                          } else {
+                            resetConditions();
+                          }
+                        }}
                         className="text-muted-foreground hover:text-foreground"
                         aria-label="条件をリセット"
                       >
                         <RotateCcw className="h-4 w-4 mr-2" />
                         リセット
                       </Button>
+                      <Dialog
+                        open={leaveDialogOpen}
+                        onOpenChange={setLeaveDialogOpen}
+                      >
+                        <DialogContent className="sm:max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle>
+                              編集中の内容を破棄して戻りますか？
+                            </DialogTitle>
+                            <DialogDescription>
+                              保存されていない検索条件は失われます。
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setLeaveDialogOpen(false)}
+                            >
+                              キャンセル
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                setLeaveDialogOpen(false);
+                                onBack();
+                              }}
+                            >
+                              破棄して戻る
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      <Dialog
+                        open={resetDialogOpen}
+                        onOpenChange={setResetDialogOpen}
+                      >
+                        <DialogContent className="sm:max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle>条件をリセットしますか？</DialogTitle>
+                            <DialogDescription>
+                              入力中の検索条件と並び替え・件数の設定がすべて消去されます。この操作は元に戻せません。
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setResetDialogOpen(false)}
+                            >
+                              キャンセル
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                resetConditions();
+                                setResetDialogOpen(false);
+                              }}
+                            >
+                              リセットする
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -2153,6 +2413,8 @@ export default function QueryGeneratorPage({
                           index={index}
                           onUpdate={handleConditionUpdate}
                           onRemove={removeCondition}
+                          onDuplicate={duplicateCondition}
+                          onMove={moveCondition}
                           fields={fields}
                           users={users}
                           usersLoaded={usersLoaded}
@@ -2307,8 +2569,8 @@ export default function QueryGeneratorPage({
                 </Card>
               </div>
 
-              {/* Right: Generated Query and Results */}
-              <div className="space-y-6">
+              {/* Right: Generated Query and Results（条件編集中も常に見えるように追従・独立スクロール） */}
+              <div className="scrollbar-thin space-y-6 lg:sticky lg:top-16 lg:max-h-[calc(100vh-13rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
                 <Card className="h-fit">
                   <CardHeader>
                     <CardTitle>生成されたクエリ</CardTitle>
@@ -2380,6 +2642,7 @@ export default function QueryGeneratorPage({
                                 setTimeout(() => setQueryExecuted(false), 2000);
                               }}
                               disabled={executing}
+                              title="Ctrl+Enterでも実行できます"
                               size="sm"
                               className={`flex-1 h-8 text-sm transition-all duration-300 ${
                                 executing 
@@ -2458,7 +2721,7 @@ export default function QueryGeneratorPage({
                                 </div>
                                 <div className="bg-background space-y-2 rounded p-3">
                                   <div className="flex">
-                                    <span className="w-32 font-mono text-xs text-blue-600">
+                                    <span className="w-32 text-primary font-mono text-xs">
                                       Content-Type:
                                     </span>
                                     <span className="font-mono text-xs">
@@ -2466,7 +2729,7 @@ export default function QueryGeneratorPage({
                                     </span>
                                   </div>
                                   <div className="flex">
-                                    <span className="w-32 font-mono text-xs text-blue-600">
+                                    <span className="w-32 text-primary font-mono text-xs">
                                       X-Cybozu-Authorization:
                                     </span>
                                     <span className="text-muted-foreground font-mono text-xs">
@@ -2525,15 +2788,19 @@ export default function QueryGeneratorPage({
                       <CardDescription>
                         {queryResult.error
                           ? "クエリの実行中にエラーが発生しました"
-                          : `${queryResult.records?.length || 0}件のレコードが見つかりました`}
+                          : `${queryResult.records?.length || 0}件のレコードを取得しました${
+                              (queryResult.records?.length || 0) > 50
+                                ? "（テーブルには最初の50件を表示）"
+                                : ""
+                            }`}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       {queryResult.error ? (
-                        <div className="rounded-lg border bg-gray-50 p-4 dark:bg-gray-900/50">
+                        <div className="bg-muted/40 rounded-md border p-4">
                           <div className="mb-3 flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <h3 className="text-foreground text-sm font-medium">
                               エラー詳細情報
                             </h3>
                           </div>
@@ -2549,7 +2816,7 @@ export default function QueryGeneratorPage({
                                 <div className="space-y-3">
                                   {errorObj.code && (
                                     <div className="flex items-center gap-3">
-                                      <span className="min-w-[80px] text-xs font-medium text-gray-500 dark:text-gray-400">
+                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
                                         エラーコード
                                       </span>
                                       <span className="rounded bg-red-100 px-2 py-1 font-mono text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
@@ -2559,20 +2826,20 @@ export default function QueryGeneratorPage({
                                   )}
                                   {errorObj.message && (
                                     <div className="flex items-start gap-3">
-                                      <span className="min-w-[80px] pt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                      <span className="text-muted-foreground min-w-[80px] pt-1 text-xs font-medium">
                                         メッセージ
                                       </span>
-                                      <span className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                                      <span className="text-foreground text-sm leading-relaxed">
                                         {errorObj.message}
                                       </span>
                                     </div>
                                   )}
                                   {errorObj.id && (
                                     <div className="flex items-center gap-3">
-                                      <span className="min-w-[80px] text-xs font-medium text-gray-500 dark:text-gray-400">
+                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
                                         リクエストID
                                       </span>
-                                      <span className="rounded bg-gray-200 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                      <span className="bg-muted text-muted-foreground rounded-sm px-2 py-1 font-mono text-xs">
                                         {errorObj.id}
                                       </span>
                                     </div>
@@ -2583,7 +2850,7 @@ export default function QueryGeneratorPage({
                             // エラーが文字列の場合
                             else {
                               return (
-                                <div className="text-sm text-gray-700 dark:text-gray-300">
+                                <div className="text-foreground text-sm">
                                   <pre className="font-mono text-xs whitespace-pre-wrap">
                                     {String(queryResult.error)}
                                   </pre>
@@ -2726,20 +2993,45 @@ export default function QueryGeneratorPage({
 
       {/* シンプルなクエリ保存エリア - フッター上 */}
       {generatedQuery && (
-        <div className="fixed bottom-7 left-0 right-0 bg-background/95 backdrop-blur-lg border-t border-border/50 shadow-lg z-40">
+        <div className="bg-card border-border fixed bottom-7 left-0 right-0 z-40 border-t shadow-sm">
           <div className="px-6 py-3">
-            <div className="flex items-center justify-center space-x-4 max-w-4xl mx-auto">
+            <div className="mx-auto flex max-w-4xl items-center justify-center gap-3">
+              <span className="text-muted-foreground hidden text-sm font-medium whitespace-nowrap sm:inline">
+                クエリを保存
+              </span>
               <Input
-                placeholder="クエリ名"
+                placeholder="クエリ名（必須）"
                 value={currentQueryName}
                 onChange={(e) => setCurrentQueryName(e.target.value)}
-                className="w-64 h-9 bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    generatedQuery &&
+                    currentQueryName.trim() &&
+                    !navigatingToQueryList
+                  ) {
+                    handleSaveQuery();
+                  }
+                }}
+                aria-label="クエリ名"
+                className="bg-background h-9 w-64 text-sm"
               />
               <Input
                 placeholder="メモ（任意）"
                 value={currentQueryMemo}
                 onChange={(e) => setCurrentQueryMemo(e.target.value)}
-                className="w-64 h-9 bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    generatedQuery &&
+                    currentQueryName.trim() &&
+                    !navigatingToQueryList
+                  ) {
+                    handleSaveQuery();
+                  }
+                }}
+                aria-label="メモ"
+                className="bg-background h-9 w-64 text-sm"
               />
               {/* 保存ボタン */}
               {(isEditMode || currentSavedQueryId || editingQueryId) ? (
@@ -2838,7 +3130,7 @@ export default function QueryGeneratorPage({
                 </p>
               </div>
               <div className="w-full bg-muted rounded-full h-2">
-                <div className="bg-primary h-2 rounded-full animate-pulse w-full"></div>
+                <div className="bg-primary h-2 w-full rounded-full"></div>
               </div>
             </div>
           </div>

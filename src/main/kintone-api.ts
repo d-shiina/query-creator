@@ -1,5 +1,15 @@
 import { ipcMain, net } from "electron";
 import { KintoneAuth, KintoneApp, KintoneField } from "../types/kintone";
+import { buildKintoneUrl, normalizeGuestSpaceId } from "../utils/kintone-url";
+
+/**
+ * アプリごとのゲストスペース判定結果のキャッシュ。
+ * key: `${subdomain}:${appId}` / value: ゲストスペースID、通常スペースならnull
+ *
+ * 通常パスとゲストパスのどちらが正しいかは一度試さないと分からないため、
+ * 判定結果を覚えておき2回目以降は最初から正しいパスへ投げる。
+ */
+const guestSpaceCache = new Map<string, string | null>();
 
 // ログイン専用のKintone API呼び出し関数
 async function makeKintoneLoginRequest(
@@ -86,9 +96,9 @@ async function makeKintoneRequest(
   method: string = "GET",
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any,
+  guestSpaceId?: string | null,
 ) {
-  const baseUrl = `https://${auth.subdomain}.cybozu.com`;
-  const url = `${baseUrl}/k/v1/${endpoint}`;
+  const url = buildKintoneUrl(auth.subdomain, endpoint, guestSpaceId);
 
   // パスワード認証用のBase64エンコード
   const authString = `${auth.username}:${auth.password}`;
@@ -148,6 +158,66 @@ async function makeKintoneRequest(
 
     request.end();
   });
+}
+
+/**
+ * アプリ単位のAPI呼び出し。ゲストスペースのアプリを自動で判別する。
+ *
+ * ゲストスペースかどうかは通常パスの成否でしか判断できないため、
+ *   1. キャッシュがあればそのパスで実行
+ *   2. なければ通常パス `/k/v1/` を試す
+ *   3. 失敗し、かつアプリにspaceIdがあれば `/k/guest/{spaceId}/v1/` で再試行
+ * の順で解決し、結果をキャッシュする。
+ *
+ * 通常スペースのアプリでは追加のリクエストは発生しない。
+ */
+async function makeKintoneAppRequest(
+  auth: KintoneAuth,
+  endpoint: string,
+  appId: string,
+  spaceId?: string | null,
+  method: string = "GET",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: any,
+) {
+  const cacheKey = `${auth.subdomain}:${appId}`;
+  const normalizedSpaceId = normalizeGuestSpaceId(spaceId);
+
+  // 判定済みならそのパスで即実行
+  if (guestSpaceCache.has(cacheKey)) {
+    const cached = guestSpaceCache.get(cacheKey) ?? null;
+    return makeKintoneRequest(auth, endpoint, method, data, cached);
+  }
+
+  // まず通常パスを試す
+  const response = await makeKintoneRequest(auth, endpoint, method, data);
+  if (response.ok) {
+    guestSpaceCache.set(cacheKey, null);
+    return response;
+  }
+
+  // 失敗かつspaceIdを持つ場合のみ、ゲストスペースとして再試行
+  if (normalizedSpaceId) {
+    console.log(
+      `Retrying app ${appId} as guest space (spaceId: ${normalizedSpaceId})`,
+    );
+    const guestResponse = await makeKintoneRequest(
+      auth,
+      endpoint,
+      method,
+      data,
+      normalizedSpaceId,
+    );
+
+    if (guestResponse.ok) {
+      console.log(`App ${appId} resolved as guest space app`);
+      guestSpaceCache.set(cacheKey, normalizedSpaceId);
+      return guestResponse;
+    }
+  }
+
+  // どちらも失敗した場合は通常パスのエラーを返す（判定はキャッシュしない）
+  return response;
 }
 
 // User API専用のKintone API呼び出し関数（/v1/エンドポイント用）
@@ -336,13 +406,15 @@ export function setupKintoneAPI() {
   // アプリのフィールド情報取得（システムフィールド手動追加処理を削除）
   ipcMain.handle(
     "kintone:getAppFields",
-    async (event, auth: KintoneAuth, appId: string) => {
+    async (event, auth: KintoneAuth, appId: string, spaceId?: string | null) => {
       try {
         console.log(`=== Getting fields for app ${appId} ===`);
 
-        const response = await makeKintoneRequest(
+        const response = await makeKintoneAppRequest(
           auth,
           `app/form/fields.json?app=${appId}`,
+          appId,
+          spaceId,
         );
 
         if (!response.ok) {
@@ -364,19 +436,34 @@ export function setupKintoneAPI() {
           Object.keys(responseData.properties || {}).length,
         );
 
+        // 選択肢を配列に正規化する。
+        // kintone APIはドロップダウン等のoptionsを
+        // { "選択肢A": { label, index }, ... } のオブジェクトで返すため、
+        // index順のラベル配列へ変換する（UI側は string[] を前提とする）。
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const normalizeOptions = (options: any): string[] => {
+          if (!options) return [];
+          if (Array.isArray(options)) return options;
+          return Object.values(options)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .sort((a: any, b: any) => Number(a?.index ?? 0) - Number(b?.index ?? 0))
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .map((opt: any) => String(opt?.label ?? ""))
+            .filter((label) => label !== "");
+        };
+
         // レスポンスデータをKintoneField型に変換
         const fields: KintoneField[] = Object.entries(
           responseData.properties || {},
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ).map(([code, field]: [string, any]) => {
-          console.log(`Field ${code}:`, field); // デバッグ用
           return {
             code,
             label: field.label,
             type: field.type,
             required: field.required || false,
             unique: field.unique || false,
-            options: field.options || [],
+            options: normalizeOptions(field.options),
           };
         });
 
@@ -403,7 +490,13 @@ export function setupKintoneAPI() {
   // クエリ実行
   ipcMain.handle(
     "kintone:executeQuery",
-    async (event, auth: KintoneAuth, appId: string, query: string) => {
+    async (
+      event,
+      auth: KintoneAuth,
+      appId: string,
+      query: string,
+      spaceId?: string | null,
+    ) => {
       try {
         console.log(`=== Executing query for app ${appId} ===`);
         console.log("Query:", query);
@@ -413,7 +506,12 @@ export function setupKintoneAPI() {
           endpoint += `&query=${encodeURIComponent(query)}`;
         }
 
-        const response = await makeKintoneRequest(auth, endpoint);
+        const response = await makeKintoneAppRequest(
+          auth,
+          endpoint,
+          appId,
+          spaceId,
+        );
 
         if (!response.ok) {
           const errorText = await response.text();
