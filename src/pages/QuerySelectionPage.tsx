@@ -215,9 +215,10 @@ export default function QuerySelectionPage({
   return (
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 border-b backdrop-blur-xl">
+      <header className="border-border bg-card sticky top-0 z-40 border-b">
+        <div className="bg-primary h-0.5 w-full" />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-6">
+          <div className="flex items-center justify-between py-3">
             <div className="flex items-center space-x-3">
               <BackButton
                 onClick={onBack}
@@ -241,7 +242,7 @@ export default function QuerySelectionPage({
               <Button
                 variant="outline"
                 onClick={onLogout}
-                className="hover:bg-muted/60 transition-colors"
+                size="sm"
               >
                 ログアウト
               </Button>
@@ -252,7 +253,7 @@ export default function QuerySelectionPage({
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <nav className="mb-6">
             <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
@@ -328,7 +329,7 @@ export default function QuerySelectionPage({
             {/* 新規作成ボタン */}
             <Button
               onClick={onCreateNew}
-              className="bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+              className=""
             >
               <Plus className="mr-2 h-4 w-4" />
               新規クエリ作成

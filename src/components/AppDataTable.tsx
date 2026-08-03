@@ -171,12 +171,12 @@ export default function AppDataTable({
   };
 
   return (
-    <div className="border-border rounded-md border">
+    <div className="border-border bg-card rounded-md border shadow-sm">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="bg-background sticky left-0 w-8 border-r text-center">
+              <TableHead className="bg-muted sticky left-0 w-8 border-r text-center">
                 ★
               </TableHead>
               <TableHead className="w-16">
@@ -251,7 +251,7 @@ export default function AppDataTable({
                   {getSortIcon("modifiedAt")}
                 </Button>
               </TableHead>
-              <TableHead className="bg-background sticky right-0 w-20 border-l text-right">
+              <TableHead className="bg-muted sticky right-0 w-20 border-l text-right">
                 操作
               </TableHead>
             </TableRow>
@@ -259,7 +259,7 @@ export default function AppDataTable({
           <TableBody>
             {paginatedApps.map((app) => (
               <TableRow key={app.appId} className="hover:bg-muted/50">
-                <TableCell className="bg-background sticky left-0 border-r text-center">
+                <TableCell className="bg-card sticky left-0 border-r text-center">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -356,12 +356,12 @@ export default function AppDataTable({
                       : "-"}
                   </div>
                 </TableCell>
-                <TableCell className="bg-background sticky right-0 border-l text-right">
+                <TableCell className="bg-card sticky right-0 border-l text-right">
                   <div className="flex justify-end gap-1">
                     <Button
                       onClick={() => onSelectApp(app)}
                       size="sm"
-                      className="h-7 bg-gradient-to-r from-slate-600 to-slate-700 px-2 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+                      className="h-7 px-2"
                       title="クエリ生成"
                     >
                       <Code2 className="h-3 w-3" />
@@ -417,7 +417,7 @@ export default function AppDataTable({
                                     <label className="text-muted-foreground text-sm font-medium">
                                       アプリ名
                                     </label>
-                                    <div className="rounded-md border border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 p-3 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                    <div className="border-border bg-muted/40 rounded-md border p-3">
                                       <p className="text-sm font-medium">
                                         {selectedAppInfo.name}
                                       </p>
@@ -455,7 +455,7 @@ export default function AppDataTable({
                                 <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
                                   説明
                                 </h3>
-                                <div className="min-h-[100px] rounded-md border border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 p-4 text-sm dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                <div className="border-border bg-muted/40 min-h-[100px] rounded-md border p-4 text-sm">
                                   {selectedAppInfo.description ? (
                                     <p className="leading-relaxed whitespace-pre-wrap">
                                       {cleanAndTruncateText(
@@ -480,12 +480,12 @@ export default function AppDataTable({
                                   {/* 作成情報 */}
                                   <div className="space-y-3">
                                     <div className="flex items-center gap-2">
-                                      <User className="h-4 w-4 text-green-600" />
+                                      <User className="text-muted-foreground h-4 w-4" />
                                       <label className="text-muted-foreground text-sm font-medium">
                                         作成者
                                       </label>
                                     </div>
-                                    <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-4 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                    <div className="border-border bg-muted/40 rounded-md border p-4">
                                       <p className="text-sm font-medium">
                                         {(selectedAppInfo.creator?.name &&
                                           selectedAppInfo.creator.name.trim()) ||
@@ -498,7 +498,7 @@ export default function AppDataTable({
                                             {selectedAppInfo.creator.code}
                                           </p>
                                         )}
-                                      <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+                                      <div className="mt-3 flex items-center gap-1 border-border border-t pt-2">
                                         <Calendar className="text-muted-foreground h-3 w-3" />
                                         <p className="text-muted-foreground text-xs">
                                           {selectedAppInfo.createdAt
@@ -514,12 +514,12 @@ export default function AppDataTable({
                                   {/* 更新情報 */}
                                   <div className="space-y-3">
                                     <div className="flex items-center gap-2">
-                                      <User className="h-4 w-4 text-blue-600" />
+                                      <User className="text-muted-foreground h-4 w-4" />
                                       <label className="text-muted-foreground text-sm font-medium">
                                         最終更新者
                                       </label>
                                     </div>
-                                    <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-4 dark:border-slate-800 dark:from-slate-950/20 dark:to-slate-900/20">
+                                    <div className="border-border bg-muted/40 rounded-md border p-4">
                                       <p className="text-sm font-medium">
                                         {(selectedAppInfo.modifier?.name &&
                                           selectedAppInfo.modifier.name.trim()) ||
@@ -532,7 +532,7 @@ export default function AppDataTable({
                                             {selectedAppInfo.modifier.code}
                                           </p>
                                         )}
-                                      <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+                                      <div className="mt-3 flex items-center gap-1 border-border border-t pt-2">
                                         <Calendar className="text-muted-foreground h-3 w-3" />
                                         <p className="text-muted-foreground text-xs">
                                           {selectedAppInfo.modifiedAt
@@ -559,7 +559,7 @@ export default function AppDataTable({
         </Table>
         {sortedApps.length === 0 && (
           <div className="py-12 text-center">
-            <p className="text-lg text-gray-500">
+            <p className="text-muted-foreground text-lg">
               条件に一致するアプリが見つかりません
             </p>
           </div>

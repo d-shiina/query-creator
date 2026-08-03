@@ -178,33 +178,25 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     };
 
   return (
-    <div className="bg-background fixed inset-0 flex items-center justify-center p-4 overflow-hidden">
-      {/* 装飾的な背景要素 */}
-      <div className="absolute inset-0 -z-10">
-        <div className="absolute top-20 left-10 h-32 w-32 rounded-full bg-gradient-to-r from-slate-400/10 to-slate-500/10 blur-3xl"></div>
-        <div className="absolute bottom-20 right-10 h-40 w-40 rounded-full bg-gradient-to-r from-slate-500/10 to-slate-600/10 blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/3 h-24 w-24 rounded-full bg-gradient-to-r from-slate-300/5 to-slate-400/5 blur-2xl animate-pulse"></div>
-      </div>
-
+    <div className="bg-background fixed inset-0 flex items-center justify-center overflow-hidden p-4">
       <div className="absolute top-4 right-4 z-10">
         <ToggleTheme />
       </div>
 
-      <Card className="border-border bg-card/95 w-full max-w-md shadow-lg backdrop-blur-sm relative overflow-hidden">
-        <CardHeader className="space-y-4 text-center">
-          <div className="flex justify-center mb-6">
-            <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary/10 p-2 transition-all duration-200 hover:bg-primary/20">
-              <AppLogo
-                size={40}
-                className="transition-all duration-200 hover:scale-105"
-              />
+      <Card className="border-border bg-card w-full max-w-md rounded-md border shadow-sm">
+        {/* 上端のコーポレートカラー帯 */}
+        <div className="bg-primary -mt-6 h-1 w-full rounded-t-md" />
+        <CardHeader className="space-y-3 pt-5 text-center">
+          <div className="flex justify-center">
+            <div className="border-border bg-background flex h-14 w-14 items-center justify-center rounded-md border p-2">
+              <AppLogo size={36} />
             </div>
           </div>
-          <div className="space-y-2">
-            <CardTitle className="text-2xl font-bold text-foreground">
+          <div className="space-y-1">
+            <CardTitle className="text-foreground text-lg font-semibold">
               kintone API Query Creator
             </CardTitle>
-            <CardDescription className="text-muted-foreground">
+            <CardDescription className="text-muted-foreground text-sm">
               kintoneアカウントでログインしてください
             </CardDescription>
           </div>
@@ -212,11 +204,12 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         <CardContent className="space-y-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="flex items-center space-x-3 rounded-lg border border-red-200 bg-gradient-to-r from-red-50 to-orange-50 p-4 text-sm shadow-sm dark:border-red-800 dark:from-red-950/20 dark:to-orange-950/20">
-                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-slate-500 to-slate-600">
-                  <AlertCircle className="h-3 w-3 text-white" />
-                </div>
-                <span className="text-red-700 dark:text-red-300">{error}</span>
+              <div
+                role="alert"
+                className="border-destructive bg-destructive/5 flex items-start gap-2 border-l-4 p-3 text-sm"
+              >
+                <AlertCircle className="text-destructive mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span className="text-destructive">{error}</span>
               </div>
             )}
 
@@ -232,7 +225,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   placeholder="your-company"
                   value={formData.subdomain}
                   onChange={handleChange("subdomain")}
-                  className="pr-20 pl-10 focus-visible:border-slate-500 focus-visible:ring-slate-500"
+                  className="pr-20 pl-10"
                   required
                 />
                 <div className="text-muted-foreground absolute top-3 right-3 text-sm">
@@ -256,7 +249,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   placeholder="ログインID"
                   value={formData.username}
                   onChange={handleChange("username")}
-                  className="pl-10 focus-visible:border-slate-500 focus-visible:ring-slate-500"
+                  className="pl-10"
                   required
                 />
               </div>
@@ -274,7 +267,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   placeholder="パスワード"
                   value={formData.password}
                   onChange={handleChange("password")}
-                  className="pl-10 focus-visible:border-slate-500 focus-visible:ring-slate-500"
+                  className="pl-10"
                   required
                 />
               </div>
@@ -288,8 +281,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                 onCheckedChange={(checked: boolean) =>
                   setRememberCredentials(checked)
                 }
-                className="focus-visible:ring-slate-500 data-[state=checked]:border-slate-600 data-[state=checked]:bg-slate-600"
-              />
+                              />
               <Label
                 htmlFor="remember"
                 className="cursor-pointer text-sm font-normal"
@@ -300,7 +292,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md transition-all duration-200 hover:from-slate-700 hover:to-slate-800 hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full"
               disabled={isLoading}
               size="lg"
             >

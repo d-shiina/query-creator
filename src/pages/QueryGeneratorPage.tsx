@@ -1308,7 +1308,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                       <div className="text-muted-foreground text-xs">
                                         {func.description}
                                       </div>
-                                      <div className="mt-1 font-mono text-xs text-blue-600">
+                                      <div className="mt-1 text-primary font-mono text-xs">
                                         {func.value}
                                       </div>
                                     </div>
@@ -1507,7 +1507,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                     <div className="text-muted-foreground text-xs">
                                       {func.description}
                                     </div>
-                                    <div className="mt-1 font-mono text-xs text-blue-600">
+                                    <div className="mt-1 text-primary font-mono text-xs">
                                       {func.value}
                                     </div>
                                   </div>
@@ -1991,9 +1991,10 @@ export default function QueryGeneratorPage({
   return (
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-border/40 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 border-b backdrop-blur-xl">
+      <header className="border-border bg-card sticky top-0 z-40 border-b">
+        <div className="bg-primary h-0.5 w-full" />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-6">
+          <div className="flex items-center justify-between py-3">
             <div className="flex items-center space-x-3">
               <BackButton
                 onClick={onBack}
@@ -2071,7 +2072,7 @@ export default function QueryGeneratorPage({
               <Button
                 variant="outline"
                 onClick={onLogout}
-                className="hover:bg-muted/60 transition-colors"
+                size="sm"
               >
                 ログアウト
               </Button>
@@ -2469,7 +2470,7 @@ export default function QueryGeneratorPage({
                                 </div>
                                 <div className="bg-background space-y-2 rounded p-3">
                                   <div className="flex">
-                                    <span className="w-32 font-mono text-xs text-blue-600">
+                                    <span className="w-32 text-primary font-mono text-xs">
                                       Content-Type:
                                     </span>
                                     <span className="font-mono text-xs">
@@ -2477,7 +2478,7 @@ export default function QueryGeneratorPage({
                                     </span>
                                   </div>
                                   <div className="flex">
-                                    <span className="w-32 font-mono text-xs text-blue-600">
+                                    <span className="w-32 text-primary font-mono text-xs">
                                       X-Cybozu-Authorization:
                                     </span>
                                     <span className="text-muted-foreground font-mono text-xs">
@@ -2541,10 +2542,10 @@ export default function QueryGeneratorPage({
                     </CardHeader>
                     <CardContent>
                       {queryResult.error ? (
-                        <div className="rounded-lg border bg-gray-50 p-4 dark:bg-gray-900/50">
+                        <div className="bg-muted/40 rounded-md border p-4">
                           <div className="mb-3 flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <h3 className="text-foreground text-sm font-medium">
                               エラー詳細情報
                             </h3>
                           </div>
@@ -2560,7 +2561,7 @@ export default function QueryGeneratorPage({
                                 <div className="space-y-3">
                                   {errorObj.code && (
                                     <div className="flex items-center gap-3">
-                                      <span className="min-w-[80px] text-xs font-medium text-gray-500 dark:text-gray-400">
+                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
                                         エラーコード
                                       </span>
                                       <span className="rounded bg-red-100 px-2 py-1 font-mono text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
@@ -2570,20 +2571,20 @@ export default function QueryGeneratorPage({
                                   )}
                                   {errorObj.message && (
                                     <div className="flex items-start gap-3">
-                                      <span className="min-w-[80px] pt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                      <span className="text-muted-foreground min-w-[80px] pt-1 text-xs font-medium">
                                         メッセージ
                                       </span>
-                                      <span className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                                      <span className="text-foreground text-sm leading-relaxed">
                                         {errorObj.message}
                                       </span>
                                     </div>
                                   )}
                                   {errorObj.id && (
                                     <div className="flex items-center gap-3">
-                                      <span className="min-w-[80px] text-xs font-medium text-gray-500 dark:text-gray-400">
+                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
                                         リクエストID
                                       </span>
-                                      <span className="rounded bg-gray-200 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                      <span className="bg-muted text-muted-foreground rounded-sm px-2 py-1 font-mono text-xs">
                                         {errorObj.id}
                                       </span>
                                     </div>
@@ -2594,7 +2595,7 @@ export default function QueryGeneratorPage({
                             // エラーが文字列の場合
                             else {
                               return (
-                                <div className="text-sm text-gray-700 dark:text-gray-300">
+                                <div className="text-foreground text-sm">
                                   <pre className="font-mono text-xs whitespace-pre-wrap">
                                     {String(queryResult.error)}
                                   </pre>
@@ -2737,7 +2738,7 @@ export default function QueryGeneratorPage({
 
       {/* シンプルなクエリ保存エリア - フッター上 */}
       {generatedQuery && (
-        <div className="fixed bottom-7 left-0 right-0 bg-background/95 backdrop-blur-lg border-t border-border/50 shadow-lg z-40">
+        <div className="bg-card border-border fixed bottom-7 left-0 right-0 z-40 border-t shadow-sm">
           <div className="px-6 py-3">
             <div className="flex items-center justify-center space-x-4 max-w-4xl mx-auto">
               <Input
@@ -2849,7 +2850,7 @@ export default function QueryGeneratorPage({
                 </p>
               </div>
               <div className="w-full bg-muted rounded-full h-2">
-                <div className="bg-primary h-2 rounded-full animate-pulse w-full"></div>
+                <div className="bg-primary h-2 w-full rounded-full"></div>
               </div>
             </div>
           </div>
