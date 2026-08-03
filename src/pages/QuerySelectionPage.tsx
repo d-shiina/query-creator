@@ -106,11 +106,20 @@ export default function QuerySelectionPage({
   const { savedQueries, deleteQuery } = useQueryGenerator(app.appId);
 
   // キーボードショートカット for 戻る (Escape キー)
+  // ダイアログやポップオーバーが開いている間はRadix側のEscape（閉じる）を優先し、
+  // IME変換中のEscapeでは反応しない
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.ctrlKey && !event.metaKey) {
-        onBack();
-      }
+      if (event.key !== "Escape" || event.ctrlKey || event.metaKey) return;
+      if (event.isComposing) return;
+      if (event.defaultPrevented) return;
+
+      const hasOpenLayer = document.querySelector(
+        '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
+      );
+      if (hasOpenLayer) return;
+
+      onBack();
     };
 
     document.addEventListener("keydown", handleKeyDown);

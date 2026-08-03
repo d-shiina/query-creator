@@ -1668,16 +1668,44 @@ export default function QueryGeneratorPage({
   const [executing, setExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState("table");
   const [currentQueryName, setCurrentQueryName] = useState("");
   const [currentQueryMemo, setCurrentQueryMemo] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentSavedQueryId, setCurrentSavedQueryId] = useState<string | null>(null);
 
+  // 編集中の入力があるか（リセット・離脱の確認に使用）
+  const hasUnsavedInput = useMemo(
+    () =>
+      conditions.some(
+        (c) =>
+          c.field || c.value.trim() || (c.values || []).some((v) => v.trim()),
+      ) ||
+      sortField !== "none" ||
+      limit !== undefined ||
+      offset !== undefined,
+    [conditions, sortField, limit, offset],
+  );
+
   // キーボードショートカット for 戻る (Escape キー)
+  // - ポップオーバーやダイアログが開いている間はRadix側のEscape（閉じる）を優先する
+  // - IME変換中のEscapeでは反応しない
+  // - 編集中の入力がある場合は即座に離脱せず確認ダイアログを挟む
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.ctrlKey && !event.metaKey) {
+      if (event.key !== "Escape" || event.ctrlKey || event.metaKey) return;
+      if (event.isComposing) return;
+      if (event.defaultPrevented) return;
+
+      const hasOpenLayer = document.querySelector(
+        '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
+      );
+      if (hasOpenLayer) return;
+
+      if (hasUnsavedInput) {
+        setLeaveDialogOpen(true);
+      } else {
         onBack();
       }
     };
@@ -1686,7 +1714,7 @@ export default function QueryGeneratorPage({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onBack]);
+  }, [onBack, hasUnsavedInput]);
 
   const [saveAnimating, setSaveAnimating] = useState(false);
   const [saveAsAnimating, setSaveAsAnimating] = useState(false);
@@ -2296,17 +2324,7 @@ export default function QueryGeneratorPage({
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const hasInput =
-                            conditions.some(
-                              (c) =>
-                                c.field ||
-                                c.value.trim() ||
-                                (c.values || []).some((v) => v.trim()),
-                            ) ||
-                            sortField !== "none" ||
-                            limit !== undefined ||
-                            offset !== undefined;
-                          if (hasInput) {
+                          if (hasUnsavedInput) {
                             setResetDialogOpen(true);
                           } else {
                             resetConditions();
@@ -2318,6 +2336,40 @@ export default function QueryGeneratorPage({
                         <RotateCcw className="h-4 w-4 mr-2" />
                         リセット
                       </Button>
+                      <Dialog
+                        open={leaveDialogOpen}
+                        onOpenChange={setLeaveDialogOpen}
+                      >
+                        <DialogContent className="sm:max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle>
+                              編集中の内容を破棄して戻りますか？
+                            </DialogTitle>
+                            <DialogDescription>
+                              保存されていない検索条件は失われます。
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setLeaveDialogOpen(false)}
+                            >
+                              キャンセル
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                setLeaveDialogOpen(false);
+                                onBack();
+                              }}
+                            >
+                              破棄して戻る
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                       <Dialog
                         open={resetDialogOpen}
                         onOpenChange={setResetDialogOpen}
