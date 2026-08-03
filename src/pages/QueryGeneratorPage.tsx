@@ -71,6 +71,7 @@ import {
   QUERY_OUTPUT_FORMATS,
   type QueryOutputFormat,
 } from "@/utils/query-format";
+import { getOperatorHint } from "@/utils/query-operator-hints";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
@@ -1123,6 +1124,11 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                 )}
               </SelectContent>
             </Select>
+            {getOperatorHint(condition.operator) && (
+              <p className="text-muted-foreground mt-1 text-xs leading-snug">
+                {getOperatorHint(condition.operator)}
+              </p>
+            )}
           </div>
         </div>
 
