@@ -176,7 +176,7 @@ export default function AppDataTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="bg-muted sticky left-0 w-8 border-r text-center">
+              <TableHead className="bg-card sticky left-0 w-8 border-r text-center">
                 ★
               </TableHead>
               <TableHead className="w-16">
@@ -251,19 +251,26 @@ export default function AppDataTable({
                   {getSortIcon("modifiedAt")}
                 </Button>
               </TableHead>
-              <TableHead className="bg-muted sticky right-0 w-20 border-l text-right">
+              <TableHead className="bg-card sticky right-0 w-20 border-l text-right">
                 操作
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedApps.map((app) => (
-              <TableRow key={app.appId} className="hover:bg-muted/50">
+              <TableRow
+                key={app.appId}
+                onClick={() => onSelectApp(app)}
+                className="hover:bg-muted/50 cursor-pointer"
+              >
                 <TableCell className="bg-card sticky left-0 border-r text-center">
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => onToggleFavorite(app.appId)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleFavorite(app.appId);
+                    }}
                     className="h-6 w-6 p-0"
                   >
                     {app.isFavorite ? (
@@ -378,7 +385,10 @@ export default function AppDataTable({
                           variant="outline"
                           size="sm"
                           className="h-7 px-2"
-                          onClick={() => fetchAppInfo(app)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetchAppInfo(app);
+                          }}
                           title="詳細情報"
                         >
                           <Info className="h-3 w-3" />

@@ -402,8 +402,6 @@ export default function AppManagementPage({
     <div className="bg-background min-h-screen">
       {/* ヘッダー */}
       <header className="border-border bg-card sticky top-0 z-50 border-b">
-        {/* コーポレートカラーの帯 */}
-        <div className="bg-primary h-0.5 w-full" />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-3">
             <div className="flex items-center gap-4">
@@ -554,7 +552,13 @@ export default function AppManagementPage({
                 {filteredApps.map((app) => (
                   <Card
                     key={app.appId}
-                    className="group border-border bg-card hover:border-primary/50 relative flex h-full flex-col overflow-hidden rounded-md border shadow-sm transition-colors"
+                    onClick={() => handleAppSelect(app)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAppSelect(app);
+                    }}
+                    className="group border-border bg-card hover:border-primary/40 relative flex h-full cursor-pointer flex-col overflow-hidden transition-all hover:shadow-md hover:shadow-black/5"
                   >
 
                     <CardHeader className="relative z-10 pb-3">
@@ -597,7 +601,10 @@ export default function AppManagementPage({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => toggleFavorite(app.appId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavorite(app.appId);
+                          }}
                           className="group/star h-8 w-8 flex-shrink-0 p-0 transition-colors hover:bg-yellow-50 dark:hover:bg-yellow-950/20"
                         >
                           {app.isFavorite ? (
@@ -665,7 +672,10 @@ export default function AppManagementPage({
                               variant="outline"
                               size="sm"
                               className="px-3"
-                              onClick={() => fetchAppInfo(app.appId)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                fetchAppInfo(app.appId);
+                              }}
                             >
                               <Info className="h-4 w-4" />
                             </Button>

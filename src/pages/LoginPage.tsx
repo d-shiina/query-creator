@@ -183,12 +183,10 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         <ToggleTheme />
       </div>
 
-      <Card className="border-border bg-card w-full max-w-md rounded-md border shadow-sm">
-        {/* 上端のコーポレートカラー帯 */}
-        <div className="bg-primary -mt-6 h-1 w-full rounded-t-md" />
-        <CardHeader className="space-y-3 pt-5 text-center">
+      <Card className="border-border bg-card w-full max-w-md shadow-lg shadow-black/5">
+        <CardHeader className="space-y-3 text-center">
           <div className="flex justify-center">
-            <div className="border-border bg-background flex h-14 w-14 items-center justify-center rounded-md border p-2">
+            <div className="bg-accent flex h-14 w-14 items-center justify-center rounded-xl p-2">
               <AppLogo size={36} />
             </div>
           </div>
@@ -222,6 +220,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                 <Globe className="text-muted-foreground absolute top-3 left-3 h-4 w-4" />
                 <Input
                   id="subdomain"
+                  autoFocus
                   placeholder="your-company"
                   value={formData.subdomain}
                   onChange={handleChange("subdomain")}

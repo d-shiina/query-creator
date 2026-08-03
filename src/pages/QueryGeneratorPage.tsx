@@ -1992,7 +1992,6 @@ export default function QueryGeneratorPage({
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
       <header className="border-border bg-card sticky top-0 z-40 border-b">
-        <div className="bg-primary h-0.5 w-full" />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-3">
             <div className="flex items-center space-x-3">
@@ -2319,8 +2318,8 @@ export default function QueryGeneratorPage({
                 </Card>
               </div>
 
-              {/* Right: Generated Query and Results */}
-              <div className="space-y-6">
+              {/* Right: Generated Query and Results（条件編集中も常に見えるように追従・独立スクロール） */}
+              <div className="scrollbar-thin space-y-6 lg:sticky lg:top-16 lg:max-h-[calc(100vh-13rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
                 <Card className="h-fit">
                   <CardHeader>
                     <CardTitle>生成されたクエリ</CardTitle>
@@ -2740,18 +2739,43 @@ export default function QueryGeneratorPage({
       {generatedQuery && (
         <div className="bg-card border-border fixed bottom-7 left-0 right-0 z-40 border-t shadow-sm">
           <div className="px-6 py-3">
-            <div className="flex items-center justify-center space-x-4 max-w-4xl mx-auto">
+            <div className="mx-auto flex max-w-4xl items-center justify-center gap-3">
+              <span className="text-muted-foreground hidden text-sm font-medium whitespace-nowrap sm:inline">
+                クエリを保存
+              </span>
               <Input
-                placeholder="クエリ名"
+                placeholder="クエリ名（必須）"
                 value={currentQueryName}
                 onChange={(e) => setCurrentQueryName(e.target.value)}
-                className="w-64 h-9 bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    generatedQuery &&
+                    currentQueryName.trim() &&
+                    !navigatingToQueryList
+                  ) {
+                    handleSaveQuery();
+                  }
+                }}
+                aria-label="クエリ名"
+                className="bg-background h-9 w-64 text-sm"
               />
               <Input
                 placeholder="メモ（任意）"
                 value={currentQueryMemo}
                 onChange={(e) => setCurrentQueryMemo(e.target.value)}
-                className="w-64 h-9 bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    generatedQuery &&
+                    currentQueryName.trim() &&
+                    !navigatingToQueryList
+                  ) {
+                    handleSaveQuery();
+                  }
+                }}
+                aria-label="メモ"
+                className="bg-background h-9 w-64 text-sm"
               />
               {/* 保存ボタン */}
               {(isEditMode || currentSavedQueryId || editingQueryId) ? (

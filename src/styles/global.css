@@ -88,71 +88,71 @@
 
 @layer base {
   /*
-   * 日本の業務システムを想定した配色。
-   * - プライマリはコーポレートブルー（信頼感・kintone連携ツールとしての親和性）
-   * - ページ背景は薄いグレー、面は白、罫線は明瞭に
-   * - 角丸は小さく（--radius: 4px）、フラットで堅実な印象に
+   * モダンな日本語SaaS（SmartHR / freee 系）を意識した配色。
+   * - プライマリは鮮やかで信頼感のあるブルー
+   * - ページ背景はごく薄いグレー、面は白、罫線はヘアライン
+   * - 角丸8px・柔らかい影で軽やかに
    */
   :root {
-    --background: 210 20% 97%;
-    --foreground: 215 25% 18%;
+    --background: 220 20% 98%;
+    --foreground: 222 22% 16%;
 
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 18%;
+    --card-foreground: 222 22% 16%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 18%;
+    --popover-foreground: 222 22% 16%;
 
-    --primary: 210 75% 33%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 22% 93%;
-    --secondary-foreground: 215 25% 25%;
+    --secondary: 220 16% 94%;
+    --secondary-foreground: 222 18% 28%;
 
-    --muted: 210 22% 94%;
-    --muted-foreground: 215 14% 42%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 10% 46%;
 
-    --accent: 210 60% 94%;
-    --accent-foreground: 210 75% 28%;
+    --accent: 217 91% 95%;
+    --accent-foreground: 221 83% 45%;
 
-    --destructive: 0 68% 45%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 18% 84%;
-    --input: 214 16% 74%;
-    --ring: 210 75% 40%;
+    --border: 220 13% 90%;
+    --input: 220 13% 84%;
+    --ring: 221 83% 53%;
 
-    --radius: 0.25rem;
+    --radius: 0.5rem;
   }
 
   .dark {
-    --background: 215 26% 11%;
-    --foreground: 210 20% 92%;
+    --background: 222 22% 9%;
+    --foreground: 220 15% 92%;
 
-    --card: 215 24% 15%;
-    --card-foreground: 210 20% 92%;
+    --card: 222 20% 13%;
+    --card-foreground: 220 15% 92%;
 
-    --popover: 215 24% 14%;
-    --popover-foreground: 210 20% 92%;
+    --popover: 222 20% 12%;
+    --popover-foreground: 220 15% 92%;
 
-    --primary: 210 70% 55%;
+    --primary: 217 91% 62%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 215 18% 22%;
-    --secondary-foreground: 210 20% 88%;
+    --secondary: 222 14% 20%;
+    --secondary-foreground: 220 15% 88%;
 
-    --muted: 215 18% 20%;
-    --muted-foreground: 215 12% 62%;
+    --muted: 222 14% 18%;
+    --muted-foreground: 220 9% 60%;
 
-    --accent: 212 40% 25%;
-    --accent-foreground: 210 60% 85%;
+    --accent: 219 50% 24%;
+    --accent-foreground: 217 91% 80%;
 
-    --destructive: 0 60% 48%;
+    --destructive: 0 66% 54%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 14% 28%;
-    --input: 215 14% 36%;
-    --ring: 210 70% 55%;
+    --border: 222 12% 22%;
+    --input: 222 12% 30%;
+    --ring: 217 91% 62%;
   }
 }
 

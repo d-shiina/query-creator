@@ -216,7 +216,6 @@ export default function QuerySelectionPage({
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
       <header className="border-border bg-card sticky top-0 z-40 border-b">
-        <div className="bg-primary h-0.5 w-full" />
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-3">
             <div className="flex items-center space-x-3">
@@ -382,8 +381,12 @@ export default function QuerySelectionPage({
                     </TableHeader>
                     <TableBody>
                       {filteredQueries.map((query) => (
-                        <TableRow key={query.id}>
-                          <TableCell>
+                        <TableRow
+                          key={query.id}
+                          onClick={() => onEditQuery(query.id)}
+                          className="cursor-pointer"
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
                             <Checkbox
                               checked={selectedQueries.includes(query.id)}
                               onCheckedChange={(checked) => handleSelectQuery(query.id, checked as boolean)}
@@ -394,7 +397,10 @@ export default function QuerySelectionPage({
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => toggleQueryFavorite(query.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleQueryFavorite(query.id);
+                              }}
                               className="h-8 w-8 p-0"
                             >
                               <Star
@@ -444,7 +450,10 @@ export default function QuerySelectionPage({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDeleteSingle(query.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteSingle(query.id);
+                                }}
                                 className="text-destructive hover:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4" />
