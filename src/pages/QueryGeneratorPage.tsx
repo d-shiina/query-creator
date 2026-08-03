@@ -65,6 +65,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  formatQueryForOutput,
+  QUERY_OUTPUT_FORMATS,
+  type QueryOutputFormat,
+} from "@/utils/query-format";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
@@ -1529,6 +1535,9 @@ export default function QueryGeneratorPage({
   const [loading, setLoading] = useState(true);
   const [fields, setFields] = useState<KintoneField[]>([]);
   const [generatedQuery, setGeneratedQuery] = useState("");
+  // クエリ文字列の出力形式（貼り付け先の環境に合わせて切り替える）
+  const [queryOutputFormat, setQueryOutputFormat] =
+    useState<QueryOutputFormat>("vbs");
   const [error, setError] = useState<string>("");
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
@@ -2315,12 +2324,53 @@ export default function QueryGeneratorPage({
                           <TabsTrigger value="api">APIプレビュー</TabsTrigger>
                         </TabsList>
                         <TabsContent value="query" className="space-y-4">
+                          {/* 出力形式の切り替え */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <Label className="text-sm">出力形式</Label>
+                              <ToggleGroup
+                                type="single"
+                                value={queryOutputFormat}
+                                onValueChange={(value) => {
+                                  if (value)
+                                    setQueryOutputFormat(
+                                      value as QueryOutputFormat,
+                                    );
+                                }}
+                                className="justify-end"
+                              >
+                                {QUERY_OUTPUT_FORMATS.map((formatOption) => (
+                                  <ToggleGroupItem
+                                    key={formatOption.value}
+                                    value={formatOption.value}
+                                    size="sm"
+                                    aria-label={`出力形式を${formatOption.label}にする`}
+                                    className="h-8 px-3 text-xs"
+                                  >
+                                    {formatOption.label}
+                                  </ToggleGroupItem>
+                                ))}
+                              </ToggleGroup>
+                            </div>
+                            <p className="text-muted-foreground text-xs">
+                              {
+                                QUERY_OUTPUT_FORMATS.find(
+                                  (formatOption) =>
+                                    formatOption.value === queryOutputFormat,
+                                )?.description
+                              }
+                            </p>
+                          </div>
+
                           <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">
                             <code className="text-foreground text-sm whitespace-pre-wrap">
-                              {JSON.stringify(generatedQuery).slice(1, -1)}
+                              {formatQueryForOutput(
+                                generatedQuery,
+                                queryOutputFormat,
+                              )}
                             </code>
                           </div>
-                          
+
                           {/* 実行・コピーボタン */}
                           <div className="flex gap-2">
                             <Button
@@ -2356,7 +2406,12 @@ export default function QueryGeneratorPage({
                               variant="outline"
                               size="sm"
                               onClick={async () => {
-                                await navigator.clipboard.writeText(JSON.stringify(generatedQuery).slice(1, -1));
+                                await navigator.clipboard.writeText(
+                                  formatQueryForOutput(
+                                    generatedQuery,
+                                    queryOutputFormat,
+                                  ),
+                                );
                                 setClipboardCopied(true);
                                 setTimeout(() => setClipboardCopied(false), 2000);
                               }}
