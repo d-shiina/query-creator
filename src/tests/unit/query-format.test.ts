@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatQueryForOutput,
   QUERY_OUTPUT_FORMATS,
+  DEFAULT_QUERY_OUTPUT_FORMAT,
   type QueryOutputFormat,
 } from "@/utils/query-format";
 
@@ -66,10 +67,17 @@ describe("実運用で確認済みのケース: Title in (\"40\")", () => {
 });
 
 describe("QUERY_OUTPUT_FORMATS", () => {
-  it("vbsとpythonの両方を選択肢として持つ", () => {
+  it("pythonがデフォルト（先頭）でvbsがサブ", () => {
     expect(QUERY_OUTPUT_FORMATS.map((f) => f.value)).toEqual([
-      "vbs",
       "python",
+      "vbs",
     ]);
+    expect(DEFAULT_QUERY_OUTPUT_FORMAT).toBe("python");
+  });
+
+  it("ラベルは括弧書きなしのシンプルな表記", () => {
+    for (const f of QUERY_OUTPUT_FORMATS) {
+      expect(f.label).not.toMatch(/[（(]/);
+    }
   });
 });
