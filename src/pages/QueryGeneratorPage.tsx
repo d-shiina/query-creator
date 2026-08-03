@@ -70,6 +70,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   formatQueryForOutput,
   QUERY_OUTPUT_FORMATS,
+  DEFAULT_QUERY_OUTPUT_FORMAT,
   type QueryOutputFormat,
 } from "@/utils/query-format";
 import { getOperatorHint } from "@/utils/query-operator-hints";
@@ -1656,7 +1657,7 @@ export default function QueryGeneratorPage({
   const [generatedQuery, setGeneratedQuery] = useState("");
   // クエリ文字列の出力形式（貼り付け先の環境に合わせて切り替える）
   const [queryOutputFormat, setQueryOutputFormat] =
-    useState<QueryOutputFormat>("vbs");
+    useState<QueryOutputFormat>(DEFAULT_QUERY_OUTPUT_FORMAT);
   const [error, setError] = useState<string>("");
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
@@ -2614,14 +2615,6 @@ export default function QueryGeneratorPage({
                                 ))}
                               </ToggleGroup>
                             </div>
-                            <p className="text-muted-foreground text-xs">
-                              {
-                                QUERY_OUTPUT_FORMATS.find(
-                                  (formatOption) =>
-                                    formatOption.value === queryOutputFormat,
-                                )?.description
-                              }
-                            </p>
                           </div>
 
                           <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">

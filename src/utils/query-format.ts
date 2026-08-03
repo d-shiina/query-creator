@@ -13,25 +13,18 @@
 /** クエリ文字列の出力形式 */
 export type QueryOutputFormat = "vbs" | "python";
 
-/** 出力形式の選択肢（UIの表示順） */
+/** 出力形式の選択肢（UIの表示順・先頭がデフォルト） */
 export const QUERY_OUTPUT_FORMATS: ReadonlyArray<{
   value: QueryOutputFormat;
   label: string;
-  description: string;
 }> = [
-  {
-    value: "vbs",
-    label: "VBS (JSON埋め込み)",
-    description:
-      "JSONリクエストボディを文字列連結で組み立てる場合。\" が \\\" にエスケープされます。",
-  },
-  {
-    value: "python",
-    label: "Python (そのまま)",
-    description:
-      "requestsなどにdictを渡す場合。ライブラリがJSONエスケープするため追加のエスケープは不要です。",
-  },
+  { value: "python", label: "Python" },
+  { value: "vbs", label: "VBS" },
 ];
+
+/** デフォルトの出力形式 */
+export const DEFAULT_QUERY_OUTPUT_FORMAT: QueryOutputFormat =
+  QUERY_OUTPUT_FORMATS[0].value;
 
 /**
  * クエリをJSON文字列リテラルの中身へ変換する（前後の " は付けない）。
