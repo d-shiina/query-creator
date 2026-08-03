@@ -9,15 +9,15 @@ import {
   Trash2,
   Save,
   Check,
-  ChevronsUpDown,
+  ChevronDown,
   AlertCircle,
   User,
-  Sigma,
   CalendarIcon,
   ChevronRight,
   Clock,
   Clipboard,
   ClipboardCheck,
+  X,
   FileText,
   RotateCcw,
   Copy,
@@ -34,7 +34,6 @@ import { ja } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -75,7 +74,14 @@ import {
 } from "@/utils/query-format";
 import { getOperatorHint } from "@/utils/query-operator-hints";
 import { useToast } from "@/components/ui/toast";
-import { Badge } from "@/components/ui/badge";
+
+/** 出力バンドの表示モード（クエリ形式＋生クエリ＋APIプレビュー） */
+type OutputView = QueryOutputFormat | "raw" | "api";
+const OUTPUT_VIEWS: ReadonlyArray<{ value: OutputView; label: string }> = [
+  ...QUERY_OUTPUT_FORMATS,
+  { value: "raw", label: "生クエリ" },
+  { value: "api", label: "APIプレビュー" },
+];
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
 import { BackButton } from "@/components/ui/back-button";
@@ -1018,12 +1024,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
         if (!Number.isNaN(from) && from !== index) onMove(from, index);
       }}
-      className={`bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words transition-shadow ${
+      className={`bg-muted/20 min-w-0 rounded-md border p-2.5 break-words transition-shadow ${
         isDragOver ? "ring-primary/60 ring-2" : ""
       }`}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
+      <div className="flex flex-wrap items-start gap-2">
+        {/* 左ガター: グリップ + 条件番号 / AND・OR */}
+        <div className="flex w-24 flex-shrink-0 items-center gap-1 self-center">
           <span
             draggable
             onDragStart={(e) => {
@@ -1036,17 +1043,21 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           >
             <GripVertical className="h-4 w-4" />
           </span>
-          <Badge variant="outline" className="text-xs">
-            条件 {index + 1}
-          </Badge>
-          {index > 0 && (
+          {index === 0 ? (
+            <span className="text-muted-foreground text-xs font-medium">
+              条件 1
+            </span>
+          ) : (
             <Select
               value={condition.logicalOperator}
               onValueChange={(value: "and" | "or") =>
                 onUpdate(index, { logicalOperator: value })
               }
             >
-              <SelectTrigger className="h-7 w-20 text-xs">
+              <SelectTrigger
+                className="h-9 w-full text-xs"
+                aria-label="論理演算子を選択"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1056,35 +1067,9 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             </Select>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDuplicate(index)}
-            className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
-            title="この条件を複製"
-            aria-label="条件を複製"
-          >
-            <Copy className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onRemove(index)}
-            className="text-destructive hover:text-destructive h-7 w-7 p-0"
-            disabled={!canRemove}
-            aria-label="条件を削除"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
 
-      <div className="space-y-3">
-        {/* フィールド選択と演算子選択を1行に */}
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
           {/* フィールド選択 */}
-          <div className="md:col-span-4">
+          <div className="w-64 min-w-[13rem] flex-shrink-0">
             <Popover
               open={fieldComboboxOpen}
               onOpenChange={setFieldComboboxOpen}
@@ -1103,7 +1088,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           ?.label
                       : "フィールドを選択"}
                   </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[280px] p-0">
@@ -1156,14 +1141,18 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
 
           {/* 演算子選択 */}
-          <div className="md:col-span-3">
+          <div className="w-44 flex-shrink-0">
             <Select
               value={condition.operator}
               onValueChange={(value) =>
                 onUpdate(index, { operator: value as QueryOperator })
               }
             >
-              <SelectTrigger className="w-full" aria-label="演算子を選択">
+              <SelectTrigger
+                className="w-full"
+                aria-label="演算子を選択"
+                title={getOperatorHint(condition.operator) ?? undefined}
+              >
                 <SelectValue className="truncate" />
               </SelectTrigger>
               <SelectContent className="min-w-[200px]">
@@ -1180,28 +1169,12 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                 )}
               </SelectContent>
             </Select>
-            {getOperatorHint(condition.operator) && (
-              <p className="text-muted-foreground mt-1 text-xs leading-snug">
-                {getOperatorHint(condition.operator)}
-              </p>
-            )}
           </div>
-        </div>
-
-        {/* 未入力の条件はクエリに含まれないことを知らせる */}
-        {condition.field &&
-          !isNullOperator &&
-          (isInOperator
-            ? (condition.values || []).every((v) => !v.trim())
-            : !localValue.trim()) && (
-            <p className="text-xs text-yellow-700 dark:text-yellow-400">
-              値が未入力のため、この条件はクエリに含まれません
-            </p>
-          )}
 
         {/* 値入力エリア */}
-        {!isNullOperator && (
-          <div className="space-y-3">
+        <div className="min-w-[14rem] flex-1">
+        {!isNullOperator ? (
+          <div className="space-y-2">
             {isInOperator ? (
               /* 複数値入力 */
               <div className="space-y-2">
@@ -1351,7 +1324,9 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                               title="関数を選択"
                               aria-label="関数を選択"
                             >
-                              <Sigma className="h-4 w-4" />
+                              <span className="text-sm font-semibold italic">
+                              fx
+                            </span>
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="max-w-2xl">
@@ -1577,7 +1552,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                             title="関数を選択"
                             aria-label="関数を選択"
                           >
-                            <Sigma className="h-4 w-4" />
+                            <span className="text-sm font-semibold italic">fx</span>
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-md">
@@ -1636,8 +1611,48 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               </div>
             )}
           </div>
+        ) : (
+          <div className="text-muted-foreground flex h-9 items-center text-sm">
+            値の入力は不要です
+          </div>
         )}
+        </div>
+
+        {/* 行アクション */}
+        <div className="flex flex-shrink-0 items-center gap-1 self-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDuplicate(index)}
+            className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+            title="この条件を複製"
+            aria-label="条件を複製"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRemove(index)}
+            className="text-destructive hover:text-destructive h-8 w-8 p-0"
+            disabled={!canRemove}
+            aria-label="条件を削除"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
+
+      {/* 未入力の条件はクエリに含まれないことを知らせる */}
+      {condition.field &&
+        !isNullOperator &&
+        (isInOperator
+          ? (condition.values || []).every((v) => !v.trim())
+          : !localValue.trim()) && (
+          <p className="mt-1 pl-24 text-xs text-yellow-700 dark:text-yellow-400">
+            値が未入力のため、この条件はクエリに含まれません
+          </p>
+        )}
     </div>
   );
 };
@@ -1655,9 +1670,12 @@ export default function QueryGeneratorPage({
   const [loading, setLoading] = useState(true);
   const [fields, setFields] = useState<KintoneField[]>([]);
   const [generatedQuery, setGeneratedQuery] = useState("");
-  // クエリ文字列の出力形式（貼り付け先の環境に合わせて切り替える）
-  const [queryOutputFormat, setQueryOutputFormat] =
-    useState<QueryOutputFormat>(DEFAULT_QUERY_OUTPUT_FORMAT);
+  // 出力バンドの表示モード（貼り付け先の環境に合わせて切り替える）
+  const [outputView, setOutputView] = useState<OutputView>(
+    DEFAULT_QUERY_OUTPUT_FORMAT,
+  );
+  const [savePopoverOpen, setSavePopoverOpen] = useState(false);
+  const [resultsPanelOpen, setResultsPanelOpen] = useState(false);
   const [error, setError] = useState<string>("");
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
@@ -1904,6 +1922,23 @@ export default function QueryGeneratorPage({
       setExecuting(false);
     }
   }, [generatedQuery, auth, app.appId, app.spaceId]);
+
+  // APIプレビュー表示・コピーで共用するJSONリクエストボディ
+  const apiRequestBodyJson = JSON.stringify(
+    {
+      app: app.appId,
+      ...(generatedQuery && { query: generatedQuery }),
+      ...(limit && { size: parseInt(limit.toString()) }),
+      ...(offset && { offset: parseInt(offset.toString()) }),
+    },
+    null,
+    2,
+  );
+
+  // 実行エラー時は明細パネルを自動で開く（エラー詳細を見せる）
+  useEffect(() => {
+    if (queryResult?.error) setResultsPanelOpen(true);
+  }, [queryResult]);
 
   // Ctrl+Enter（macはCmd+Enter）でクエリ実行
   useEffect(() => {
@@ -2262,7 +2297,7 @@ export default function QueryGeneratorPage({
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-4 py-8 pb-32 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <nav className="mb-6" aria-label="パンくずナビゲーション">
             <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
@@ -2308,19 +2343,10 @@ export default function QueryGeneratorPage({
           {error && <ErrorAlert error={error} />}
 
           <div className="space-y-6">
-            {/* Main Layout: Query Builder + Results */}
-            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-              {/* Left: Query Builder */}
-              <div className="space-y-6">
-                <Card>
+            <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>検索条件</CardTitle>
-                        <CardDescription>
-                          フィールドと条件を指定してください
-                        </CardDescription>
-                      </div>
+                      <CardTitle>検索条件</CardTitle>
                       <Button
                         variant="outline"
                         size="sm"
@@ -2406,7 +2432,7 @@ export default function QueryGeneratorPage({
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
+                    <div className="space-y-2">
                       {conditions.map((condition, index) => (
                         <ConditionInput
                           key={index}
@@ -2425,36 +2451,25 @@ export default function QueryGeneratorPage({
                       ))}
 
                       <Button
-                        variant="outline"
+                        variant="ghost"
+                        size="sm"
                         onClick={addCondition}
-                        className="w-full"
+                        className="text-primary hover:text-primary w-fit"
                         aria-label="条件を追加"
                       >
-                        <Plus className="mr-2 h-4 w-4" />
+                        <Plus className="mr-1 h-4 w-4" />
                         条件を追加
                       </Button>
                     </div>
                   </CardContent>
-                </Card>
 
-                {/* Sort and Limit Options */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>並び替え・制限</CardTitle>
-                    <CardDescription>
-                      クエリの並び替えと取得件数を設定
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label
-                            htmlFor="sortField"
-                            className="mb-2 block text-sm font-medium"
-                          >
-                            並び替えフィールド
-                          </Label>
+              {/* 並び替え・件数（インライン行） */}
+              <div className="border-t px-6 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
+                    並び替え
+                  </Label>
+                  <div className="min-w-[12rem] flex-1">
                           <Select
                             value={sortField}
                             onValueChange={handleSortFieldChange}
@@ -2477,15 +2492,8 @@ export default function QueryGeneratorPage({
                               ))}
                             </SelectContent>
                           </Select>
-                        </div>
-
-                        <div>
-                          <Label
-                            htmlFor="sortDirection"
-                            className="mb-2 block text-sm font-medium"
-                          >
-                            並び順
-                          </Label>
+                  </div>
+                  <div className="w-28 flex-shrink-0">
                           <Select
                             value={sortDirection}
                             onValueChange={setSortDirection}
@@ -2509,17 +2517,13 @@ export default function QueryGeneratorPage({
                               ))}
                             </SelectContent>
                           </Select>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label
-                            htmlFor="limit"
-                            className="mb-2 block text-sm font-medium"
-                          >
-                            取得件数 (limit)
-                          </Label>
+                  </div>
+                  <Label
+                    htmlFor="limit"
+                    className="text-muted-foreground ml-2 text-sm"
+                  >
+                    件数
+                  </Label>
                           <Input
                             id="limit"
                             type="number"
@@ -2538,15 +2542,14 @@ export default function QueryGeneratorPage({
 
                             }}
                             aria-label="取得件数を入力"
+                            className="w-24"
                           />
-                        </div>
-                        <div>
-                          <Label
-                            htmlFor="offset"
-                            className="mb-2 block text-sm font-medium"
-                          >
-                            スキップ件数 (offset)
-                          </Label>
+                  <Label
+                    htmlFor="offset"
+                    className="text-muted-foreground ml-2 text-sm"
+                  >
+                    スキップ
+                  </Label>
                           <Input
                             id="offset"
                             type="number"
@@ -2562,82 +2565,109 @@ export default function QueryGeneratorPage({
 
                             }}
                             aria-label="スキップ件数を入力"
+                            className="w-24"
                           />
+                </div>
+              </div>
+
+              {/* 出力バンド: 形式切替・クエリ・アクションを1か所に集約 */}
+              <div className="bg-muted/30 space-y-3 rounded-b-lg border-t px-6 py-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
+                    出力
+                  </span>
+                  <ToggleGroup
+                    type="single"
+                    value={outputView}
+                    onValueChange={(value) => {
+                      if (value) setOutputView(value as OutputView);
+                    }}
+                    className="bg-muted border-border rounded-md border p-0.5"
+                  >
+                    {OUTPUT_VIEWS.map((view) => (
+                      <ToggleGroupItem
+                        key={view.value}
+                        value={view.value}
+                        size="sm"
+                        aria-label={`出力を${view.label}にする`}
+                        className="data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm h-7 flex-none px-3 text-xs"
+                      >
+                        {view.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </div>
+
+                {/* 表示ボックス */}
+                {!generatedQuery ? (
+                  <div className="bg-background text-muted-foreground rounded-md border p-3 text-sm">
+                    条件を設定するとクエリが表示されます
+                  </div>
+                ) : outputView === "api" ? (
+                  <div className="bg-background scrollbar-hover max-h-80 space-y-4 overflow-y-auto rounded-md border p-3">
+                    <div className="space-y-2">
+                      <div className="text-foreground border-b pb-1 text-sm font-medium">
+                        リクエストURL
+                      </div>
+                      <code className="block text-sm break-all">
+                        https://{auth.subdomain}.cybozu.com/k/v1/records.json
+                      </code>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-foreground border-b pb-1 text-sm font-medium">
+                        リクエストヘッダー
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex">
+                          <span className="text-primary w-48 font-mono text-xs">
+                            Content-Type:
+                          </span>
+                          <span className="font-mono text-xs">
+                            application/json
+                          </span>
+                        </div>
+                        <div className="flex">
+                          <span className="text-primary w-48 font-mono text-xs">
+                            X-Cybozu-Authorization:
+                          </span>
+                          <span className="text-muted-foreground font-mono text-xs">
+                            [Base64 encoded credentials]
+                          </span>
                         </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
+                    <div className="space-y-2">
+                      <div className="text-foreground border-b pb-1 text-sm font-medium">
+                        JSONリクエストボディ
+                      </div>
+                      <pre className="overflow-x-auto text-xs whitespace-pre">
+                        <code>{apiRequestBodyJson}</code>
+                      </pre>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-background scrollbar-hover max-h-40 overflow-y-auto rounded-md border p-3">
+                    <code className="text-foreground font-mono text-sm whitespace-pre-wrap">
+                      {formatQueryForOutput(
+                        generatedQuery,
+                        outputView === "raw" ? "python" : outputView,
+                      )}
+                    </code>
+                  </div>
+                )}
 
-              {/* Right: Generated Query and Results（条件編集中も常に見えるように追従・独立スクロール） */}
-              <div className="scrollbar-thin space-y-6 lg:sticky lg:top-16 lg:max-h-[calc(100vh-13rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
-                <Card className="h-fit">
-                  <CardHeader>
-                    <CardTitle>生成されたクエリ</CardTitle>
-                    <CardDescription>
-                      Kintone REST APIで使用するクエリが表示されます
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {generatedQuery ? (
-                      <Tabs defaultValue="query" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
-                          <TabsTrigger value="query">クエリ文字列</TabsTrigger>
-                          <TabsTrigger value="api">APIプレビュー</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="query" className="space-y-4">
-                          {/* 出力形式の切り替え */}
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <Label className="text-sm">出力形式</Label>
-                              <ToggleGroup
-                                type="single"
-                                value={queryOutputFormat}
-                                onValueChange={(value) => {
-                                  if (value)
-                                    setQueryOutputFormat(
-                                      value as QueryOutputFormat,
-                                    );
-                                }}
-                                className="justify-end"
-                              >
-                                {QUERY_OUTPUT_FORMATS.map((formatOption) => (
-                                  <ToggleGroupItem
-                                    key={formatOption.value}
-                                    value={formatOption.value}
-                                    size="sm"
-                                    aria-label={`出力形式を${formatOption.label}にする`}
-                                    className="h-8 px-3 text-xs"
-                                  >
-                                    {formatOption.label}
-                                  </ToggleGroupItem>
-                                ))}
-                              </ToggleGroup>
-                            </div>
-                          </div>
-
-                          <div className="bg-muted scrollbar-hover max-h-40 overflow-y-auto rounded-lg p-4">
-                            <code className="text-foreground text-sm whitespace-pre-wrap">
-                              {formatQueryForOutput(
-                                generatedQuery,
-                                queryOutputFormat,
-                              )}
-                            </code>
-                          </div>
-
-                          {/* 実行・コピーボタン */}
-                          <div className="flex gap-2">
+                {/* アクション行 */}
+                <div className="flex flex-wrap items-center gap-2">
                             <Button
                               onClick={async () => {
                                 await executeQuery();
                                 setQueryExecuted(true);
                                 setTimeout(() => setQueryExecuted(false), 2000);
                               }}
-                              disabled={executing}
+                              disabled={executing || !generatedQuery}
                               title="Ctrl+Enterでも実行できます"
                               size="sm"
-                              className={`flex-1 h-8 text-sm transition-all duration-300 ${
+                              className={`h-8 px-4 text-sm transition-all duration-300 ${
                                 executing 
                                   ? 'bg-primary text-primary-foreground' 
                                   : queryExecuted
@@ -2661,17 +2691,22 @@ export default function QueryGeneratorPage({
                             <Button
                               variant="outline"
                               size="sm"
+                              disabled={!generatedQuery}
                               onClick={async () => {
-                                await navigator.clipboard.writeText(
-                                  formatQueryForOutput(
-                                    generatedQuery,
-                                    queryOutputFormat,
-                                  ),
-                                );
+                                const text =
+                                  outputView === "api"
+                                    ? apiRequestBodyJson
+                                    : formatQueryForOutput(
+                                        generatedQuery,
+                                        outputView === "raw"
+                                          ? "python"
+                                          : outputView,
+                                      );
+                                await navigator.clipboard.writeText(text);
                                 setClipboardCopied(true);
                                 setTimeout(() => setClipboardCopied(false), 2000);
                               }}
-                              className={`flex-1 h-8 text-sm transition-all duration-300 ${
+                              className={`h-8 px-3 text-sm transition-all duration-300 ${
                                 clipboardCopied 
                                   ? 'bg-green-50 border-green-200 text-green-700 dark:bg-green-950 dark:border-green-800 dark:text-green-300' 
                                   : 'hover:bg-accent'
@@ -2689,96 +2724,200 @@ export default function QueryGeneratorPage({
                                 </>
                               )}
                             </Button>
-                          </div>
-                        </TabsContent>
-                        <TabsContent value="api" className="space-y-4">
-                          <div className="bg-muted scrollbar-hover max-h-80 overflow-y-auto rounded-lg p-4">
-                            <div className="space-y-6">
-                              {/* URL Section */}
-                              <div className="space-y-2">
-                                <div className="text-foreground border-b pb-1 text-sm font-medium">
-                                  リクエストURL
-                                </div>
-                                <div className="bg-background rounded p-3">
-                                  <code className="text-sm break-all">
-                                    https://{auth.subdomain}
-                                    .cybozu.com/k/v1/records.json
-                                  </code>
-                                </div>
-                              </div>
 
-                              {/* Headers Section */}
-                              <div className="space-y-2">
-                                <div className="text-foreground border-b pb-1 text-sm font-medium">
-                                  リクエストヘッダー
-                                </div>
-                                <div className="bg-background space-y-2 rounded p-3">
-                                  <div className="flex">
-                                    <span className="w-32 text-primary font-mono text-xs">
-                                      Content-Type:
-                                    </span>
-                                    <span className="font-mono text-xs">
-                                      application/json
-                                    </span>
-                                  </div>
-                                  <div className="flex">
-                                    <span className="w-32 text-primary font-mono text-xs">
-                                      X-Cybozu-Authorization:
-                                    </span>
-                                    <span className="text-muted-foreground font-mono text-xs">
-                                      [Base64 encoded credentials]
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
+                  {/* 保存（ポップオーバーで名前とメモを入力） */}
+                  <Popover
+                    open={savePopoverOpen}
+                    onOpenChange={setSavePopoverOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!generatedQuery}
+                        className="h-8 text-sm"
+                      >
+                        <Save className="mr-1 h-3 w-3" />
+                        保存
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 space-y-3" align="start">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="save-query-name" className="text-xs">
+                          クエリ名（必須）
+                        </Label>
+                        <Input
+                          id="save-query-name"
+                          value={currentQueryName}
+                          onChange={(e) => setCurrentQueryName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              generatedQuery &&
+                              currentQueryName.trim() &&
+                              !navigatingToQueryList
+                            ) {
+                              handleSaveQuery();
+                            }
+                          }}
+                          placeholder="例: 未対応の問い合わせ"
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="save-query-memo" className="text-xs">
+                          メモ（任意）
+                        </Label>
+                        <Input
+                          id="save-query-memo"
+                          value={currentQueryMemo}
+                          onChange={(e) => setCurrentQueryMemo(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              generatedQuery &&
+                              currentQueryName.trim() &&
+                              !navigatingToQueryList
+                            ) {
+                              handleSaveQuery();
+                            }
+                          }}
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        {isEditMode || currentSavedQueryId || editingQueryId ? (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={handleSaveQuery}
+                              disabled={
+                                !generatedQuery ||
+                                !currentQueryName.trim() ||
+                                navigatingToQueryList
+                              }
+                            >
+                              {navigatingToQueryList ? (
+                                <>
+                                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  移動中
+                                </>
+                              ) : saveAnimating ? (
+                                <>
+                                  <Check className="mr-1 h-3 w-3" />
+                                  完了
+                                </>
+                              ) : (
+                                <>
+                                  <Edit className="mr-1 h-3 w-3" />
+                                  上書き
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleSaveAsQuery}
+                              disabled={
+                                !generatedQuery ||
+                                !currentQueryName.trim() ||
+                                navigatingToQueryList
+                              }
+                            >
+                              {navigatingToQueryList ? (
+                                <>
+                                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  移動中
+                                </>
+                              ) : saveAsAnimating ? (
+                                <>
+                                  <Check className="mr-1 h-3 w-3" />
+                                  完了
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="mr-1 h-3 w-3" />
+                                  別名保存
+                                </>
+                              )}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={handleSaveQuery}
+                            disabled={
+                              !generatedQuery ||
+                              !currentQueryName.trim() ||
+                              navigatingToQueryList
+                            }
+                          >
+                            {navigatingToQueryList ? (
+                              <>
+                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                移動中
+                              </>
+                            ) : saveAnimating ? (
+                              <>
+                                <Check className="mr-1 h-3 w-3" />
+                                完了
+                              </>
+                            ) : (
+                              <>
+                                <Save className="mr-1 h-3 w-3" />
+                                保存
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
-                              {/* JSON Request Body Section */}
-                              <div className="space-y-2">
-                                <div className="text-foreground border-b pb-1 text-sm font-medium">
-                                  JSONリクエストボディ
-                                </div>
-                                <div className="bg-background rounded p-3">
-                                  <pre className="overflow-x-auto text-xs whitespace-pre">
-                                    <code>
-                                      {JSON.stringify(
-                                        {
-                                          app: app.appId,
-                                          ...(generatedQuery && {
-                                            query: generatedQuery,
-                                          }),
-                                          ...(limit && {
-                                            size: parseInt(limit.toString()),
-                                          }),
-                                          ...(offset && {
-                                            offset: parseInt(offset.toString()),
-                                          }),
-                                        },
-                                        null,
-                                        2,
-                                      )}
-                                    </code>
-                                  </pre>
-                                </div>
-
-                              </div>
-                            </div>
-                          </div>
-                        </TabsContent>
-                      </Tabs>
-                    ) : (
-                      <p className="text-muted-foreground text-center">
-                        条件を設定してクエリを生成してください
-                      </p>
+                  {/* 実行結果のステータス */}
+                  <div className="ml-auto flex items-center gap-1 text-sm">
+                    {queryResult && !queryResult.error && (
+                      <span className="font-medium text-green-600 dark:text-green-400">
+                        ✓ {queryResult.records?.length || 0}件ヒット
+                      </span>
                     )}
-                  </CardContent>
-                </Card>
+                    {queryResult?.error != null && (
+                      <span className="text-destructive font-medium">
+                        ✗ エラー
+                      </span>
+                    )}
+                    {queryResult && (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto px-1 text-sm"
+                        onClick={() => setResultsPanelOpen(true)}
+                      >
+                        明細を表示
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
 
-                {/* Query Results */}
-                {queryResult && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>実行結果</CardTitle>
-                      <CardDescription>
+            {/* 実行結果スライドオーバー（条件をいじりながら明細を確認できる） */}
+            {resultsPanelOpen && queryResult && (
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-black/30"
+                  onClick={() => setResultsPanelOpen(false)}
+                  aria-hidden="true"
+                />
+                <div
+                  role="dialog"
+                  aria-label="実行結果"
+                  className="bg-card border-border fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col border-l shadow-xl"
+                >
+                  <div className="flex items-center justify-between border-b px-4 py-3">
+                    <div>
+                      <h2 className="text-base font-semibold">実行結果</h2>
+                      <p className="text-muted-foreground text-xs">
                         {queryResult.error
                           ? "クエリの実行中にエラーが発生しました"
                           : `${queryResult.records?.length || 0}件のレコードを取得しました${
@@ -2786,9 +2925,19 @@ export default function QueryGeneratorPage({
                                 ? "（テーブルには最初の50件を表示）"
                                 : ""
                             }`}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setResultsPanelOpen(false)}
+                      aria-label="実行結果を閉じる"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="scrollbar-thin flex-1 overflow-y-auto p-4">
                       {queryResult.error ? (
                         <div className="bg-muted/40 rounded-md border p-4">
                           <div className="mb-3 flex items-center gap-2">
@@ -2975,136 +3124,13 @@ export default function QueryGeneratorPage({
                           </TabsContent>
                         </Tabs>
                       )}
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
-
-      {/* シンプルなクエリ保存エリア - フッター上 */}
-      {generatedQuery && (
-        <div className="bg-card border-border fixed bottom-7 left-0 right-0 z-40 border-t shadow-sm">
-          <div className="px-6 py-3">
-            <div className="mx-auto flex max-w-4xl items-center justify-center gap-3">
-              <span className="text-muted-foreground hidden text-sm font-medium whitespace-nowrap sm:inline">
-                クエリを保存
-              </span>
-              <Input
-                placeholder="クエリ名（必須）"
-                value={currentQueryName}
-                onChange={(e) => setCurrentQueryName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    generatedQuery &&
-                    currentQueryName.trim() &&
-                    !navigatingToQueryList
-                  ) {
-                    handleSaveQuery();
-                  }
-                }}
-                aria-label="クエリ名"
-                className="bg-background h-9 w-64 text-sm"
-              />
-              <Input
-                placeholder="メモ（任意）"
-                value={currentQueryMemo}
-                onChange={(e) => setCurrentQueryMemo(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    generatedQuery &&
-                    currentQueryName.trim() &&
-                    !navigatingToQueryList
-                  ) {
-                    handleSaveQuery();
-                  }
-                }}
-                aria-label="メモ"
-                className="bg-background h-9 w-64 text-sm"
-              />
-              {/* 保存ボタン */}
-              {(isEditMode || currentSavedQueryId || editingQueryId) ? (
-                // 編集モード：上書き保存と別名保存
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleSaveQuery}
-                    disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
-                    className="h-9 px-4 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {navigatingToQueryList ? (
-                      <>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        移動中
-                      </>
-                    ) : saveAnimating ? (
-                      <>
-                        <Check className="h-3 w-3 mr-1" />
-                        完了
-                      </>
-                    ) : (
-                      <>
-                        <Edit className="h-3 w-3 mr-1" />
-                        上書き
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={handleSaveAsQuery}
-                    disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
-                    variant="outline"
-                    className="h-9 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {navigatingToQueryList ? (
-                      <>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        移動中
-                      </>
-                    ) : saveAsAnimating ? (
-                      <>
-                        <Check className="h-3 w-3 mr-1" />
-                        完了
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3 w-3 mr-1" />
-                        別名保存
-                      </>
-                    )}
-                  </Button>
-                </div>
-              ) : (
-                // 新規モード：通常の保存
-                <Button
-                  onClick={handleSaveQuery}
-                  disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
-                  className="h-9 px-6 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {navigatingToQueryList ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      移動中
-                    </>
-                  ) : saveAnimating ? (
-                    <>
-                      <Check className="h-4 w-4 mr-2" />
-                      完了
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      保存
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ナビゲーション中のローディングオーバーレイ */}
       {navigatingToQueryList && (
