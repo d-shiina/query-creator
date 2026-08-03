@@ -63,7 +63,6 @@
       height: 0;
     }
   }
-
 }
 
 @utility container {
@@ -271,5 +270,91 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
     line-clamp: 3;
+  }
+}
+
+/* Query Studio — focused, layered workspace */
+@layer components {
+  .query-workspace {
+    background:
+      radial-gradient(
+        circle at 78% 4%,
+        hsl(var(--primary) / 0.09),
+        transparent 28rem
+      ),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.35));
+  }
+  .workspace-header {
+    background: hsl(var(--card) / 0.88);
+    border-color: hsl(var(--border) / 0.75);
+    box-shadow: 0 1px 0 hsl(var(--foreground) / 0.03);
+    backdrop-filter: blur(18px) saturate(150%);
+  }
+  .workspace-hero {
+    position: relative;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--card) / 0.96),
+      hsl(var(--accent) / 0.72)
+    );
+    border-color: hsl(var(--primary) / 0.14);
+    box-shadow: 0 18px 50px -36px hsl(var(--primary) / 0.55);
+  }
+  .workspace-hero::after {
+    content: "";
+    position: absolute;
+    width: 18rem;
+    height: 18rem;
+    right: -6rem;
+    top: -10rem;
+    border-radius: 999px;
+    background: hsl(var(--primary) / 0.13);
+    filter: blur(8px);
+  }
+  .hero-stat {
+    @apply bg-background/70 flex min-w-20 flex-col rounded-2xl border px-3 py-3 shadow-sm backdrop-blur;
+  }
+  .hero-stat strong {
+    @apply text-foreground text-sm font-bold;
+  }
+  .hero-stat span {
+    @apply text-muted-foreground mt-1 text-[10px] font-medium;
+  }
+  .workflow-step {
+    @apply text-muted-foreground flex min-w-0 items-center gap-3 rounded-xl px-3 py-2 transition-colors;
+  }
+  .workflow-step > span {
+    @apply bg-background flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold;
+  }
+  .workflow-step div {
+    @apply flex min-w-0 flex-col;
+  }
+  .workflow-step strong {
+    @apply truncate text-xs font-semibold sm:text-sm;
+  }
+  .workflow-step small {
+    @apply hidden truncate text-[10px] sm:block;
+  }
+  .workflow-step.is-active {
+    @apply bg-primary/8 text-foreground;
+  }
+  .workflow-step.is-active > span {
+    @apply border-primary bg-primary text-primary-foreground shadow-sm;
+  }
+  .query-workspace [data-slot="card"] {
+    border-color: hsl(var(--border) / 0.8);
+  }
+  .condition-card {
+    background: linear-gradient(
+      145deg,
+      hsl(var(--background)),
+      hsl(var(--muted) / 0.32)
+    );
+    border-color: hsl(var(--border) / 0.85);
+    box-shadow: 0 8px 24px -22px hsl(var(--foreground) / 0.45);
+  }
+  .condition-card:hover {
+    border-color: hsl(var(--primary) / 0.3);
+    box-shadow: 0 14px 30px -24px hsl(var(--primary) / 0.6);
   }
 }

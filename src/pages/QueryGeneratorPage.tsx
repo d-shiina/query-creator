@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Database,
-  Settings,
   Code,
   Play,
   Loader2,
@@ -18,13 +17,16 @@ import {
   Clock,
   Clipboard,
   ClipboardCheck,
-  FileText,
   RotateCcw,
   Copy,
   GripVertical,
   Edit,
   ArrowRight,
   ExternalLink,
+  SlidersHorizontal,
+  Sparkles,
+  Layers3,
+  CircleCheck,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -93,7 +95,9 @@ import {
 declare global {
   interface Window {
     electronAppAPI: {
-      openExternalURL: (url: string) => Promise<{ success: boolean; error?: string }>;
+      openExternalURL: (
+        url: string,
+      ) => Promise<{ success: boolean; error?: string }>;
     };
   }
 }
@@ -334,18 +338,24 @@ const ModernDateTimePicker: React.FC<{
 
   const handleToday = () => {
     const today = new Date();
-    console.log('Today button clicked:', today);
+    console.log("Today button clicked:", today);
     setSelectedDate(today);
     handleDateSelect(today);
     // カレンダーの年月ドロップダウンを強制更新するためのキー更新
-    setCalendarKey(prev => prev + 1);
+    setCalendarKey((prev) => prev + 1);
   };
 
   const handleNow = () => {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = Math.round(now.getMinutes() / 5) * 5; // 5分刻みに丸める
-    console.log('Now button clicked:', now, 'Time:', currentHour, currentMinute);
+    console.log(
+      "Now button clicked:",
+      now,
+      "Time:",
+      currentHour,
+      currentMinute,
+    );
     setSelectedHour(currentHour);
     setSelectedMinute(currentMinute);
     setSelectedDate(now);
@@ -378,14 +388,16 @@ const ModernDateTimePicker: React.FC<{
     const safeValue = isNaN(value) ? 0 : value;
 
     return (
-      <div className="flex flex-col items-center h-full min-h-0">
-        <label className="text-xs font-medium text-muted-foreground mb-2 flex-shrink-0">{title}</label>
-        <div className="flex-1 w-16 min-h-0 overflow-y-auto rounded-md border border-border bg-background shadow-sm">
+      <div className="flex h-full min-h-0 flex-col items-center">
+        <label className="text-muted-foreground mb-2 flex-shrink-0 text-xs font-medium">
+          {title}
+        </label>
+        <div className="border-border bg-background min-h-0 w-16 flex-1 overflow-y-auto rounded-md border shadow-sm">
           <div className="py-1">
             {options.map((option) => (
               <button
                 key={option}
-                className={`w-full py-1.5 text-xs transition-colors hover:bg-accent hover:text-accent-foreground ${
+                className={`hover:bg-accent hover:text-accent-foreground w-full py-1.5 text-xs transition-colors ${
                   safeValue === option
                     ? "bg-accent text-accent-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground"
@@ -415,133 +427,138 @@ const ModernDateTimePicker: React.FC<{
           {getButtonIcon()}
         </Button>
       </DialogTrigger>
-      <DialogContent 
-        className="max-w-[98vw] sm:max-w-fit max-h-[95vh] overflow-auto p-0 border-0 bg-transparent shadow-none"
+      <DialogContent
+        className="max-h-[95vh] max-w-[98vw] overflow-auto border-0 bg-transparent p-0 shadow-none sm:max-w-fit"
         showCloseButton={false}
       >
-        <div className="bg-background rounded-xl border border-border shadow-lg">
+        <div className="bg-background border-border rounded-xl border shadow-lg">
           {/* ダイアログヘッダー */}
-          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-border">
-            <h3 className="text-base sm:text-lg font-semibold">
+          <div className="border-border flex items-center justify-between border-b p-3 sm:p-4">
+            <h3 className="text-base font-semibold sm:text-lg">
               {mode === "datetime" ? "日時を選択" : "日付を選択"}
             </h3>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setOpen(false)}
-              className="h-8 w-8 p-0 shrink-0"
+              className="h-8 w-8 shrink-0 p-0"
             >
               ✕
             </Button>
           </div>
-          
+
           <div className="space-y-3 p-3 sm:space-y-4 sm:p-5">
             {/* アクションボタン */}
             <div className="flex justify-center gap-2 sm:gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToday}
-              className="px-2 text-xs sm:px-4 sm:text-sm border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary"
-            >
-              今日
-            </Button>
-            {mode === "datetime" && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleNow}
-                className="px-2 text-xs sm:px-4 sm:text-sm border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary"
+                onClick={handleToday}
+                className="border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary px-2 text-xs sm:px-4 sm:text-sm"
               >
-                <Clock className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-                現在時刻
+                今日
               </Button>
-            )}
-          </div>
-
-          {/* メインコンテンツエリア */}
-          <div
-            className={`flex ${mode === "datetime" 
-              ? "flex-col gap-3 sm:flex-row sm:gap-6 sm:items-start" 
-              : "justify-center"
-            }`}
-          >
-            {/* カレンダー */}
-            <div className="flex-shrink-0 w-full sm:w-auto overflow-hidden max-w-full">
-              <div className="bg-card rounded-lg border border-border shadow-sm p-3 sm:p-4 h-72 sm:h-80 overflow-hidden max-w-full">
-                <Calendar
-                  key={calendarKey}
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={handleDateSelect}
-                  locale={ja}
-                  captionLayout="dropdown"
-                  fromYear={2000}
-                  toYear={2030}
-                  className="w-full max-w-full rounded-md bg-transparent h-full flex flex-col overflow-hidden"
-                  formatters={{
-                    formatMonthDropdown: (date) => `${date.getMonth() + 1}月`,
-                    formatYearDropdown: (date) => `${date.getFullYear()}年`,
-                  }}
-                  classNames={{
-                    months: "flex flex-col gap-2 h-full w-full max-w-full",
-                    month: "flex w-full max-w-full flex-col gap-2 h-full",
-                    nav: "hidden", // ナビゲーション矢印を非表示
-                    month_caption: "flex h-10 w-full items-center justify-center px-2 font-medium text-sm flex-shrink-0",
-                    weekdays: "grid grid-cols-7 mb-1 border-b border-border/20 pb-1 w-full flex-shrink-0 gap-0",
-                    weekday: "text-muted-foreground select-none text-xs font-medium py-0.5 text-center overflow-hidden text-ellipsis h-5",
-                    weeks: "grid grid-rows-6 gap-0 flex-1 min-h-0 w-full",
-                    week: "grid grid-cols-7 w-full gap-0 h-full",
-                    day: "group/day relative select-none p-0 text-center overflow-hidden flex items-center justify-center aspect-square max-h-7",
-                    table: "w-full max-w-full border-collapse flex-1 min-h-0"
-                  }}
-                />
-              </div>
+              {mode === "datetime" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNow}
+                  className="border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary px-2 text-xs sm:px-4 sm:text-sm"
+                >
+                  <Clock className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
+                  現在時刻
+                </Button>
+              )}
             </div>
 
-            {/* 時刻選択（datetimeモードの場合のみ） */}
-            {mode === "datetime" && (
-              <div className="bg-card rounded-lg border border-border shadow-sm p-3 sm:p-4 sm:ml-3 h-72 sm:h-80 flex flex-col overflow-hidden w-full sm:w-auto">
-                <div className="text-center mb-3 flex-shrink-0">
-                  <Label className="text-sm font-medium text-foreground">時刻選択</Label>
-                  <div className="mt-2 p-2 bg-accent/30 rounded-md border border-border">
-                    <div className="text-lg font-mono font-semibold text-foreground">
-                      {(isNaN(selectedHour) ? 0 : selectedHour)
-                        .toString()
-                        .padStart(2, "0")}
-                      <span className="text-muted-foreground mx-1">:</span>
-                      {(isNaN(selectedMinute) ? 0 : selectedMinute)
-                        .toString()
-                        .padStart(2, "0")}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-4 justify-center flex-1 min-h-0">
-                  <TimeScrollPicker
-                    title="時"
-                    value={selectedHour}
-                    options={hours}
-                    onChange={handleHourChange}
-                  />
-                  <TimeScrollPicker
-                    title="分"
-                    value={selectedMinute}
-                    options={minutes}
-                    onChange={handleMinuteChange}
+            {/* メインコンテンツエリア */}
+            <div
+              className={`flex ${
+                mode === "datetime"
+                  ? "flex-col gap-3 sm:flex-row sm:items-start sm:gap-6"
+                  : "justify-center"
+              }`}
+            >
+              {/* カレンダー */}
+              <div className="w-full max-w-full flex-shrink-0 overflow-hidden sm:w-auto">
+                <div className="bg-card border-border h-72 max-w-full overflow-hidden rounded-lg border p-3 shadow-sm sm:h-80 sm:p-4">
+                  <Calendar
+                    key={calendarKey}
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={handleDateSelect}
+                    locale={ja}
+                    captionLayout="dropdown"
+                    fromYear={2000}
+                    toYear={2030}
+                    className="flex h-full w-full max-w-full flex-col overflow-hidden rounded-md bg-transparent"
+                    formatters={{
+                      formatMonthDropdown: (date) => `${date.getMonth() + 1}月`,
+                      formatYearDropdown: (date) => `${date.getFullYear()}年`,
+                    }}
+                    classNames={{
+                      months: "flex flex-col gap-2 h-full w-full max-w-full",
+                      month: "flex w-full max-w-full flex-col gap-2 h-full",
+                      nav: "hidden", // ナビゲーション矢印を非表示
+                      month_caption:
+                        "flex h-10 w-full items-center justify-center px-2 font-medium text-sm flex-shrink-0",
+                      weekdays:
+                        "grid grid-cols-7 mb-1 border-b border-border/20 pb-1 w-full flex-shrink-0 gap-0",
+                      weekday:
+                        "text-muted-foreground select-none text-xs font-medium py-0.5 text-center overflow-hidden text-ellipsis h-5",
+                      weeks: "grid grid-rows-6 gap-0 flex-1 min-h-0 w-full",
+                      week: "grid grid-cols-7 w-full gap-0 h-full",
+                      day: "group/day relative select-none p-0 text-center overflow-hidden flex items-center justify-center aspect-square max-h-7",
+                      table: "w-full max-w-full border-collapse flex-1 min-h-0",
+                    }}
                   />
                 </div>
               </div>
-            )}
+
+              {/* 時刻選択（datetimeモードの場合のみ） */}
+              {mode === "datetime" && (
+                <div className="bg-card border-border flex h-72 w-full flex-col overflow-hidden rounded-lg border p-3 shadow-sm sm:ml-3 sm:h-80 sm:w-auto sm:p-4">
+                  <div className="mb-3 flex-shrink-0 text-center">
+                    <Label className="text-foreground text-sm font-medium">
+                      時刻選択
+                    </Label>
+                    <div className="bg-accent/30 border-border mt-2 rounded-md border p-2">
+                      <div className="text-foreground font-mono text-lg font-semibold">
+                        {(isNaN(selectedHour) ? 0 : selectedHour)
+                          .toString()
+                          .padStart(2, "0")}
+                        <span className="text-muted-foreground mx-1">:</span>
+                        {(isNaN(selectedMinute) ? 0 : selectedMinute)
+                          .toString()
+                          .padStart(2, "0")}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex min-h-0 flex-1 justify-center gap-4">
+                    <TimeScrollPicker
+                      title="時"
+                      value={selectedHour}
+                      options={hours}
+                      onChange={handleHourChange}
+                    />
+                    <TimeScrollPicker
+                      title="分"
+                      value={selectedMinute}
+                      options={minutes}
+                      onChange={handleMinuteChange}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          </div>
-          
           {/* フッター */}
-          <div className="flex justify-center border-t border-border p-3 sm:p-4">
+          <div className="border-border flex justify-center border-t p-3 sm:p-4">
             <Button
               variant="outline"
               onClick={() => setOpen(false)}
-              className="px-6 sm:px-8 w-full sm:w-auto text-sm border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary"
+              className="border-primary/20 hover:bg-primary/5 hover:border-primary/40 hover:text-primary w-full px-6 text-sm sm:w-auto sm:px-8"
             >
               {mode === "datetime" ? "完了" : "選択"}
             </Button>
@@ -921,15 +938,18 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
     /^admin$/i,
     /responsible$/i,
     /creator$/i,
-    /modifier$/i
+    /modifier$/i,
   ];
 
-  const isUserFieldByName = fieldInfo && userFieldPatterns.some(pattern => 
-    pattern.test(fieldInfo.code) || pattern.test(fieldInfo.label)
-  );
+  const isUserFieldByName =
+    fieldInfo &&
+    userFieldPatterns.some(
+      (pattern) =>
+        pattern.test(fieldInfo.code) || pattern.test(fieldInfo.label),
+    );
 
   const isUserField =
-    fieldInfo?.type === "CREATOR" || 
+    fieldInfo?.type === "CREATOR" ||
     fieldInfo?.type === "MODIFIER" ||
     fieldInfo?.type === "USER_SELECT" ||
     fieldInfo?.type === "ORGANIZATION_SELECT" ||
@@ -944,10 +964,14 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         code: fieldInfo.code,
         label: fieldInfo.label,
         type: fieldInfo.type,
-        byType: fieldInfo.type === "CREATOR" || fieldInfo.type === "MODIFIER" || 
-               fieldInfo.type === "USER_SELECT" || fieldInfo.type === "ORGANIZATION_SELECT" ||
-               fieldInfo.type === "GROUP_SELECT" || fieldInfo.type === "STATUS_ASSIGNEE",
-        byName: isUserFieldByName
+        byType:
+          fieldInfo.type === "CREATOR" ||
+          fieldInfo.type === "MODIFIER" ||
+          fieldInfo.type === "USER_SELECT" ||
+          fieldInfo.type === "ORGANIZATION_SELECT" ||
+          fieldInfo.type === "GROUP_SELECT" ||
+          fieldInfo.type === "STATUS_ASSIGNEE",
+        byName: isUserFieldByName,
       });
     }
   }, [fieldInfo, isUserField, isUserFieldByName]);
@@ -1017,7 +1041,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
         if (!Number.isNaN(from) && from !== index) onMove(from, index);
       }}
-      className={`bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words transition-shadow ${
+      className={`condition-card min-w-0 overflow-auto rounded-2xl border p-4 break-words transition-all ${
         isDragOver ? "ring-primary/60 ring-2" : ""
       }`}
     >
@@ -1312,7 +1336,9 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                             ...(condition.values || [""]),
                                           ];
                                           newValues[valueIndex] = user.code;
-                                          onUpdate(index, { values: newValues });
+                                          onUpdate(index, {
+                                            values: newValues,
+                                          });
                                         } else {
                                           // 単一値の場合
                                           onUpdate(index, { value: user.code });
@@ -1399,7 +1425,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                       <div className="text-muted-foreground text-xs">
                                         {func.description}
                                       </div>
-                                      <div className="mt-1 text-primary font-mono text-xs">
+                                      <div className="text-primary mt-1 font-mono text-xs">
                                         {func.value}
                                       </div>
                                     </div>
@@ -1619,7 +1645,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                                     <div className="text-muted-foreground text-xs">
                                       {func.description}
                                     </div>
-                                    <div className="mt-1 text-primary font-mono text-xs">
+                                    <div className="text-primary mt-1 font-mono text-xs">
                                       {func.value}
                                     </div>
                                   </div>
@@ -1673,7 +1699,9 @@ export default function QueryGeneratorPage({
   const [currentQueryName, setCurrentQueryName] = useState("");
   const [currentQueryMemo, setCurrentQueryMemo] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
-  const [currentSavedQueryId, setCurrentSavedQueryId] = useState<string | null>(null);
+  const [currentSavedQueryId, setCurrentSavedQueryId] = useState<string | null>(
+    null,
+  );
 
   // 編集中の入力があるか（リセット・離脱の確認に使用）
   const hasUnsavedInput = useMemo(
@@ -1733,14 +1761,14 @@ export default function QueryGeneratorPage({
   // kintoneアプリをブラウザで開く関数
   const openAppInBrowser = useCallback(async () => {
     const kintoneAppUrl = `https://${auth.subdomain}.cybozu.com/k/${app.appId}/`;
-    
+
     try {
       // OS既定のブラウザで直接アプリページを開く
       await window.electronAppAPI.openExternalURL(kintoneAppUrl);
     } catch (error) {
-      console.error('Failed to open app URL:', error);
+      console.error("Failed to open app URL:", error);
       // フォールバック：従来のwindow.openを使用
-      window.open(kintoneAppUrl, '_blank');
+      window.open(kintoneAppUrl, "_blank");
     }
   }, [auth.subdomain, app.appId]);
 
@@ -1799,7 +1827,9 @@ export default function QueryGeneratorPage({
   }, []);
 
   const resetConditions = useCallback(() => {
-    setConditions([{ field: "", operator: "=", value: "", logicalOperator: "and" }]);
+    setConditions([
+      { field: "", operator: "=", value: "", logicalOperator: "and" },
+    ]);
     setSortField("none");
     setSortDirection("asc");
     setLimit(undefined);
@@ -1935,7 +1965,7 @@ export default function QueryGeneratorPage({
         limit,
         offset,
         currentSavedQueryId || editingQueryId,
-        currentQueryMemo.trim()
+        currentQueryMemo.trim(),
       );
 
       // 保存後に更新モードに切り替え
@@ -1948,7 +1978,7 @@ export default function QueryGeneratorPage({
       setTimeout(() => {
         setSaveAnimating(false);
         setNavigatingToQueryList(true);
-        
+
         // さらに0.5秒後に画面遷移
         setTimeout(() => {
           setNavigatingToQueryList(false);
@@ -1994,7 +2024,7 @@ export default function QueryGeneratorPage({
         limit,
         offset,
         undefined, // 新規として保存
-        currentQueryMemo.trim()
+        currentQueryMemo.trim(),
       );
 
       // 保存後に新しいクエリを編集モードに切り替え
@@ -2007,7 +2037,7 @@ export default function QueryGeneratorPage({
       setTimeout(() => {
         setSaveAsAnimating(false);
         setNavigatingToQueryList(true);
-        
+
         // さらに0.5秒後に画面遷移
         setTimeout(() => {
           setNavigatingToQueryList(false);
@@ -2032,27 +2062,28 @@ export default function QueryGeneratorPage({
     onBack,
   ]);
 
-
-
-
-
   // Effects - 編集モードの初期化（editingQueryIdがある場合のみ）
   useEffect(() => {
-    console.log("編集モード初期化:", { 
-      editingQueryId, 
-      savedQueriesLength: savedQueries.length, 
+    console.log("編集モード初期化:", {
+      editingQueryId,
+      savedQueriesLength: savedQueries.length,
       fieldsLength: fields.length,
-      loading 
+      loading,
     });
-    
+
     // フィールドが読み込まれ、savedQueriesが存在し、編集対象IDがある場合のみ実行
-    if (editingQueryId && savedQueries.length > 0 && fields.length > 0 && !loading) {
+    if (
+      editingQueryId &&
+      savedQueries.length > 0 &&
+      fields.length > 0 &&
+      !loading
+    ) {
       const queryToEdit = savedQueries.find((q) => q.id === editingQueryId);
       console.log("編集対象クエリ:", queryToEdit);
-      
+
       if (queryToEdit) {
         console.log("編集クエリの条件:", queryToEdit.conditions);
-        
+
         // 各条件の詳細をログ出力
         queryToEdit.conditions.forEach((condition, index) => {
           console.log(`読み込み条件 ${index}:`, {
@@ -2060,20 +2091,20 @@ export default function QueryGeneratorPage({
             operator: condition.operator,
             value: condition.value,
             values: condition.values,
-            logicalOperator: condition.logicalOperator
+            logicalOperator: condition.logicalOperator,
           });
         });
-        
+
         // 条件が有効かチェック（フィールドが存在するか）
-        const validConditions = queryToEdit.conditions.map(condition => {
-          const fieldExists = fields.find(f => f.code === condition.field);
+        const validConditions = queryToEdit.conditions.map((condition) => {
+          const fieldExists = fields.find((f) => f.code === condition.field);
           if (!fieldExists && condition.field) {
             console.warn(`フィールド ${condition.field} が見つかりません`);
             return { ...condition, field: "" }; // フィールドが見つからない場合はリセット
           }
           return condition;
         });
-        
+
         console.log("設定される条件:", validConditions);
         setConditions(validConditions);
         setSortField(queryToEdit.orderBy || "none");
@@ -2085,7 +2116,10 @@ export default function QueryGeneratorPage({
         setIsEditMode(true);
         console.log("編集モード設定完了");
       }
-    } else if (editingQueryId && (savedQueries.length === 0 || fields.length === 0 || loading)) {
+    } else if (
+      editingQueryId &&
+      (savedQueries.length === 0 || fields.length === 0 || loading)
+    ) {
       // データがまだ読み込まれていない場合は何もしない
       console.log("データがまだ読み込まれていません");
     } else if (!editingQueryId && !currentSavedQueryId) {
@@ -2166,22 +2200,29 @@ export default function QueryGeneratorPage({
   }
 
   return (
-    <div className="bg-background flex min-h-screen flex-col">
+    <div className="query-workspace flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-border bg-card sticky top-0 z-40 border-b">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-3">
+      <header className="workspace-header sticky top-0 z-40 border-b">
+        <div className="mx-auto max-w-[1500px] px-4 sm:px-6 lg:px-8">
+          <div className="flex min-h-16 items-center justify-between gap-4 py-2">
             <div className="flex items-center space-x-3">
-              <BackButton
-                onClick={onBack}
-                label="クエリ管理に戻る"
-              />
+              <BackButton onClick={onBack} label="クエリ管理に戻る" />
               <div className="flex items-center space-x-3">
                 <div>
                   <div className="flex items-center space-x-3">
-                    <h1 className="text-foreground text-lg font-semibold">
-                      {app.name}
-                    </h1>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-primary/10 text-primary flex h-8 w-8 items-center justify-center rounded-xl">
+                        <Database className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-primary text-[10px] font-bold tracking-[0.18em] uppercase">
+                          Query studio
+                        </p>
+                        <h1 className="text-foreground text-base leading-tight font-bold">
+                          {app.name}
+                        </h1>
+                      </div>
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
@@ -2189,7 +2230,7 @@ export default function QueryGeneratorPage({
                       className="h-8 px-3 text-sm"
                       title={`${app.name}をブラウザで開く`}
                     >
-                      <ExternalLink className="h-3 w-3 mr-1" />
+                      <ExternalLink className="mr-1 h-3 w-3" />
                       ブラウザで開く
                     </Button>
                   </div>
@@ -2200,7 +2241,7 @@ export default function QueryGeneratorPage({
                       type="button"
                       size="icon"
                       variant="ghost"
-                      className="h-6 w-6 p-0 ml-1"
+                      className="ml-1 h-6 w-6 p-0"
                       title="アプリIDをコピー"
                       onClick={async () => {
                         await navigator.clipboard.writeText(app.appId);
@@ -2222,7 +2263,7 @@ export default function QueryGeneratorPage({
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-6 w-6 p-0 ml-1"
+                          className="ml-1 h-6 w-6 p-0"
                           title="ゲストスペースIDをコピー"
                           onClick={async () => {
                             await navigator.clipboard.writeText(app.spaceId!);
@@ -2245,23 +2286,17 @@ export default function QueryGeneratorPage({
 
             <div className="flex items-center space-x-4">
               <ToggleTheme />
-              <Button
-                variant="outline"
-                onClick={onLogout}
-                size="sm"
-              >
+              <Button variant="outline" onClick={onLogout} size="sm">
                 ログアウト
               </Button>
             </div>
           </div>
         </div>
-
-
       </header>
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-4 py-8 pb-32 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1500px] px-4 py-6 pb-36 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <nav className="mb-6" aria-label="パンくずナビゲーション">
             <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
@@ -2304,20 +2339,86 @@ export default function QueryGeneratorPage({
             </ol>
           </nav>
 
+          <section className="workspace-hero mb-6 overflow-hidden rounded-3xl border p-5 sm:p-7">
+            <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-2xl">
+                <div className="text-primary mb-3 flex items-center gap-2 text-xs font-semibold">
+                  <Sparkles className="h-4 w-4" />
+                  {isEditMode ? "保存済みクエリを編集中" : "新しいクエリを作成"}
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                  必要なレコードを、迷わず抽出。
+                </h2>
+                <p className="text-muted-foreground mt-2 max-w-xl text-sm leading-relaxed">
+                  条件を組み立てるだけで、kintone REST API
+                  用のクエリをリアルタイムに生成できます。
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center sm:gap-3">
+                <div className="hero-stat">
+                  <strong>{fields.length}</strong>
+                  <span>フィールド</span>
+                </div>
+                <div className="hero-stat">
+                  <strong>{conditions.length}</strong>
+                  <span>条件</span>
+                </div>
+                <div className="hero-stat">
+                  <strong>{generatedQuery ? "Ready" : "Draft"}</strong>
+                  <span>ステータス</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="bg-card/70 mb-6 grid grid-cols-3 rounded-2xl border p-2 shadow-sm backdrop-blur">
+            <div className="workflow-step is-active">
+              <span>1</span>
+              <div>
+                <strong>条件を設定</strong>
+                <small>対象を絞り込む</small>
+              </div>
+            </div>
+            <div
+              className={`workflow-step ${generatedQuery ? "is-active" : ""}`}
+            >
+              <span>2</span>
+              <div>
+                <strong>内容を確認</strong>
+                <small>クエリをプレビュー</small>
+              </div>
+            </div>
+            <div className={`workflow-step ${queryResult ? "is-active" : ""}`}>
+              <span>3</span>
+              <div>
+                <strong>実行・保存</strong>
+                <small>結果を活用する</small>
+              </div>
+            </div>
+          </div>
+
           {error && <ErrorAlert error={error} />}
 
           <div className="space-y-6">
             {/* Main Layout: Query Builder + Results */}
-            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
               {/* Left: Query Builder */}
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle>検索条件</CardTitle>
+                        <div className="text-primary mb-2 flex items-center gap-2">
+                          <SlidersHorizontal className="h-4 w-4" />
+                          <span className="text-xs font-bold tracking-widest uppercase">
+                            Builder
+                          </span>
+                        </div>
+                        <CardTitle className="text-xl">
+                          検索条件を組み立てる
+                        </CardTitle>
                         <CardDescription>
-                          フィールドと条件を指定してください
+                          フィールド、演算子、値の順に選択します
                         </CardDescription>
                       </div>
                       <Button
@@ -2333,7 +2434,7 @@ export default function QueryGeneratorPage({
                         className="text-muted-foreground hover:text-foreground"
                         aria-label="条件をリセット"
                       >
-                        <RotateCcw className="h-4 w-4 mr-2" />
+                        <RotateCcw className="mr-2 h-4 w-4" />
                         リセット
                       </Button>
                       <Dialog
@@ -2439,9 +2540,17 @@ export default function QueryGeneratorPage({
                 {/* Sort and Limit Options */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>並び替え・制限</CardTitle>
+                    <div className="text-primary mb-2 flex items-center gap-2">
+                      <Layers3 className="h-4 w-4" />
+                      <span className="text-xs font-bold tracking-widest uppercase">
+                        Options
+                      </span>
+                    </div>
+                    <CardTitle className="text-xl">
+                      並び替えと取得範囲
+                    </CardTitle>
                     <CardDescription>
-                      クエリの並び替えと取得件数を設定
+                      必要な場合だけ追加設定できます
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -2534,7 +2643,6 @@ export default function QueryGeneratorPage({
                                   )
                                 : undefined;
                               setLimit(value);
-
                             }}
                             aria-label="取得件数を入力"
                           />
@@ -2557,8 +2665,6 @@ export default function QueryGeneratorPage({
                                 ? Math.max(0, Number(e.target.value))
                                 : undefined;
                               setOffset(value);
-                              
-
                             }}
                             aria-label="スキップ件数を入力"
                           />
@@ -2570,12 +2676,26 @@ export default function QueryGeneratorPage({
               </div>
 
               {/* Right: Generated Query and Results（条件編集中も常に見えるように追従・独立スクロール） */}
-              <div className="scrollbar-thin space-y-6 lg:sticky lg:top-16 lg:max-h-[calc(100vh-13rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
+              <div className="scrollbar-thin space-y-6 xl:sticky xl:top-20 xl:max-h-[calc(100vh-7rem)] xl:self-start xl:overflow-y-auto xl:pr-2">
                 <Card className="h-fit">
                   <CardHeader>
-                    <CardTitle>生成されたクエリ</CardTitle>
+                    <div className="text-primary mb-2 flex items-center gap-2">
+                      <Code className="h-4 w-4" />
+                      <span className="text-xs font-bold tracking-widest uppercase">
+                        Live preview
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle className="text-xl">生成クエリ</CardTitle>
+                      {generatedQuery && (
+                        <Badge className="gap-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                          <CircleCheck className="h-3 w-3" />
+                          生成済み
+                        </Badge>
+                      )}
+                    </div>
                     <CardDescription>
-                      Kintone REST APIで使用するクエリが表示されます
+                      入力内容がリアルタイムで反映されます
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -2644,27 +2764,29 @@ export default function QueryGeneratorPage({
                               disabled={executing}
                               title="Ctrl+Enterでも実行できます"
                               size="sm"
-                              className={`flex-1 h-8 text-sm transition-all duration-300 ${
-                                executing 
-                                  ? 'bg-primary text-primary-foreground' 
+                              className={`h-8 flex-1 text-sm transition-all duration-300 ${
+                                executing
+                                  ? "bg-primary text-primary-foreground"
                                   : queryExecuted
-                                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                                    ? "bg-green-600 text-white hover:bg-green-700"
+                                    : "bg-primary hover:bg-primary/90 text-primary-foreground"
                               }`}
                             >
                               {executing ? (
                                 <>
-                                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                                   実行中
                                 </>
                               ) : (
                                 <>
-                                  <Play className={`h-3 w-3 mr-1 transition-all duration-300 ${queryExecuted ? 'fill-current' : ''}`} />
+                                  <Play
+                                    className={`mr-1 h-3 w-3 transition-all duration-300 ${queryExecuted ? "fill-current" : ""}`}
+                                  />
                                   実行
                                 </>
                               )}
                             </Button>
-                            
+
                             <Button
                               variant="outline"
                               size="sm"
@@ -2676,22 +2798,25 @@ export default function QueryGeneratorPage({
                                   ),
                                 );
                                 setClipboardCopied(true);
-                                setTimeout(() => setClipboardCopied(false), 2000);
+                                setTimeout(
+                                  () => setClipboardCopied(false),
+                                  2000,
+                                );
                               }}
-                              className={`flex-1 h-8 text-sm transition-all duration-300 ${
-                                clipboardCopied 
-                                  ? 'bg-green-50 border-green-200 text-green-700 dark:bg-green-950 dark:border-green-800 dark:text-green-300' 
-                                  : 'hover:bg-accent'
+                              className={`h-8 flex-1 text-sm transition-all duration-300 ${
+                                clipboardCopied
+                                  ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300"
+                                  : "hover:bg-accent"
                               }`}
                             >
                               {clipboardCopied ? (
                                 <>
-                                  <ClipboardCheck className="h-3 w-3 mr-1" />
+                                  <ClipboardCheck className="mr-1 h-3 w-3" />
                                   完了
                                 </>
                               ) : (
                                 <>
-                                  <Clipboard className="h-3 w-3 mr-1" />
+                                  <Clipboard className="mr-1 h-3 w-3" />
                                   コピー
                                 </>
                               )}
@@ -2721,7 +2846,7 @@ export default function QueryGeneratorPage({
                                 </div>
                                 <div className="bg-background space-y-2 rounded p-3">
                                   <div className="flex">
-                                    <span className="w-32 text-primary font-mono text-xs">
+                                    <span className="text-primary w-32 font-mono text-xs">
                                       Content-Type:
                                     </span>
                                     <span className="font-mono text-xs">
@@ -2729,7 +2854,7 @@ export default function QueryGeneratorPage({
                                     </span>
                                   </div>
                                   <div className="flex">
-                                    <span className="w-32 text-primary font-mono text-xs">
+                                    <span className="text-primary w-32 font-mono text-xs">
                                       X-Cybozu-Authorization:
                                     </span>
                                     <span className="text-muted-foreground font-mono text-xs">
@@ -2766,7 +2891,6 @@ export default function QueryGeneratorPage({
                                     </code>
                                   </pre>
                                 </div>
-
                               </div>
                             </div>
                           </div>
@@ -2901,12 +3025,12 @@ export default function QueryGeneratorPage({
                                   }}
                                 >
                                   <thead>
-                                    <tr className="bg-muted border-b sticky top-0 z-10">
+                                    <tr className="bg-muted sticky top-0 z-10 border-b">
                                       {Object.keys(queryResult.records[0]).map(
                                         (fieldCode) => (
                                           <th
                                             key={fieldCode}
-                                            className="border-r p-3 text-left font-medium whitespace-nowrap min-w-[120px]"
+                                            className="min-w-[120px] border-r p-3 text-left font-medium whitespace-nowrap"
                                             style={{
                                               writingMode: "horizontal-tb",
                                             }}
@@ -2935,12 +3059,14 @@ export default function QueryGeneratorPage({
                                               ([fieldCode, fieldData]) => (
                                                 <td
                                                   key={fieldCode}
-                                                  className="border-r p-3 min-w-[120px] max-w-[300px] overflow-hidden text-ellipsis"
+                                                  className="max-w-[300px] min-w-[120px] overflow-hidden border-r p-3 text-ellipsis"
                                                   style={{
                                                     writingMode:
                                                       "horizontal-tb",
                                                   }}
-                                                  title={queryUtils.formatFieldValue(fieldData)}
+                                                  title={queryUtils.formatFieldValue(
+                                                    fieldData,
+                                                  )}
                                                 >
                                                   <div className="truncate">
                                                     {queryUtils.formatFieldValue(
@@ -2993,7 +3119,7 @@ export default function QueryGeneratorPage({
 
       {/* シンプルなクエリ保存エリア - フッター上 */}
       {generatedQuery && (
-        <div className="bg-card border-border fixed bottom-7 left-0 right-0 z-40 border-t shadow-sm">
+        <div className="bg-card border-border fixed right-0 bottom-7 left-0 z-40 border-t shadow-sm">
           <div className="px-6 py-3">
             <div className="mx-auto flex max-w-4xl items-center justify-center gap-3">
               <span className="text-muted-foreground hidden text-sm font-medium whitespace-nowrap sm:inline">
@@ -3034,50 +3160,58 @@ export default function QueryGeneratorPage({
                 className="bg-background h-9 w-64 text-sm"
               />
               {/* 保存ボタン */}
-              {(isEditMode || currentSavedQueryId || editingQueryId) ? (
+              {isEditMode || currentSavedQueryId || editingQueryId ? (
                 // 編集モード：上書き保存と別名保存
                 <div className="flex gap-2">
                   <Button
                     onClick={handleSaveQuery}
-                    disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
-                    className="h-9 px-4 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={
+                      !generatedQuery ||
+                      !currentQueryName.trim() ||
+                      navigatingToQueryList
+                    }
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground h-9 px-4 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {navigatingToQueryList ? (
                       <>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         移動中
                       </>
                     ) : saveAnimating ? (
                       <>
-                        <Check className="h-3 w-3 mr-1" />
+                        <Check className="mr-1 h-3 w-3" />
                         完了
                       </>
                     ) : (
                       <>
-                        <Edit className="h-3 w-3 mr-1" />
+                        <Edit className="mr-1 h-3 w-3" />
                         上書き
                       </>
                     )}
                   </Button>
                   <Button
                     onClick={handleSaveAsQuery}
-                    disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
+                    disabled={
+                      !generatedQuery ||
+                      !currentQueryName.trim() ||
+                      navigatingToQueryList
+                    }
                     variant="outline"
-                    className="h-9 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="h-9 px-4 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {navigatingToQueryList ? (
                       <>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         移動中
                       </>
                     ) : saveAsAnimating ? (
                       <>
-                        <Check className="h-3 w-3 mr-1" />
+                        <Check className="mr-1 h-3 w-3" />
                         完了
                       </>
                     ) : (
                       <>
-                        <Copy className="h-3 w-3 mr-1" />
+                        <Copy className="mr-1 h-3 w-3" />
                         別名保存
                       </>
                     )}
@@ -3087,22 +3221,26 @@ export default function QueryGeneratorPage({
                 // 新規モード：通常の保存
                 <Button
                   onClick={handleSaveQuery}
-                  disabled={!generatedQuery || !currentQueryName.trim() || navigatingToQueryList}
-                  className="h-9 px-6 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={
+                    !generatedQuery ||
+                    !currentQueryName.trim() ||
+                    navigatingToQueryList
+                  }
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground h-9 px-6 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {navigatingToQueryList ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       移動中
                     </>
                   ) : saveAnimating ? (
                     <>
-                      <Check className="h-4 w-4 mr-2" />
+                      <Check className="mr-2 h-4 w-4" />
                       完了
                     </>
                   ) : (
                     <>
-                      <Save className="h-4 w-4 mr-2" />
+                      <Save className="mr-2 h-4 w-4" />
                       保存
                     </>
                   )}
@@ -3116,20 +3254,20 @@ export default function QueryGeneratorPage({
       {/* ナビゲーション中のローディングオーバーレイ */}
       {navigatingToQueryList && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-background border rounded-lg p-8 shadow-xl max-w-sm w-full mx-4">
+          <div className="bg-background mx-4 w-full max-w-sm rounded-lg border p-8 shadow-xl">
             <div className="flex flex-col items-center space-y-4">
               <div className="flex items-center space-x-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                <Database className="h-6 w-6 text-primary" />
+                <Loader2 className="text-primary h-6 w-6 animate-spin" />
+                <ArrowRight className="text-muted-foreground h-5 w-5" />
+                <Database className="text-primary h-6 w-6" />
               </div>
               <div className="text-center">
                 <h3 className="text-lg font-medium">クエリ管理画面へ移動中</h3>
-                <p className="text-muted-foreground text-sm mt-1">
+                <p className="text-muted-foreground mt-1 text-sm">
                   保存したクエリを確認しています...
                 </p>
               </div>
-              <div className="w-full bg-muted rounded-full h-2">
+              <div className="bg-muted h-2 w-full rounded-full">
                 <div className="bg-primary h-2 w-full rounded-full"></div>
               </div>
             </div>
