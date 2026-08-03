@@ -5,7 +5,7 @@ import { join } from 'path';
 /**
  * ライセンス期限の設定（一元管理）
  */
-export const LICENSE_EXPIRY_DATE = new Date(2026, 11, 31); // 2026年12月31日
+export const LICENSE_EXPIRY_DATE = new Date(2026, 7, 31, 23, 59, 59); // 2026年8月31日 23:59:59
 
 /**
  * フォールバック用のアプリケーション情報
