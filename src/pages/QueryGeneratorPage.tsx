@@ -1683,6 +1683,7 @@ export default function QueryGeneratorPage({
         auth,
         app.appId,
         generatedQuery,
+        app.spaceId,
       );
 
       // レスポンス全体をログ出力
@@ -1732,7 +1733,7 @@ export default function QueryGeneratorPage({
     } finally {
       setExecuting(false);
     }
-  }, [generatedQuery, auth, app.appId]);
+  }, [generatedQuery, auth, app.appId, app.spaceId]);
 
   const handleSaveQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
@@ -1931,7 +1932,11 @@ export default function QueryGeneratorPage({
           return;
         }
 
-        const result = await window.kintoneAPI.getAppFields(auth, app.appId);
+        const result = await window.kintoneAPI.getAppFields(
+          auth,
+          app.appId,
+          app.spaceId,
+        );
 
         if (result.success && result.data?.fields) {
           setFields(result.data.fields);
@@ -1966,7 +1971,7 @@ export default function QueryGeneratorPage({
     };
 
     fetchFields();
-  }, [auth, app.appId]);
+  }, [auth, app.appId, app.spaceId]);
 
   useEffect(() => {
     const query = queryUtils.generateQuery(conditions, fields, queryOptions);

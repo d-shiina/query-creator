@@ -31,6 +31,8 @@ declare global {
       getAppFields: (
         auth: KintoneAuth,
         appId: string,
+        /** ゲストスペースのアプリの場合に必要なスペースID */
+        spaceId?: string | null,
       ) => Promise<{
         success: boolean;
         data?: { fields: KintoneField[] };
@@ -40,6 +42,8 @@ declare global {
         auth: KintoneAuth,
         appId: string,
         query: string,
+        /** ゲストスペースのアプリの場合に必要なスペースID */
+        spaceId?: string | null,
       ) => Promise<{
         success: boolean;
         data?: { records: Record<string, unknown>[] };

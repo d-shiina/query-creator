@@ -43,11 +43,15 @@ interface KintoneAPIContext {
   getAppFields: (
     auth: KintoneAuth,
     appId: string,
+    /** ゲストスペースのアプリの場合に必要なスペースID */
+    spaceId?: string | null,
   ) => Promise<{ success: boolean; data?: KintoneField[]; error?: string }>;
   executeQuery: (
     auth: KintoneAuth,
     appId: string,
     query: string,
+    /** ゲストスペースのアプリの場合に必要なスペースID */
+    spaceId?: string | null,
   ) => Promise<{
     success: boolean;
     data?: { records: KintoneRecord[]; totalCount: number };
