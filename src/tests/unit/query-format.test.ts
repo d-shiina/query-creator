@@ -50,6 +50,21 @@ describe("formatQueryForOutput", () => {
   });
 });
 
+// VBSノードで実際に動作確認済みの実例（in演算子）
+describe("実運用で確認済みのケース: Title in (\"40\")", () => {
+  const RAW = 'Title in ("40")';
+
+  it("vbs形式は実際にVBSノードで動いている表記を再現する", () => {
+    expect(formatQueryForOutput(RAW, "vbs")).toBe('Title in (\\"40\\")');
+  });
+
+  it("python形式はバックスラッシュを含まない", () => {
+    const output = formatQueryForOutput(RAW, "python");
+    expect(output).toBe('Title in ("40")');
+    expect(output).not.toContain("\\");
+  });
+});
+
 describe("QUERY_OUTPUT_FORMATS", () => {
   it("vbsとpythonの両方を選択肢として持つ", () => {
     expect(QUERY_OUTPUT_FORMATS.map((f) => f.value)).toEqual([
