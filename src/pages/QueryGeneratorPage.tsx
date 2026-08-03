@@ -21,6 +21,7 @@ import {
   FileText,
   RotateCcw,
   Copy,
+  GripVertical,
   Edit,
   ArrowRight,
   ExternalLink,
@@ -72,6 +73,7 @@ import {
   type QueryOutputFormat,
 } from "@/utils/query-format";
 import { getOperatorHint } from "@/utils/query-operator-hints";
+import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
@@ -128,6 +130,8 @@ interface ConditionInputProps {
   index: number;
   onUpdate: (index: number, updates: Partial<QueryCondition>) => void;
   onRemove: (index: number) => void;
+  onDuplicate: (index: number) => void;
+  onMove: (from: number, to: number) => void;
   fields: KintoneField[];
   users: Array<{ code: string; name: string; email: string }>;
   usersLoaded: boolean;
@@ -802,6 +806,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   index,
   onUpdate,
   onRemove,
+  onDuplicate,
+  onMove,
   fields,
   users,
   usersLoaded,
@@ -809,6 +815,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   canRemove,
 }) => {
   const [localValue, setLocalValue] = useState(condition.value);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [fieldComboboxOpen, setFieldComboboxOpen] = useState(false);
   const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
 
@@ -949,6 +956,14 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
     fieldInfo?.type === "DATETIME" ||
     fieldInfo?.type === "CREATED_TIME" ||
     fieldInfo?.type === "UPDATED_TIME";
+  // 選択肢を持つフィールドは自由入力ではなく選択式にする
+  const optionChoices = fieldInfo?.options ?? [];
+  const isOptionField =
+    (fieldInfo?.type === "DROP_DOWN" ||
+      fieldInfo?.type === "RADIO_BUTTON" ||
+      fieldInfo?.type === "CHECK_BOX" ||
+      fieldInfo?.type === "MULTI_SELECT") &&
+    optionChoices.length > 0;
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
@@ -989,9 +1004,37 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   }, [fieldInfo, isUserField, isUserFieldByName, isDateField, isDateTimeField]);
 
   return (
-    <div className="bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words">
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+        if (!Number.isNaN(from) && from !== index) onMove(from, index);
+      }}
+      className={`bg-muted/20 min-w-0 overflow-auto rounded-lg border p-4 break-words transition-shadow ${
+        isDragOver ? "ring-primary/60 ring-2" : ""
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
+          <span
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/plain", String(index));
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            title="ドラッグして並び替え"
+            aria-label={`条件 ${index + 1} をドラッグして並び替え`}
+            className="text-muted-foreground/60 hover:text-muted-foreground -ml-1 cursor-grab p-1 active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" />
+          </span>
           <Badge variant="outline" className="text-xs">
             条件 {index + 1}
           </Badge>
@@ -1012,16 +1055,28 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             </Select>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onRemove(index)}
-          className="text-destructive hover:text-destructive h-7 w-7 p-0"
-          disabled={!canRemove}
-          aria-label="条件を削除"
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDuplicate(index)}
+            className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
+            title="この条件を複製"
+            aria-label="条件を複製"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRemove(index)}
+            className="text-destructive hover:text-destructive h-7 w-7 p-0"
+            disabled={!canRemove}
+            aria-label="条件を削除"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -1132,6 +1187,17 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
         </div>
 
+        {/* 未入力の条件はクエリに含まれないことを知らせる */}
+        {condition.field &&
+          !isNullOperator &&
+          (isInOperator
+            ? (condition.values || []).every((v) => !v.trim())
+            : !localValue.trim()) && (
+            <p className="text-xs text-yellow-700 dark:text-yellow-400">
+              値が未入力のため、この条件はクエリに含まれません
+            </p>
+          )}
+
         {/* 値入力エリア */}
         {!isNullOperator && (
           <div className="space-y-3">
@@ -1140,18 +1206,43 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               <div className="space-y-2">
                 {(condition.values || [""]).map((value, valueIndex) => (
                   <div key={valueIndex} className="flex gap-2">
-                    {/* 入力フィールド */}
-                    <Input
-                      value={value}
-                      onChange={(e) => {
-                        const newValues = [...(condition.values || [""])];
-                        newValues[valueIndex] = e.target.value;
-                        onUpdate(index, { values: newValues });
-                      }}
-                      placeholder={getPlaceholder()}
-                      className="flex-1"
-                      aria-label={`値 ${valueIndex + 1}`}
-                    />
+                    {/* 入力フィールド（選択肢フィールドは選択式） */}
+                    {isOptionField ? (
+                      <Select
+                        value={value || undefined}
+                        onValueChange={(newValue) => {
+                          const newValues = [...(condition.values || [""])];
+                          newValues[valueIndex] = newValue;
+                          onUpdate(index, { values: newValues });
+                        }}
+                      >
+                        <SelectTrigger
+                          className="flex-1"
+                          aria-label={`値 ${valueIndex + 1} を選択`}
+                        >
+                          <SelectValue placeholder="選択肢から選ぶ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {optionChoices.map((choice) => (
+                            <SelectItem key={choice} value={choice}>
+                              {choice}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={value}
+                        onChange={(e) => {
+                          const newValues = [...(condition.values || [""])];
+                          newValues[valueIndex] = e.target.value;
+                          onUpdate(index, { values: newValues });
+                        }}
+                        placeholder={getPlaceholder()}
+                        className="flex-1"
+                        aria-label={`値 ${valueIndex + 1}`}
+                      />
+                    )}
 
                     {/* ボタン群 */}
                     <div className="flex gap-1">
@@ -1360,14 +1451,35 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               /* 単一値入力 */
               <div className="space-y-2">
                 <div className="flex gap-2">
-                  {/* 入力フィールド */}
-                  <Input
-                    value={localValue}
-                    onChange={(e) => setLocalValue(e.target.value)}
-                    placeholder={getPlaceholder()}
-                    className="flex-1"
-                    aria-label="値を入力"
-                  />
+                  {/* 入力フィールド（選択肢フィールドは選択式） */}
+                  {isOptionField ? (
+                    <Select
+                      value={localValue || undefined}
+                      onValueChange={(value) => {
+                        setLocalValue(value);
+                        onUpdate(index, { value });
+                      }}
+                    >
+                      <SelectTrigger className="flex-1" aria-label="値を選択">
+                        <SelectValue placeholder="選択肢から選ぶ" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {optionChoices.map((choice) => (
+                          <SelectItem key={choice} value={choice}>
+                            {choice}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      value={localValue}
+                      onChange={(e) => setLocalValue(e.target.value)}
+                      placeholder={getPlaceholder()}
+                      className="flex-1"
+                      aria-label="値を入力"
+                    />
+                  )}
 
                   {/* ボタン群 */}
                   <div className="flex gap-1">
@@ -1537,6 +1649,7 @@ export default function QueryGeneratorPage({
   onLogout,
   editingQueryId,
 }: QueryGeneratorPageProps) {
+  const { toast } = useToast();
   // State管理
   const [loading, setLoading] = useState(true);
   const [fields, setFields] = useState<KintoneField[]>([]);
@@ -1554,6 +1667,7 @@ export default function QueryGeneratorPage({
   const [offset, setOffset] = useState<number>();
   const [executing, setExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState("table");
   const [currentQueryName, setCurrentQueryName] = useState("");
   const [currentQueryMemo, setCurrentQueryMemo] = useState("");
@@ -1635,6 +1749,27 @@ export default function QueryGeneratorPage({
     setConditions((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const duplicateCondition = useCallback((index: number) => {
+    setConditions((prev) => {
+      const next = [...prev];
+      const source = prev[index];
+      next.splice(index + 1, 0, {
+        ...source,
+        values: source.values ? [...source.values] : undefined,
+      });
+      return next;
+    });
+  }, []);
+
+  const moveCondition = useCallback((from: number, to: number) => {
+    setConditions((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }, []);
+
   const resetConditions = useCallback(() => {
     setConditions([{ field: "", operator: "=", value: "", logicalOperator: "and" }]);
     setSortField("none");
@@ -1672,7 +1807,7 @@ export default function QueryGeneratorPage({
 
   const executeQuery = useCallback(async () => {
     if (!generatedQuery) {
-      alert("クエリが生成されていません");
+      toast("クエリが生成されていません", "error");
       return;
     }
 
@@ -1741,9 +1876,23 @@ export default function QueryGeneratorPage({
     }
   }, [generatedQuery, auth, app.appId, app.spaceId]);
 
+  // Ctrl+Enter（macはCmd+Enter）でクエリ実行
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        if (generatedQuery && !executing) {
+          e.preventDefault();
+          executeQuery();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [generatedQuery, executing, executeQuery]);
+
   const handleSaveQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
-      alert("クエリ名とクエリ内容が必要です");
+      toast("クエリ名とクエリ内容が必要です", "error");
       return;
     }
 
@@ -1782,7 +1931,7 @@ export default function QueryGeneratorPage({
       console.error("Error saving query:", error);
       setSaveAnimating(false);
       setNavigatingToQueryList(false);
-      alert("クエリの保存に失敗しました");
+      toast("クエリの保存に失敗しました", "error");
     }
   }, [
     generatedQuery,
@@ -1801,7 +1950,7 @@ export default function QueryGeneratorPage({
   // 別名保存用の関数
   const handleSaveAsQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
-      alert("クエリ名とクエリ内容が必要です");
+      toast("クエリ名とクエリ内容が必要です", "error");
       return;
     }
 
@@ -1841,7 +1990,7 @@ export default function QueryGeneratorPage({
       console.error("Error saving query as new:", error);
       setSaveAsAnimating(false);
       setNavigatingToQueryList(false);
-      alert("クエリの別名保存に失敗しました");
+      toast("クエリの別名保存に失敗しました", "error");
     }
   }, [
     generatedQuery,
@@ -2146,13 +2295,61 @@ export default function QueryGeneratorPage({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={resetConditions}
+                        onClick={() => {
+                          const hasInput =
+                            conditions.some(
+                              (c) =>
+                                c.field ||
+                                c.value.trim() ||
+                                (c.values || []).some((v) => v.trim()),
+                            ) ||
+                            sortField !== "none" ||
+                            limit !== undefined ||
+                            offset !== undefined;
+                          if (hasInput) {
+                            setResetDialogOpen(true);
+                          } else {
+                            resetConditions();
+                          }
+                        }}
                         className="text-muted-foreground hover:text-foreground"
                         aria-label="条件をリセット"
                       >
                         <RotateCcw className="h-4 w-4 mr-2" />
                         リセット
                       </Button>
+                      <Dialog
+                        open={resetDialogOpen}
+                        onOpenChange={setResetDialogOpen}
+                      >
+                        <DialogContent className="sm:max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle>条件をリセットしますか？</DialogTitle>
+                            <DialogDescription>
+                              入力中の検索条件と並び替え・件数の設定がすべて消去されます。この操作は元に戻せません。
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setResetDialogOpen(false)}
+                            >
+                              キャンセル
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                resetConditions();
+                                setResetDialogOpen(false);
+                              }}
+                            >
+                              リセットする
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -2164,6 +2361,8 @@ export default function QueryGeneratorPage({
                           index={index}
                           onUpdate={handleConditionUpdate}
                           onRemove={removeCondition}
+                          onDuplicate={duplicateCondition}
+                          onMove={moveCondition}
                           fields={fields}
                           users={users}
                           usersLoaded={usersLoaded}
@@ -2391,6 +2590,7 @@ export default function QueryGeneratorPage({
                                 setTimeout(() => setQueryExecuted(false), 2000);
                               }}
                               disabled={executing}
+                              title="Ctrl+Enterでも実行できます"
                               size="sm"
                               className={`flex-1 h-8 text-sm transition-all duration-300 ${
                                 executing 
@@ -2536,7 +2736,11 @@ export default function QueryGeneratorPage({
                       <CardDescription>
                         {queryResult.error
                           ? "クエリの実行中にエラーが発生しました"
-                          : `${queryResult.records?.length || 0}件のレコードが見つかりました`}
+                          : `${queryResult.records?.length || 0}件のレコードを取得しました${
+                              (queryResult.records?.length || 0) > 50
+                                ? "（テーブルには最初の50件を表示）"
+                                : ""
+                            }`}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

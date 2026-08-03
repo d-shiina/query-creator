@@ -5,6 +5,7 @@ import QueryGeneratorPage from "@/pages/QueryGeneratorPage";
 import SimpleFooter from "@/components/template/SimpleFooter";
 import { KintoneAuth, KintoneApp } from "@/types/kintone";
 import { syncThemeWithLocal } from "@/helpers/theme_helpers";
+import { ToastProvider } from "@/components/ui/toast";
 import "./styles/global.css";
 
 type AppState = "login" | "appManagement" | "queryGenerator";
@@ -73,12 +74,14 @@ function App() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <div className="scrollbar-thin flex-1 overflow-auto pb-16">
-        {renderContent()}
+    <ToastProvider>
+      <div className="flex min-h-screen flex-col">
+        <div className="scrollbar-thin flex-1 overflow-auto pb-16">
+          {renderContent()}
+        </div>
+        <SimpleFooter />
       </div>
-      <SimpleFooter />
-    </div>
+    </ToastProvider>
   );
 }
 

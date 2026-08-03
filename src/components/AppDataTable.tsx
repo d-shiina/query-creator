@@ -33,6 +33,7 @@ import {
   ChevronsRight,
 } from "lucide-react";
 import { cleanAndTruncateText } from "@/utils/text";
+import { useToast } from "@/components/ui/toast";
 import { ModernLoadingSpinner } from "@/components/ui/modern-loading";
 
 interface AppDataTableProps {
@@ -57,6 +58,7 @@ export default function AppDataTable({
   onSelectApp,
   onToggleFavorite,
 }: AppDataTableProps) {
+  const { toast } = useToast();
   const [selectedAppInfo, setSelectedAppInfo] = useState<KintoneApp | null>(
     null,
   );
@@ -162,8 +164,9 @@ export default function AppDataTable({
         modifiedAt: app.modifiedAt,
       });
     } catch (error) {
-      alert(
+      toast(
         `エラーが発生しました: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "error",
       );
     } finally {
       setAppInfoLoading(false);

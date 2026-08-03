@@ -436,19 +436,34 @@ export function setupKintoneAPI() {
           Object.keys(responseData.properties || {}).length,
         );
 
+        // 選択肢を配列に正規化する。
+        // kintone APIはドロップダウン等のoptionsを
+        // { "選択肢A": { label, index }, ... } のオブジェクトで返すため、
+        // index順のラベル配列へ変換する（UI側は string[] を前提とする）。
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const normalizeOptions = (options: any): string[] => {
+          if (!options) return [];
+          if (Array.isArray(options)) return options;
+          return Object.values(options)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .sort((a: any, b: any) => Number(a?.index ?? 0) - Number(b?.index ?? 0))
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .map((opt: any) => String(opt?.label ?? ""))
+            .filter((label) => label !== "");
+        };
+
         // レスポンスデータをKintoneField型に変換
         const fields: KintoneField[] = Object.entries(
           responseData.properties || {},
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ).map(([code, field]: [string, any]) => {
-          console.log(`Field ${code}:`, field); // デバッグ用
           return {
             code,
             label: field.label,
             type: field.type,
             required: field.required || false,
             unique: field.unique || false,
-            options: field.options || [],
+            options: normalizeOptions(field.options),
           };
         });
 
