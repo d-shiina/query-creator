@@ -1,14 +1,7 @@
 import { ipcMain, app } from 'electron';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import {
-  checkLicense,
-  getLicensePath,
-  parseExpiryDate,
-  PRODUCT_TAG,
-  DEFAULT_LICENSE_DIR,
-  type LicenseStatus,
-} from './license';
+import { checkLicense, parseExpiryDate, type LicenseStatus } from './license';
 
 /**
  * ライセンス状態のキャッシュ。
@@ -36,13 +29,6 @@ export function getLicenseStatus(forceReload = false): LicenseStatus {
     }
   }
   return cachedStatus;
-}
-
-/**
- * ライセンスファイルを配置すべきパスを返す（未配置時の案内に使う）。
- */
-export function getExpectedLicensePath(): string {
-  return getLicensePath(PRODUCT_TAG, DEFAULT_LICENSE_DIR);
 }
 
 /**
@@ -114,11 +100,7 @@ export function registerAppInfoHandlers() {
   // ライセンスの詳細情報を返すハンドラー
   ipcMain.handle('app:get-license-status', () => {
     try {
-      return {
-        ...getLicenseStatus(),
-        // ライセンスファイルを配置すべき場所（未配置時の案内に使う）
-        licensePath: getExpectedLicensePath(),
-      };
+      return getLicenseStatus();
     } catch (error) {
       console.error('Failed to get license status:', error);
       return null;

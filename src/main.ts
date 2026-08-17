@@ -50,15 +50,17 @@ async function warnIfLicenseInGracePeriod(): Promise<void> {
 async function showTrialExpiredAndExit(): Promise<void> {
   const status = getLicenseStatus();
 
-  // ライセンス未配置か、配置済みだが無効（期限切れ・PC不一致等）かで案内を変える
+  // 有効なライセンスを読めた上で無効（期限切れ・PC不一致等）なら、その理由を示す。
+  // 読めなかった場合（未配置・破損・署名不正）は未登録として扱い、
+  // 詳細な理由はログにのみ残す。
   const title = status.found
     ? "ライセンスが有効ではありません"
-    : "ライセンスが見つかりません";
+    : "ライセンスが登録されていません";
   const detail = status.found
     ? `${status.message ?? "ライセンスを検証できませんでした。"}\n\n` +
       "ライセンスの更新については下記よりお問い合わせください。"
-    : `${status.message ?? "ライセンスファイルが見つかりません。"}\n\n` +
-      "ライセンスファイルを所定の場所に配置してから、再度起動してください。";
+    : "ライセンス登録が行われていません。\n\n" +
+      "ご利用にはライセンスの登録が必要です。下記よりお問い合わせください。";
 
   const result = await dialog.showMessageBox({
     type: "warning",

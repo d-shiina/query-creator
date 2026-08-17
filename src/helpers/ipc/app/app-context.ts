@@ -23,8 +23,6 @@ export interface LicenseStatusInfo {
   inGracePeriod: boolean;
   graceDaysRemaining: number | null;
   message: string | null;
-  /** ライセンスファイルを配置すべきパス */
-  licensePath: string;
 }
 
 /**

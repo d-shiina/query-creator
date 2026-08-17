@@ -82,7 +82,6 @@ interface LicenseStatusInfo {
   inGracePeriod: boolean;
   graceDaysRemaining: number | null;
   message: string | null;
-  licensePath: string;
 }
 
 interface ElectronAppAPIContext {
