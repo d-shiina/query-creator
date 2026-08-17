@@ -69,14 +69,31 @@ interface AppInfo {
   productName: string;
   description: string;
   homepage: string;
-  licenseExpiry: string;
+  licenseExpiry: string | null;
+}
+
+interface LicenseStatusInfo {
+  found: boolean;
+  valid: boolean;
+  expiryDate: string | null;
+  licenseType: string | null;
+  productName: string | null;
+  isMigs: boolean;
+  inGracePeriod: boolean;
+  graceDaysRemaining: number | null;
+  message: string | null;
 }
 
 interface ElectronAppAPIContext {
   getAppInfo: () => Promise<AppInfo>;
   getFallbackInfo: () => Promise<AppInfo>;
   checkTrialExpiry: () => Promise<boolean>;
-  updateLicenseExpiry: (newExpiry: string) => Promise<{ success: boolean; error?: string }>;
+  getLicenseStatus: () => Promise<LicenseStatusInfo | null>;
+  reloadLicense: () => Promise<{
+    success: boolean;
+    status?: LicenseStatusInfo;
+    error?: string;
+  }>;
   quit: () => Promise<void>;
   openExternalURL: (url: string) => Promise<{ success: boolean; error?: string }>;
 }
