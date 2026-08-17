@@ -11,12 +11,6 @@ import {
 } from './license';
 
 /**
- * ライセンスファイルが無い場合に使用する組み込みの期限。
- * 正規のライセンスファイルが配置されていればそちらが優先される。
- */
-export const FALLBACK_LICENSE_EXPIRY_DATE = new Date(2026, 7, 31, 23, 59, 59); // 2026年8月31日 23:59:59
-
-/**
  * ライセンス状態のキャッシュ。
  * 起動時に一度解決し、以降のIPC呼び出しで使い回す。
  */
@@ -38,20 +32,24 @@ export function getLicenseStatus(forceReload = false): LicenseStatus {
         inGracePeriod: cachedStatus.inGracePeriod,
       });
     } else {
-      console.log(
-        'License file not available, falling back to built-in expiry:',
-        cachedStatus.message,
-      );
+      console.error('License unavailable:', cachedStatus.message);
     }
   }
   return cachedStatus;
 }
 
 /**
- * 有効期限を返す。
- * ライセンスファイルから取得できればその期限、無ければ組み込みの期限。
+ * ライセンスファイルを配置すべきパスを返す（未配置時の案内に使う）。
  */
-export function getLicenseExpiryDate(): Date {
+export function getExpectedLicensePath(): string {
+  return getLicensePath(PRODUCT_TAG, DEFAULT_LICENSE_DIR);
+}
+
+/**
+ * 有効期限を返す。
+ * ライセンスが無い／無期限ライセンスの場合はnull。
+ */
+export function getLicenseExpiryDate(): Date | null {
   const status = getLicenseStatus();
 
   if (status.found && status.expiryDate) {
@@ -62,23 +60,17 @@ export function getLicenseExpiryDate(): Date {
     }
   }
 
-  return FALLBACK_LICENSE_EXPIRY_DATE;
+  return null;
 }
 
 /**
- * 期限切れ（＝アプリを使用できない状態）かどうかを判定する。
+ * アプリを使用できない状態かどうかを判定する。
  *
- * ライセンスファイルがある場合は署名検証・ハードウェア照合・猶予期間を含む
- * 検証結果に従う。無い場合は組み込み期限との比較にフォールバックする。
+ * ライセンスは必須のため、ファイルが無い・署名が不正・ハードウェアが
+ * 一致しない・期限切れ（NLは猶予期間経過後）のいずれかで使用不可となる。
  */
 export function isLicenseExpired(): boolean {
-  const status = getLicenseStatus();
-
-  if (status.found) {
-    return !status.valid;
-  }
-
-  return new Date() >= FALLBACK_LICENSE_EXPIRY_DATE;
+  return !getLicenseStatus().valid;
 }
 
 /**
@@ -101,7 +93,7 @@ export function registerAppInfoHandlers() {
         productName: packageJson.productName,
         description: packageJson.description,
         homepage: packageJson.homepage,
-        licenseExpiry: getLicenseExpiryDate().toISOString(),
+        licenseExpiry: getLicenseExpiryDate()?.toISOString() ?? null,
       };
     } catch (error) {
       console.error('Failed to read package.json:', error);
@@ -122,11 +114,10 @@ export function registerAppInfoHandlers() {
   // ライセンスの詳細情報を返すハンドラー
   ipcMain.handle('app:get-license-status', () => {
     try {
-      const status = getLicenseStatus();
       return {
-        ...status,
+        ...getLicenseStatus(),
         // ライセンスファイルを配置すべき場所（未配置時の案内に使う）
-        licensePath: getLicensePath(PRODUCT_TAG, DEFAULT_LICENSE_DIR),
+        licensePath: getExpectedLicensePath(),
       };
     } catch (error) {
       console.error('Failed to get license status:', error);

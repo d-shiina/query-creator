@@ -9,7 +9,7 @@ interface AppInfo {
   productName: string;
   description: string;
   homepage: string;
-  licenseExpiry: string;
+  licenseExpiry: string | null;
 }
 
 // ライセンス期限のステータスを判定

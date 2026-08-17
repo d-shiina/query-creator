@@ -20,14 +20,15 @@ if (inDevelopment) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
 }
 
-// ライセンスの期限をチェックする関数
-// ライセンスファイルがあればその検証結果、無ければ組み込み期限で判定する
+// ライセンスを検証する関数
+// ライセンスは必須のため、未配置・不正・期限切れのいずれでも使用不可とする
 async function checkTrialExpiry(): Promise<boolean> {
   try {
     return isLicenseExpired();
   } catch (error) {
-    console.error('Failed to check trial expiry:', error);
-    return false;
+    console.error("Failed to verify license:", error);
+    // 判定できない場合は安全側に倒して使用不可とする
+    return true;
   }
 }
 
@@ -45,14 +46,25 @@ async function warnIfLicenseInGracePeriod(): Promise<void> {
   });
 }
 
-// 体験版終了メッセージを表示してアプリを終了
+// ライセンスが利用できない旨を表示してアプリを終了
 async function showTrialExpiredAndExit(): Promise<void> {
+  const status = getLicenseStatus();
+
+  // ライセンス未配置か、配置済みだが無効（期限切れ・PC不一致等）かで案内を変える
+  const title = status.found
+    ? "ライセンスが有効ではありません"
+    : "ライセンスが見つかりません";
+  const detail = status.found
+    ? `${status.message ?? "ライセンスを検証できませんでした。"}\n\n` +
+      "ライセンスの更新については下記よりお問い合わせください。"
+    : `${status.message ?? "ライセンスファイルが見つかりません。"}\n\n` +
+      "ライセンスファイルを所定の場所に配置してから、再度起動してください。";
+
   const result = await dialog.showMessageBox({
     type: "warning",
-    title: "体験版終了",
-    message: "kintone API Query Creator - 体験版終了",
-    detail:
-      "体験版の利用期間が終了しました。\n製品版のお問い合わせはこちらからお願いします。\n\nご利用いただき、ありがとうございました。",
+    title,
+    message: `kintone API Query Creator - ${title}`,
+    detail,
     buttons: ["お問い合わせページを開く", "アプリを終了"],
     defaultId: 1,
     cancelId: 1,
@@ -75,7 +87,7 @@ async function showTrialExpiredAndExit(): Promise<void> {
     }
   }
 
-  console.log("Trial expired, closing application...");
+  console.log("License is not valid, closing application...");
   app.quit();
 }
 

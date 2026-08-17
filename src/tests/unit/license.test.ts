@@ -172,6 +172,44 @@ describe("LicenseFile.load", () => {
  * 検証ロジック（期限・猶予・product_tag照合）は署名検証の後段にあるため、
  * load() をスタブして単体で確認する。
  */
+/**
+ * 実際に発行されたライセンスファイル（gws_license.json）で判明した形。
+ * 本家のテストは custom: {} を前提にしているが、実物は null で、
+ * 本家に存在しない kid / issuance_mode フィールドも含まれる。
+ */
+describe("実発行ライセンスの形に対する耐性", () => {
+  function loadPayloadShape(payload: Record<string, unknown>) {
+    const lf = new LicenseFile("ktn", "/dummy");
+    const custom = (payload.custom as Record<string, unknown>) || {};
+    return {
+      isMigs: String(custom.is_migs ?? "").toLowerCase() === "true",
+      lf,
+    };
+  }
+
+  it("custom が null でも is_migs 判定で落ちない", () => {
+    expect(loadPayloadShape(basePayload({ custom: null })).isMigs).toBe(false);
+  });
+
+  it("custom.is_migs が 'true' なら真として扱う", () => {
+    expect(
+      loadPayloadShape(basePayload({ custom: { is_migs: "true" } })).isMigs,
+    ).toBe(true);
+  });
+
+  it("未知のフィールド（kid / issuance_mode）があっても形式エラーにしない", () => {
+    // 署名検証まで到達すること自体を確認する（本番鍵では署名不一致で落ちる）
+    const signed = {
+      ...makeSigned(basePayload({ issuance_mode: "new" })),
+      kid: "v1",
+    };
+    expect(() => verifySignedLicense(signed)).toThrow(/正しくありません/);
+    expect(() => verifySignedLicense(signed)).not.toThrow(
+      /形式が正しくありません/,
+    );
+  });
+});
+
 describe("LicenseFile.verify", () => {
   function verifyWith(payloadOverrides: Record<string, unknown> = {}) {
     const payload = basePayload(payloadOverrides);

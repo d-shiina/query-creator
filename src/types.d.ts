@@ -69,7 +69,7 @@ interface AppInfo {
   productName: string;
   description: string;
   homepage: string;
-  licenseExpiry: string;
+  licenseExpiry: string | null;
 }
 
 interface LicenseStatusInfo {
