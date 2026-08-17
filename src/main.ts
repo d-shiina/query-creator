@@ -1,7 +1,11 @@
 import { app, BrowserWindow, nativeImage, dialog, shell, ipcMain } from "electron";
 import registerListeners from "./helpers/ipc/listeners-register";
 import { setupKintoneAPI } from "./main/kintone-api";
-import { registerAppInfoHandlers, LICENSE_EXPIRY_DATE } from "./main/app-info";
+import {
+  registerAppInfoHandlers,
+  getLicenseStatus,
+  isLicenseExpired,
+} from "./main/app-info";
 import path from "path";
 import fs from "fs";
 
@@ -16,16 +20,29 @@ if (inDevelopment) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
 }
 
-// 体験版の期限をチェックする関数
+// ライセンスの期限をチェックする関数
+// ライセンスファイルがあればその検証結果、無ければ組み込み期限で判定する
 async function checkTrialExpiry(): Promise<boolean> {
   try {
-    const currentDate = new Date();
-    const expiryDate = LICENSE_EXPIRY_DATE;
-    return currentDate >= expiryDate;
+    return isLicenseExpired();
   } catch (error) {
     console.error('Failed to check trial expiry:', error);
     return false;
   }
+}
+
+// 猶予期間中（NLライセンスの期限切れ後90日以内）は警告を出して続行する
+async function warnIfLicenseInGracePeriod(): Promise<void> {
+  const status = getLicenseStatus();
+  if (!status.inGracePeriod || !status.message) return;
+
+  await dialog.showMessageBox({
+    type: "warning",
+    title: "ライセンス有効期限切れ",
+    message: "ライセンスの有効期限が切れています",
+    detail: status.message,
+    buttons: ["続行"],
+  });
 }
 
 // 体験版終了メッセージを表示してアプリを終了
@@ -144,11 +161,14 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  // 体験版の期限をチェック
+  // ライセンスの期限をチェック
   if (await checkTrialExpiry()) {
     await showTrialExpiredAndExit();
     return;
   }
+
+  // 猶予期間中なら警告を出す（続行は可能）
+  await warnIfLicenseInGracePeriod();
 
   // Windows用のApp User Model IDを設定（タスクバーのアイコンを正しく表示するため）
   if (process.platform === "win32") {
