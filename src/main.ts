@@ -46,7 +46,7 @@ async function warnIfLicenseInGracePeriod(): Promise<void> {
   });
 }
 
-// ライセンスが利用できない旨を表示してアプリを終了
+// 起動できない理由を表示してアプリを終了
 async function showTrialExpiredAndExit(): Promise<void> {
   const status = getLicenseStatus();
 
@@ -57,19 +57,17 @@ async function showTrialExpiredAndExit(): Promise<void> {
     ? "ライセンスが有効ではありません"
     : "ライセンスが登録されていません";
   const detail = status.found
-    ? `${status.message ?? "ライセンスを検証できませんでした。"}\n\n` +
-      "ライセンスの更新については下記よりお問い合わせください。"
-    : "ライセンス登録が行われていません。\n\n" +
-      "ご利用にはライセンスの登録が必要です。下記よりお問い合わせください。";
+    ? (status.message ?? "ライセンスを検証できませんでした。")
+    : "ライセンス登録が行われていません。";
 
-  const result = await dialog.showMessageBox({
+  await dialog.showMessageBox({
     type: "warning",
     title,
     message: `kintone API Query Creator - ${title}`,
     detail,
-    buttons: ["お問い合わせページを開く", "アプリを終了"],
-    defaultId: 1,
-    cancelId: 1,
+    buttons: ["閉じる"],
+    defaultId: 0,
+    cancelId: 0,
     icon: fs.existsSync(
       path.join(process.cwd(), "assets", "icons", "win", "icon.ico"),
     )
@@ -78,16 +76,6 @@ async function showTrialExpiredAndExit(): Promise<void> {
         )
       : undefined,
   });
-
-  // ユーザーが「お問い合わせページを開く」を選択した場合
-  if (result.response === 0) {
-    try {
-      await shell.openExternal("https://go.marubeni-sys.com/l/551742/2024-11-06/23j5hs");
-      console.log("Opened inquiry page in default browser");
-    } catch (error) {
-      console.error("Failed to open inquiry page:", error);
-    }
-  }
 
   console.log("License is not valid, closing application...");
   app.quit();
