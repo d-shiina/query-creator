@@ -72,7 +72,10 @@ import {
   DEFAULT_QUERY_OUTPUT_FORMAT,
   type QueryOutputFormat,
 } from "@/utils/query-format";
-import { getOperatorHint } from "@/utils/query-operator-hints";
+import {
+  getOperatorHint,
+  getOperatorShortHint,
+} from "@/utils/query-operator-hints";
 import { formatFieldValue } from "@/utils/kintone-field-value";
 import { orderRecordColumns } from "@/utils/kintone-record-columns";
 import { useToast } from "@/components/ui/toast";
@@ -1000,6 +1003,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   const operatorLabel =
     availableOperators.find((op) => op.value === condition.operator)?.label ??
     condition.operator;
+  const operatorShortHint = getOperatorShortHint(condition.operator);
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
@@ -1703,6 +1707,19 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             値が未入力のため、この条件はクエリに含まれません
           </p>
         )}
+
+      {/*
+        「含む」と読める演算子でも部分一致にはならない。
+        ツールチップだけでは気づけないので、選んだ時点で行に出す。
+      */}
+      {condition.field && operatorShortHint && (
+        <p
+          className="text-muted-foreground mt-1 pl-24 text-xs"
+          title={getOperatorHint(condition.operator) ?? undefined}
+        >
+          {operatorShortHint}
+        </p>
+      )}
     </div>
   );
 };

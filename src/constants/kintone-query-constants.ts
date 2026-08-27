@@ -5,7 +5,9 @@ import { QueryOperator } from "@/types/kintone";
  *
  * ラベルに演算子そのものは書かない（UI側で記号を別に並べて表示するため）。
  * in と like はどちらも日本語にすると「含む」になってしまうので、
- * 判定の違い（完全一致か、単語での検索か）が分かる言い回しにしている。
+ * 判定の違いが分かる言い回しにしている。
+ * とくに like は素の部分一致ではなく単語単位の検索なので、
+ * 「含む」とだけ書くと期待とずれる。
  */
 export const operators: { value: QueryOperator; label: string }[] = [
   { value: "=", label: "等しい" },
@@ -16,8 +18,8 @@ export const operators: { value: QueryOperator; label: string }[] = [
   { value: "<=", label: "以下" },
   { value: "in", label: "いずれかに一致" },
   { value: "not in", label: "いずれにも一致しない" },
-  { value: "like", label: "文字列を含む" },
-  { value: "not like", label: "文字列を含まない" },
+  { value: "like", label: "単語を含む" },
+  { value: "not like", label: "単語を含まない" },
   { value: "is", label: "空" },
   { value: "is not", label: "空でない" },
 ];

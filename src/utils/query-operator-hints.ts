@@ -19,6 +19,25 @@ const OPERATOR_HINTS: Partial<Record<QueryOperator, string>> = {
 };
 
 /**
+ * 条件行に添える短い注意書き。全文はツールチップで見せる。
+ * 「含む」と書いてあるのに部分一致しない、という食い違いに
+ * 気づけるようにするためのもの。
+ */
+const OPERATOR_SHORT_HINTS: Partial<Record<QueryOperator, string>> = {
+  like: "単語単位の検索です（部分一致ではありません）",
+  "not like": "単語単位の検索です（部分一致ではありません）",
+  in: "完全一致です（部分一致ではありません）",
+  "not in": "完全一致です（部分一致ではありません）",
+};
+
+/**
+ * 指定した演算子の短い注意書きを返す。無ければnull。
+ */
+export function getOperatorShortHint(operator: QueryOperator): string | null {
+  return OPERATOR_SHORT_HINTS[operator] ?? null;
+}
+
+/**
  * 指定した演算子の注意書きを返す。無ければnull。
  */
 export function getOperatorHint(operator: QueryOperator): string | null {
