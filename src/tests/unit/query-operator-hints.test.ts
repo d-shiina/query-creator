@@ -15,18 +15,23 @@ describe("getOperatorHint", () => {
     const hint = getOperatorHint("like");
 
     expect(hint).toContain("日本語は2文字以上");
-    expect(hint).toContain("英数字は単語まるごと");
+    expect(hint).toContain("英数字は単語ごとの一致");
   });
 
   test("likeの説明は具体例をそのまま示す", () => {
     const hint = getOperatorHint("like") ?? "";
 
     // 日本語は途中の2文字でヒットする
-    expect(hint).toContain("「日本語」は「本語」でヒット");
+    expect(hint).toContain("「日本語」は「日本」「本語」「日本語」でヒット");
     // 英数字は単語の一部では当たらない
     expect(hint).toContain(
-      "「cybozu kintone2」は「kintone2」でヒットし、「kintone」ではヒットしません",
+      "「cybozu kintone2」は「cybozu」「kintone2」でヒット",
     );
+    expect(hint).toContain(
+      "「cy」や「kintone」など単語の一部ではヒットしません",
+    );
+    // 大文字小文字・全角半角は区別されない
+    expect(hint).toContain("大文字と小文字、全角と半角");
     // 記号は単語を区切らない
     expect(hint).toContain(
       "「cybozu_kintone」は1単語で、「cybozu」でも「kintone」でもヒットしません",
@@ -44,6 +49,12 @@ describe("getOperatorHint", () => {
     expect(hint).toContain("like");
   });
 
+  test("このアプリでは中国語には触れない", () => {
+    expect(getOperatorHint("like")).not.toContain("中国語");
+    expect(getOperatorTip("like")?.summary).not.toContain("中国語");
+    expect(getOperatorTip("like")?.note).not.toContain("中国語");
+  });
+
   test("誤解の余地がない演算子には注意書きを持たせない", () => {
     expect(getOperatorHint("=")).toBeNull();
     expect(getOperatorHint(">=")).toBeNull();
@@ -56,10 +67,10 @@ describe("getOperatorTip", () => {
     const tip = getOperatorTip("like");
 
     expect(tip?.summary).toBe(
-      "日本語は2文字以上で途中も一致、英数字は単語まるごとの一致が必要です。",
+      "日本語は2文字以上なら途中でも一致します。英数字は単語ごとの一致で、単語の一部では一致しません。",
     );
     expect(tip?.example).toBe(
-      "例:「cybozu kintone2」は「kintone2」で見つかりますが、「kintone」では見つかりません。",
+      "例:「日本語」は「本語」で見つかります。「cybozu kintone2」は「kintone2」では見つかりますが、「kintone」では見つかりません。",
     );
   });
 
@@ -67,7 +78,7 @@ describe("getOperatorTip", () => {
     const note = getOperatorTip("like")?.note ?? "";
 
     // スペースと記号が区切りになる
-    expect(note).toContain("スペースと記号");
+    expect(note).toContain("スペースや記号で区切られます");
     // _ # + は区切りにならない
     expect(note).toContain("「cybozu_kintone」で1単語");
   });
