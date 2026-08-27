@@ -1,19 +1,25 @@
 import { QueryOperator } from "@/types/kintone";
 
-// 利用可能な演算子一覧
+/**
+ * 利用可能な演算子一覧。
+ *
+ * ラベルに演算子そのものは書かない（UI側で記号を別に並べて表示するため）。
+ * in と like はどちらも日本語にすると「含む」になってしまうので、
+ * 判定の違い（完全一致か、単語での検索か）が分かる言い回しにしている。
+ */
 export const operators: { value: QueryOperator; label: string }[] = [
-  { value: "=", label: "等しい(=)" },
-  { value: "!=", label: "等しくない(!=)" },
-  { value: ">", label: "より大きい(>)" },
-  { value: "<", label: "より小さい(<)" },
-  { value: ">=", label: "以上(>=)" },
-  { value: "<=", label: "以下(<=)" },
-  { value: "in", label: "含む(in)" },
-  { value: "not in", label: "含まない(not in)" },
-  { value: "like", label: "含む(like)" },
-  { value: "not like", label: "含まない(not like)" },
-  { value: "is", label: "空(is)" },
-  { value: "is not", label: "空でない(is not)" },
+  { value: "=", label: "等しい" },
+  { value: "!=", label: "等しくない" },
+  { value: ">", label: "より大きい" },
+  { value: "<", label: "より小さい" },
+  { value: ">=", label: "以上" },
+  { value: "<=", label: "以下" },
+  { value: "in", label: "いずれかに一致" },
+  { value: "not in", label: "いずれにも一致しない" },
+  { value: "like", label: "文字列を含む" },
+  { value: "not like", label: "文字列を含まない" },
+  { value: "is", label: "空" },
+  { value: "is not", label: "空でない" },
 ];
 
 // フィールドタイプごとに利用可能な演算子
