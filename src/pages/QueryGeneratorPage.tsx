@@ -1731,6 +1731,9 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               {operatorTip.summary}
             </p>
             <p>{operatorTip.example}</p>
+            {operatorTip.note && (
+              <p className="text-muted-foreground/80">{operatorTip.note}</p>
+            )}
           </div>
         </div>
       )}

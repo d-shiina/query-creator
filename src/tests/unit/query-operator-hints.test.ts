@@ -28,7 +28,7 @@ describe("getOperatorHint", () => {
     expect(hint).toContain("「Report」ではヒットしません");
     // 記号は単語を区切らない
     expect(hint).toContain(
-      "「cybozu_kintone」は途中の「kintone」ではヒットしません",
+      "「cybozu_kintone」は1単語で、途中の「kintone」ではヒットしません",
     );
   });
 
@@ -62,6 +62,19 @@ describe("getOperatorTip", () => {
     );
   });
 
+  test("likeのヒントは「単語」が何で区切られるかまで補足する", () => {
+    const note = getOperatorTip("like")?.note ?? "";
+
+    // スペースと記号が区切りになる
+    expect(note).toContain("スペースと記号");
+    // _ # + は区切りにならない
+    expect(note).toContain("「cybozu_kintone」で1単語");
+  });
+
+  test("inのヒントには補足を持たせない", () => {
+    expect(getOperatorTip("in")?.note).toBeUndefined();
+  });
+
   test("inのヒントは完全一致であることと代わりの探し方を示す", () => {
     const tip = getOperatorTip("in");
 
@@ -80,10 +93,18 @@ describe("getOperatorTip", () => {
 });
 
 describe("getOperatorShortHint", () => {
-  test("1行しか置けない場所向けに要点と具体例をつなげる", () => {
+  test("1行しか置けない場所向けに要点と具体例と補足をつなげる", () => {
     const tip = getOperatorTip("like");
 
-    expect(getOperatorShortHint("like")).toBe(`${tip?.summary}${tip?.example}`);
+    expect(getOperatorShortHint("like")).toBe(
+      `${tip?.summary}${tip?.example}${tip?.note}`,
+    );
+  });
+
+  test("補足がない演算子は要点と具体例だけをつなげる", () => {
+    const tip = getOperatorTip("in");
+
+    expect(getOperatorShortHint("in")).toBe(`${tip?.summary}${tip?.example}`);
   });
 
   test("短い注意書きは全文より短い", () => {

@@ -26,10 +26,12 @@ import type { QueryOperator } from "@/types/kintone";
 /**
  * 条件行に添えるヒント。
  * 要点（summary）と具体例（example）に分けて、読み手が挙動を思い浮かべられるようにする。
+ * noteは補足。「単語」が何で区切られるかなど、知らないと例だけでは推測できないことを書く。
  */
 export type OperatorTip = {
   summary: string;
   example: string;
+  note?: string;
 };
 
 const LIKE_TIP: OperatorTip = {
@@ -37,6 +39,7 @@ const LIKE_TIP: OperatorTip = {
     "日本語は2文字以上で途中も一致、英数字は単語の先頭からのみ一致します。",
   example:
     "例:「SalesReport」は「Sales」で見つかりますが、「Report」では見つかりません。",
+  note: "英数字の単語はスペースと記号（-、/、. など）で区切られます。アンダースコア（_）・番号記号（#）・プラス（+）は区切りにならず、「cybozu_kintone」で1単語です。",
 };
 
 const IN_TIP: OperatorTip = {
@@ -58,8 +61,9 @@ const LIKE_HINT =
   "（「日本語」は「本語」でヒット、「日」ではヒットしません）。" +
   "英数字は単語の先頭からの一致だけがヒットします" +
   "（「SalesReport」は「Sales」でヒット、「Report」ではヒットしません）。" +
+  "英数字の単語はスペースと記号（-、/、. など）で区切られますが、" +
   "アンダースコア（_）・番号記号（#）・プラス（+）は単語の一部として扱われるため、" +
-  "「cybozu_kintone」は途中の「kintone」ではヒットしません。";
+  "「cybozu_kintone」は1単語で、途中の「kintone」ではヒットしません。";
 
 const IN_HINT =
   "列挙した値のいずれかと完全に一致するレコードだけが対象です。" +
@@ -95,5 +99,5 @@ export function getOperatorTip(operator: QueryOperator): OperatorTip | null {
 export function getOperatorShortHint(operator: QueryOperator): string | null {
   const tip = OPERATOR_TIPS[operator];
   if (!tip) return null;
-  return `${tip.summary}${tip.example}`;
+  return [tip.summary, tip.example, tip.note].filter(Boolean).join("");
 }
