@@ -1,9 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Database,
   Settings,
   Code,
-  Play,
   Loader2,
   Plus,
   Trash2,
@@ -13,11 +18,9 @@ import {
   AlertCircle,
   User,
   CalendarIcon,
-  ChevronRight,
   Clock,
   Clipboard,
   ClipboardCheck,
-  X,
   FileText,
   RotateCcw,
   Copy,
@@ -26,8 +29,6 @@ import {
   ArrowRight,
   ExternalLink,
 } from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { format } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { ja } from "date-fns/locale";
@@ -64,7 +65,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   formatQueryForOutput,
@@ -72,22 +72,31 @@ import {
   DEFAULT_QUERY_OUTPUT_FORMAT,
   type QueryOutputFormat,
 } from "@/utils/query-format";
-import { getOperatorHint } from "@/utils/query-operator-hints";
+import {
+  getOperatorHint,
+  getOperatorShortHint,
+} from "@/utils/query-operator-hints";
+import { formatFieldValue } from "@/utils/kintone-field-value";
+import { orderRecordColumns } from "@/utils/kintone-record-columns";
 import { useToast } from "@/components/ui/toast";
 
-/** 出力バンドの表示モード（クエリ形式＋生クエリ＋APIプレビュー） */
-type OutputView = QueryOutputFormat | "raw" | "api";
-const OUTPUT_VIEWS: ReadonlyArray<{ value: OutputView; label: string }> = [
-  ...QUERY_OUTPUT_FORMATS,
-  { value: "raw", label: "生クエリ" },
-  { value: "api", label: "APIプレビュー" },
-];
+/** 出力バンドの表示モード（貼り付け先の言語） */
+type OutputView = QueryOutputFormat;
+const OUTPUT_VIEWS: ReadonlyArray<{ value: OutputView; label: string }> =
+  QUERY_OUTPUT_FORMATS;
 import { Calendar } from "@/components/ui/calendar";
-import ToggleTheme from "@/components/ToggleTheme";
-import { BackButton } from "@/components/ui/back-button";
+import AppHeader, {
+  HeaderIdChip,
+} from "@/components/template/AppHeader";
 import { PageLoading } from "@/components/ui/page-loading";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
+import {
+  MAX_SPLIT_RATIO,
+  MIN_SPLIT_RATIO,
+  useMediaQuery,
+  useSplitRatio,
+} from "@/hooks/useSplitRatio";
 import {
   KintoneAuth,
   KintoneApp,
@@ -118,9 +127,82 @@ interface KintoneErrorResponse {
   id?: string;
 }
 
+/** プレビューで一度に取得するレコード件数（続きは「さらに表示」で足す） */
+const PREVIEW_SIZE = 100;
+/** 入力が落ち着いてからプレビューを取り直すまでの待ち時間 */
+const PREVIEW_DEBOUNCE_MS = 500;
+
 interface QueryResult {
   records: Record<string, unknown>[];
-  error?: string;
+  /** 条件に一致した総件数。取得件数(limit)には頭打ちされない。取れなければnull */
+  totalCount: number | null;
+  error?: string | KintoneErrorResponse;
+}
+
+/** kintoneはtotalCountを文字列で返すので数値に直す */
+function parseTotalCount(value?: string | null): number | null {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** 実行ボタンの隣に出す一致件数 */
+function formatHitCount(result: QueryResult): string {
+  return `${(result.totalCount ?? result.records.length).toLocaleString()}件`;
+}
+
+/** 結果パネルの見出しに出す説明 */
+function describePreview(result: QueryResult): string {
+  const shown = result.records.length;
+  const total = result.totalCount;
+
+  if (total == null) return `${shown.toLocaleString()}件を取得`;
+  if (shown < total) {
+    return `条件に一致 ${total.toLocaleString()}件（${shown.toLocaleString()}件を表示中）`;
+  }
+  return `条件に一致 ${total.toLocaleString()}件`;
+}
+
+/**
+ * 条件が1つもないとgenerateQueryは空文字を返すので、
+ * 取得範囲（limit / offset）だけのクエリを組み立てる。
+ */
+function buildRangeOnlyQuery(size: number, skip?: number): string {
+  return skip ? `limit ${size} offset ${skip}` : `limit ${size}`;
+}
+
+/**
+ * 取得済みの先に、まだ読めるレコードが残っているか。
+ * skipの分だけ手前を飛ばして読んでいるので、総件数との比較にも足す。
+ */
+function hasMoreRecords(result: QueryResult | null, skip = 0): boolean {
+  if (!result || result.error) return false;
+  if (result.totalCount != null) {
+    return skip + result.records.length < result.totalCount;
+  }
+  // totalCountが取れない場合は、ちょうど1ページ分返ってきたら続きがあるとみなす
+  return (
+    result.records.length > 0 && result.records.length % PREVIEW_SIZE === 0
+  );
+}
+
+/** 文字列中にJSONが埋まっているエラーは、パースして構造化して表示する */
+function normalizeQueryError(
+  error: unknown,
+): string | KintoneErrorResponse | undefined {
+  if (typeof error !== "string") {
+    return error == null ? undefined : String(error);
+  }
+
+  const jsonMatch = error.match(/\{.*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]) as KintoneErrorResponse;
+    } catch {
+      return error;
+    }
+  }
+  return error;
 }
 
 interface ConditionInputProps {
@@ -405,7 +487,7 @@ const ModernDateTimePicker: React.FC<{
         <Button
           variant="outline"
           size="sm"
-          className="h-10 w-10 p-0"
+          className="h-8 w-8 p-0"
           disabled={disabled}
           title={getButtonTitle()}
           aria-label={getButtonTitle()}
@@ -552,52 +634,6 @@ const ModernDateTimePicker: React.FC<{
 
 // ユーティリティ関数
 const queryUtils = {
-  // フィールド値のフォーマット
-  formatFieldValue: (fieldData: unknown): string => {
-    if (!fieldData) return "";
-
-    if (
-      typeof fieldData === "object" &&
-      fieldData !== null &&
-      "value" in fieldData
-    ) {
-      const data = fieldData as { value: unknown; type?: string };
-      const { value } = data;
-
-      if (data.type === "FILE" && Array.isArray(value)) {
-        return value
-          .map((file: { name?: string }) => file.name || "")
-          .join(", ");
-      }
-
-      if (
-        Array.isArray(value) &&
-        value.length > 0 &&
-        typeof value[0] === "object" &&
-        value[0] !== null &&
-        "name" in value[0]
-      ) {
-        return value.map((user: { name: string }) => user.name).join(", ");
-      }
-
-      if (typeof value === "object") {
-        return JSON.stringify(value);
-      }
-
-      return String(value);
-    }
-
-    if (Array.isArray(fieldData)) {
-      return fieldData.map((item) => String(item)).join(", ");
-    }
-
-    if (typeof fieldData === "object") {
-      return JSON.stringify(fieldData);
-    }
-
-    return String(fieldData);
-  },
-
   // 条件のバリデーション
   validateCondition: (condition: QueryCondition): string[] => {
     const errors: string[] = [];
@@ -962,6 +998,12 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       fieldInfo?.type === "CHECK_BOX" ||
       fieldInfo?.type === "MULTI_SELECT") &&
     optionChoices.length > 0;
+  // 選択後は記号だけを出すので、説明はツールチップと読み上げ用に取っておく
+  const availableOperators = getAvailableOperators(condition.field);
+  const operatorLabel =
+    availableOperators.find((op) => op.value === condition.operator)?.label ??
+    condition.operator;
+  const operatorShortHint = getOperatorShortHint(condition.operator);
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
@@ -1015,13 +1057,19 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
         if (!Number.isNaN(from) && from !== index) onMove(from, index);
       }}
-      className={`bg-muted/20 min-w-0 rounded-md border p-2.5 break-words transition-shadow ${
-        isDragOver ? "ring-primary/60 ring-2" : ""
+      className={`hover:bg-muted/40 group min-w-0 rounded-md px-1 py-1 break-words transition-colors ${
+        isDragOver ? "ring-primary/60 bg-muted/40 ring-2" : ""
       }`}
     >
-      <div className="flex flex-wrap items-start gap-2">
-        {/* 左ガター: グリップ + 条件番号 / AND・OR */}
-        <div className="flex w-24 flex-shrink-0 items-center gap-1 self-center">
+      {/*
+        幅に応じてブレークポイントで組み替えるのではなく、各要素に必要な最小幅を
+        持たせて折り返しに任せる。広ければ1行、足りなければ値の入力から順に
+        次の行へ落ちる。ペインの幅は自由に変えられるので、切り替え点を決め打ちすると
+        その前後で必ず窮屈になる。
+      */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* 左ガター: グリップ + 条件番号 / AND・OR（行をまたいで幅を揃える） */}
+        <div className="flex w-[5.75rem] shrink-0 items-center gap-1">
           <span
             draggable
             onDragStart={(e) => {
@@ -1035,8 +1083,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             <GripVertical className="h-4 w-4" />
           </span>
           {index === 0 ? (
-            <span className="text-muted-foreground text-xs font-medium">
-              条件 1
+            <span className="text-muted-foreground/70 px-1 text-xs">
+              条件
             </span>
           ) : (
             <Select
@@ -1046,7 +1094,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               }
             >
               <SelectTrigger
-                className="h-9 w-full text-xs"
+                size="sm"
+                className="w-[4.25rem] gap-1 px-2 text-xs"
                 aria-label="論理演算子を選択"
               >
                 <SelectValue />
@@ -1060,7 +1109,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
           {/* フィールド選択 */}
-          <div className="w-64 min-w-[13rem] flex-shrink-0">
+          <div className="min-w-[10rem] flex-1">
             <Popover
               open={fieldComboboxOpen}
               onOpenChange={setFieldComboboxOpen}
@@ -1071,7 +1120,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                   role="combobox"
                   aria-expanded={fieldComboboxOpen}
                   aria-label="フィールドを選択"
-                  className="w-full justify-between"
+                  className="h-8 w-full justify-between font-normal"
                 >
                   <span className="truncate">
                     {condition.field
@@ -1131,8 +1180,12 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             </Popover>
           </div>
 
-          {/* 演算子選択 */}
-          <div className="w-44 flex-shrink-0">
+          {/*
+            演算子は選ぶときだけ日本語で説明し、選んだ後は記号だけを出す。
+            演算子の値はクエリにそのまま入る文字列なので、
+            生成されるクエリと同じものが並ぶことにもなる。
+          */}
+          <div className="shrink-0">
             <Select
               value={condition.operator}
               onValueChange={(value) =>
@@ -1140,20 +1193,30 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               }
             >
               <SelectTrigger
-                className="w-full"
-                aria-label="演算子を選択"
-                title={getOperatorHint(condition.operator) ?? undefined}
+                size="sm"
+                className="gap-1 px-2"
+                aria-label={`演算子: ${operatorLabel}`}
+                title={
+                  [operatorLabel, getOperatorHint(condition.operator)]
+                    .filter(Boolean)
+                    .join(" — ") || undefined
+                }
               >
-                <SelectValue className="truncate" />
+                <span className="truncate font-mono text-sm">
+                  {condition.operator}
+                </span>
               </SelectTrigger>
               <SelectContent className="min-w-[200px]">
-                {getAvailableOperators(condition.field).map(
+                {availableOperators.map(
                   (op: { value: QueryOperator; label: string }) => (
                     <SelectItem
                       key={op.value}
                       value={op.value}
                       className="whitespace-nowrap"
                     >
+                      <span className="text-muted-foreground w-14 shrink-0 font-mono text-xs">
+                        {op.value}
+                      </span>
                       {op.label}
                     </SelectItem>
                   ),
@@ -1163,7 +1226,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
 
         {/* 値入力エリア */}
-        <div className="min-w-[14rem] flex-1">
+        <div className="min-w-[10rem] flex-1">
         {!isNullOperator ? (
           <div className="space-y-2">
             {isInOperator ? (
@@ -1182,6 +1245,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                         }}
                       >
                         <SelectTrigger
+                          size="sm"
                           className="flex-1"
                           aria-label={`値 ${valueIndex + 1} を選択`}
                         >
@@ -1204,13 +1268,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           onUpdate(index, { values: newValues });
                         }}
                         placeholder={getPlaceholder()}
-                        className="flex-1"
+                        className="h-8 flex-1"
                         aria-label={`値 ${valueIndex + 1}`}
                       />
                     )}
 
                     {/* ボタン群 */}
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 empty:hidden">
                       {/* カレンダーボタン（日付フィールドの場合） */}
                       {isDateField && (
                         <ModernDateTimePicker
@@ -1244,7 +1308,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-10 w-10 p-0"
+                              className="h-8 w-8 p-0"
                               onClick={() => {
                                 if (!usersLoaded && users.length === 0) {
                                   onFetchUsers();
@@ -1311,7 +1375,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-10 w-10 p-0"
+                              className="h-8 w-8 p-0"
                               title="関数を選択"
                               aria-label="関数を選択"
                             >
@@ -1390,7 +1454,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           newValues.splice(valueIndex, 1);
                           onUpdate(index, { values: newValues });
                         }}
-                        className="text-destructive hover:text-destructive h-10 w-10 p-0"
+                        className="text-destructive hover:text-destructive h-8 w-8 p-0"
                         aria-label={`値 ${valueIndex + 1} を削除`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1407,10 +1471,10 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                     const newValues = [...(condition.values || [""]), ""];
                     onUpdate(index, { values: newValues });
                   }}
-                  className="w-full"
+                  className="text-muted-foreground hover:text-foreground h-8 w-full border-dashed"
                   aria-label="値を追加"
                 >
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="mr-1 h-3.5 w-3.5" />
                   値を追加
                 </Button>
               </div>
@@ -1427,7 +1491,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                         onUpdate(index, { value });
                       }}
                     >
-                      <SelectTrigger className="flex-1" aria-label="値を選択">
+                      <SelectTrigger size="sm" className="flex-1" aria-label="値を選択">
                         <SelectValue placeholder="選択肢から選ぶ" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1443,13 +1507,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                       value={localValue}
                       onChange={(e) => setLocalValue(e.target.value)}
                       placeholder={getPlaceholder()}
-                      className="flex-1"
+                      className="h-8 flex-1"
                       aria-label="値を入力"
                     />
                   )}
 
                   {/* ボタン群 */}
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 empty:hidden">
                     {/* カレンダーボタン（日付フィールドの場合） */}
                     {isDateField && (
                       <ModernDateTimePicker
@@ -1481,7 +1545,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-10 w-10 p-0"
+                            className="h-8 w-8 p-0"
                             onClick={() => {
                               if (!usersLoaded && users.length === 0) {
                                 onFetchUsers();
@@ -1539,7 +1603,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-10 w-10 p-0"
+                            className="h-8 w-8 p-0"
                             title="関数を選択"
                             aria-label="関数を選択"
                           >
@@ -1603,19 +1667,19 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             )}
           </div>
         ) : (
-          <div className="text-muted-foreground flex h-9 items-center text-sm">
+          <div className="text-muted-foreground flex h-8 items-center text-sm">
             値の入力は不要です
           </div>
         )}
         </div>
 
-        {/* 行アクション */}
-        <div className="flex flex-shrink-0 items-center gap-1 self-center">
+        {/* 行アクション: 行の一部なので普段は控えめに、ホバーで前に出す */}
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onDuplicate(index)}
-            className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+            className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
             title="この条件を複製"
             aria-label="条件を複製"
           >
@@ -1625,7 +1689,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => onRemove(index)}
-            className="text-destructive hover:text-destructive h-8 w-8 p-0"
+            className="text-destructive hover:text-destructive h-7 w-7 p-0"
             disabled={!canRemove}
             aria-label="条件を削除"
           >
@@ -1640,10 +1704,23 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         (isInOperator
           ? (condition.values || []).every((v) => !v.trim())
           : !localValue.trim()) && (
-          <p className="mt-1 pl-24 text-xs text-yellow-700 dark:text-yellow-400">
+          <p className="mt-1 pl-[6.125rem] text-xs text-yellow-700 dark:text-yellow-400">
             値が未入力のため、この条件はクエリに含まれません
           </p>
         )}
+
+      {/*
+        「含む」と読める演算子でも部分一致にはならない。
+        ツールチップだけでは気づけないので、選んだ時点で行に出す。
+      */}
+      {condition.field && operatorShortHint && (
+        <p
+          className="text-muted-foreground mt-1 pl-[6.125rem] text-xs"
+          title={getOperatorHint(condition.operator) ?? undefined}
+        >
+          {operatorShortHint}
+        </p>
+      )}
     </div>
   );
 };
@@ -1666,7 +1743,14 @@ export default function QueryGeneratorPage({
     DEFAULT_QUERY_OUTPUT_FORMAT,
   );
   const [savePopoverOpen, setSavePopoverOpen] = useState(false);
-  const [resultsPanelOpen, setResultsPanelOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /** プレビューの表を取り直したときに先頭へ戻すためのスクロール領域 */
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  /** 最新リクエストの世代。古いレスポンスの追い越しを捨てるために使う */
+  const queryRequestId = useRef(0);
+  /** 直前に投げたクエリ。同じ内容なら投げ直さない */
+  const lastRequestedQuery = useRef<string | null>(null);
   const [error, setError] = useState<string>("");
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
@@ -1675,11 +1759,9 @@ export default function QueryGeneratorPage({
   const [sortDirection, setSortDirection] = useState("asc");
   const [limit, setLimit] = useState<number>();
   const [offset, setOffset] = useState<number>();
-  const [executing, setExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
-  const [activeResultTab, setActiveResultTab] = useState("table");
   const [currentQueryName, setCurrentQueryName] = useState("");
   const [currentQueryMemo, setCurrentQueryMemo] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
@@ -1732,7 +1814,6 @@ export default function QueryGeneratorPage({
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const [appIdCopied, setAppIdCopied] = useState(false);
   const [spaceIdCopied, setSpaceIdCopied] = useState(false);
-  const [queryExecuted, setQueryExecuted] = useState(false);
   const [users, setUsers] = useState<
     Array<{ code: string; name: string; email: string }>
   >([]);
@@ -1843,107 +1924,216 @@ export default function QueryGeneratorPage({
     }
   }, [auth, usersLoaded, users.length]);
 
-  const executeQuery = useCallback(async () => {
-    if (!generatedQuery) {
-      toast("クエリが生成されていません", "error");
-      return;
-    }
+  /**
+   * プレビューを取り直す。常に最新のリクエストだけを採用する。
+   */
+  const runQuery = useCallback(
+    async (query: string) => {
+      const requestId = ++queryRequestId.current;
+      setPreviewLoading(true);
 
+      try {
+        const result = await window.kintoneAPI.executeQuery(
+          auth,
+          app.appId,
+          query,
+          app.spaceId,
+          { totalCount: true },
+        );
+
+        // 入力が進んで後続のリクエストが出ていたら、古いレスポンスは捨てる
+        if (requestId !== queryRequestId.current) return;
+
+        if (result.success && result.data) {
+          setQueryResult({
+            records: result.data.records ?? [],
+            totalCount: parseTotalCount(result.data.totalCount),
+          });
+          // 結果を入れ替えたのに深い位置のままだと、別の条件の途中を
+          // 見ていることになるので先頭に戻す
+          previewScrollRef.current?.scrollTo({ top: 0 });
+        } else {
+          setQueryResult({
+            records: [],
+            totalCount: null,
+            error: normalizeQueryError(result.error),
+          });
+        }
+      } catch (err) {
+        if (requestId !== queryRequestId.current) return;
+        setQueryResult({
+          records: [],
+          totalCount: null,
+          error: `エラーが発生しました: ${
+            err instanceof Error ? err.message : "Unknown error"
+          }`,
+        });
+      } finally {
+        if (requestId === queryRequestId.current) {
+          setPreviewLoading(false);
+        }
+      }
+    },
+    [auth, app.appId, app.spaceId],
+  );
+
+  /**
+   * プレビュー用のクエリ。書いているクエリがそのまま返すものを見せたいので、
+   * 並び順・件数・スキップはすべて反映する。
+   * 件数が未指定のときだけ、全件を引かないようプレビュー用の既定値で頭を止める。
+   */
+  const previewQuery = useMemo(() => {
+    const size = limit ?? PREVIEW_SIZE;
+    const built = queryUtils.generateQuery(conditions, fields, {
+      ...queryOptions,
+      limit: size,
+    });
+    return built || buildRangeOnlyQuery(size, offset);
+  }, [conditions, fields, queryOptions, limit, offset]);
+
+  // 条件を編集するたびにプレビューを取り直す。
+  // 値の入力途中に連打しないよう待ってから投げ、内容が変わらなければ投げない。
+  // （未入力の条件はgenerateQueryが除外するので、組み立て途中で不正クエリにはならない）
+  useEffect(() => {
+    if (loading) return;
+
+    const timer = setTimeout(() => {
+      if (lastRequestedQuery.current === previewQuery) return;
+      lastRequestedQuery.current = previewQuery;
+      runQuery(previewQuery);
+    }, PREVIEW_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [previewQuery, loading, runQuery]);
+
+  /**
+   * 取得済みの続きを読み足す。
+   * プレビュー本体（runQuery）が置き換えなのに対し、こちらは末尾に追加する。
+   * 読んでいる最中に条件が変わったら、その結果は捨てる。
+   * 件数を指定しているときは「その件数だけ返るクエリ」を見せている場面なので、
+   * 呼び出し側（canLoadMore）で読み足し自体を出さない。
+   */
+  const loadMorePreview = useCallback(async () => {
+    if (previewLoading || loadingMore) return;
+
+    // スキップ指定があるぶんだけ手前を飛ばして読んでいる
+    const offsetForNext = (offset ?? 0) + (queryResult?.records.length ?? 0);
+    const requestId = queryRequestId.current;
+    const query =
+      queryUtils.generateQuery(conditions, fields, {
+        ...queryOptions,
+        limit: PREVIEW_SIZE,
+        offset: offsetForNext,
+      }) || buildRangeOnlyQuery(PREVIEW_SIZE, offsetForNext);
+
+    setLoadingMore(true);
     try {
-      setExecuting(true);
-      setError("");
-      setQueryResult(null);
-
-      console.log("=== クエリ実行開始 ===");
-      console.log("App ID:", app.appId);
-      console.log("Query:", generatedQuery);
-
       const result = await window.kintoneAPI.executeQuery(
         auth,
         app.appId,
-        generatedQuery,
+        query,
         app.spaceId,
+        { totalCount: true },
       );
 
-      // レスポンス全体をログ出力
-      console.log("=== クエリ実行結果 ===");
-      console.log("Full Response JSON:", JSON.stringify(result, null, 2));
-      console.log("===================");
+      // 読んでいる間に条件が変わっていたら、続きとして足すのは誤り
+      if (requestId !== queryRequestId.current) return;
+      if (!result.success || !result.data) return;
 
-      if (result.success && result.data) {
-        console.log("✅ クエリ実行成功");
-        console.log("取得レコード数:", result.data.records?.length || 0);
-        setQueryResult({ records: result.data.records });
-      } else {
-        console.log("❌ クエリ実行エラー");
-        console.log("Error Details:", result.error);
-
-        // シンプルなエラー処理：文字列内のJSONを検出して整形
-        let errorForDisplay = result.error;
-
-        if (typeof result.error === "string") {
-          // 文字列内にJSONが含まれているかチェック
-          const jsonMatch = result.error.match(/\{.*\}/);
-          if (jsonMatch) {
-            try {
-              // JSONをパースして整形
-              const parsedError = JSON.parse(jsonMatch[0]);
-              errorForDisplay = parsedError;
-            } catch {
-              // パースに失敗した場合は元の文字列をそのまま使用
-              errorForDisplay = result.error;
+      const added = result.data.records ?? [];
+      setQueryResult((current) =>
+        current
+          ? {
+              ...current,
+              records: [...current.records, ...added],
+              totalCount:
+                parseTotalCount(result.data?.totalCount) ?? current.totalCount,
             }
-          }
-        }
-
-        setQueryResult({
-          records: [],
-          error: errorForDisplay,
-        });
-      }
-    } catch (err) {
-      console.log("❌ クエリ実行例外エラー");
-      console.error("Exception Details:", err);
-      const errorMessage = `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`;
-      setQueryResult({
-        records: [],
-        error: errorMessage,
-      });
+          : current,
+      );
     } finally {
-      setExecuting(false);
+      setLoadingMore(false);
     }
-  }, [generatedQuery, auth, app.appId, app.spaceId]);
+  }, [
+    previewLoading,
+    loadingMore,
+    queryResult,
+    offset,
+    conditions,
+    fields,
+    queryOptions,
+    auth,
+    app.appId,
+    app.spaceId,
+  ]);
 
-  // APIプレビュー表示・コピーで共用するJSONリクエストボディ
-  const apiRequestBodyJson = JSON.stringify(
-    {
-      app: app.appId,
-      ...(generatedQuery && { query: generatedQuery }),
-      ...(limit && { size: parseInt(limit.toString()) }),
-      ...(offset && { offset: parseInt(offset.toString()) }),
-    },
-    null,
-    2,
+  // 表の列順。レスポンスのキー順は意味を持たないので並べ直す
+  const previewColumns = useMemo(
+    () =>
+      orderRecordColumns(
+        Object.keys(queryResult?.records[0] ?? {}),
+        fields,
+      ),
+    [queryResult, fields],
   );
 
-  // 実行エラー時は明細パネルを自動で開く（エラー詳細を見せる）
-  useEffect(() => {
-    if (queryResult?.error) setResultsPanelOpen(true);
-  }, [queryResult]);
+  // 左右ペインの幅（右ペインの割合%）。ドラッグで変えられ、次回も維持される
+  const [splitRatio, setSplitRatio] = useSplitRatio(
+    "queryGenerator.splitRatio",
+    46,
+  );
+  const isSideBySide = useMediaQuery("(min-width: 1024px)");
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [resizingSplit, setResizingSplit] = useState(false);
 
-  // Ctrl+Enter（macはCmd+Enter）でクエリ実行
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        if (generatedQuery && !executing) {
-          e.preventDefault();
-          executeQuery();
-        }
+  const handleSplitPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setResizingSplit(true);
+    },
+    [],
+  );
+
+  const handleSplitPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!resizingSplit) return;
+      const bounds = splitContainerRef.current?.getBoundingClientRect();
+      if (!bounds || bounds.width === 0) return;
+      setSplitRatio(((bounds.right - event.clientX) / bounds.width) * 100);
+    },
+    [resizingSplit, setSplitRatio],
+  );
+
+  const handleSplitPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      setResizingSplit(false);
+    },
+    [],
+  );
+
+  // ポインタが使えない場合でも調整できるようにする
+  const handleSplitKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setSplitRatio(splitRatio + 2);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setSplitRatio(splitRatio - 2);
       }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [generatedQuery, executing, executeQuery]);
+    },
+    [splitRatio, setSplitRatio],
+  );
+
+  /**
+   * 続きを読めるのは、件数を指定していないとき（＝どこまで見るかを
+   * プレビュー側で決めているとき）だけ。件数を指定しているなら、
+   * その件数がクエリの答えなので勝手に足さない。
+   */
+  const canLoadMore =
+    limit === undefined && hasMoreRecords(queryResult, offset ?? 0);
+
 
   const handleSaveQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
@@ -2193,143 +2383,67 @@ export default function QueryGeneratorPage({
   }
 
   return (
-    <div className="bg-background flex min-h-full flex-col">
-      {/* Header */}
-      <header className="border-border bg-card sticky top-0 z-40 border-b">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center space-x-3">
-              <BackButton
-                onClick={onBack}
-                label="クエリ管理に戻る"
+    <div className="bg-background flex h-full flex-col overflow-hidden">
+      <AppHeader
+        onBack={onBack}
+        backLabel="クエリ管理に戻る"
+        breadcrumb={[
+          { label: "アプリ一覧", onClick: () => onBackToAppList?.() },
+          { label: app.name, truncate: true },
+          { label: "クエリ管理", onClick: () => onBack?.() },
+          { label: isEditMode ? "クエリ編集" : "新規作成" },
+        ]}
+        meta={
+          <>
+            <HeaderIdChip
+              label={`#${app.appId}`}
+              copied={appIdCopied}
+              title="アプリIDをコピー"
+              onCopy={async () => {
+                await navigator.clipboard.writeText(app.appId);
+                setAppIdCopied(true);
+                setTimeout(() => setAppIdCopied(false), 1500);
+              }}
+            />
+            {app.spaceId && (
+              <HeaderIdChip
+                label={`space:${app.spaceId}`}
+                copied={spaceIdCopied}
+                title="ゲストスペースIDをコピー"
+                onCopy={async () => {
+                  await navigator.clipboard.writeText(app.spaceId!);
+                  setSpaceIdCopied(true);
+                  setTimeout(() => setSpaceIdCopied(false), 1500);
+                }}
               />
-              <div className="flex items-center space-x-3">
-                <div>
-                  <div className="flex items-center space-x-3">
-                    <h1 className="text-foreground text-lg font-semibold">
-                      {app.name}
-                    </h1>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={openAppInBrowser}
-                      className="h-8 px-3 text-sm"
-                      title={`${app.name}をブラウザで開く`}
-                    >
-                      <ExternalLink className="h-3 w-3 mr-1" />
-                      ブラウザで開く
-                    </Button>
-                  </div>
-                  <div className="text-muted-foreground flex items-center space-x-2 text-sm">
-                    <Database className="h-3 w-3" />
-                    <span>アプリID: {app.appId}</span>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6 p-0 ml-1"
-                      title="アプリIDをコピー"
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(app.appId);
-                        setAppIdCopied(true);
-                        setTimeout(() => setAppIdCopied(false), 1500);
-                      }}
-                    >
-                      {appIdCopied ? (
-                        <ClipboardCheck className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Clipboard className="h-4 w-4" />
-                      )}
-                    </Button>
-                    {app.spaceId && (
-                      <>
-                        <span className="text-muted-foreground/60"></span>
-                        <span>ゲストスペースID: {app.spaceId}</span>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 p-0 ml-1"
-                          title="ゲストスペースIDをコピー"
-                          onClick={async () => {
-                            await navigator.clipboard.writeText(app.spaceId!);
-                            setSpaceIdCopied(true);
-                            setTimeout(() => setSpaceIdCopied(false), 1500);
-                          }}
-                        >
-                          {spaceIdCopied ? (
-                            <ClipboardCheck className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <Clipboard className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
+          </>
+        }
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={openAppInBrowser}
+            aria-label={`${app.name}をブラウザで開く`}
+            title={`${app.name}をブラウザで開く`}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        }
+        onLogout={onLogout}
+      />
 
-            <div className="flex items-center space-x-4">
-              <ToggleTheme />
-              <Button
-                variant="outline"
-                onClick={onLogout}
-                size="sm"
-              >
-                ログアウト
-              </Button>
-            </div>
-          </div>
-        </div>
-
-
-      </header>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          {/* Breadcrumb */}
-          <nav className="mb-6" aria-label="パンくずナビゲーション">
-            <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (typeof onBackToAppList === "function")
-                      onBackToAppList();
-                  }}
-                  className="hover:text-foreground transition-colors"
-                >
-                  アプリ一覧
-                </button>
-              </li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li className="text-foreground font-medium">{app.name}</li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (typeof onBack === "function") onBack();
-                  }}
-                  className="hover:text-foreground transition-colors"
-                >
-                  クエリ管理
-                </button>
-              </li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li className="text-foreground font-medium">
-                {isEditMode ? "クエリ編集" : "新規作成"}
-              </li>
-            </ol>
-          </nav>
+      {/* 左で条件を組み立て、右でその結果を見る（境目はドラッグで動かせる） */}
+      <div
+        ref={splitContainerRef}
+        className={`flex min-h-0 flex-1 flex-col lg:flex-row ${
+          resizingSplit ? "cursor-col-resize select-none" : ""
+        }`}
+      >
+        {/* 左: 条件の編集 */}
+        <div className="@container scrollbar-thin min-h-0 min-w-0 flex-1 overflow-auto">
+          <div className="mx-auto max-w-5xl px-4 py-4">
 
           {error && <ErrorAlert error={error} />}
 
@@ -2454,115 +2568,119 @@ export default function QueryGeneratorPage({
                     </div>
                   </CardContent>
 
-              {/* 並び替え・件数（インライン行） */}
-              <div className="border-t px-6 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Label className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
-                    並び替え
-                  </Label>
-                  <div className="min-w-[12rem] flex-1">
-                          <Select
-                            value={sortField}
-                            onValueChange={handleSortFieldChange}
+              {/*
+                並び替え・件数。ラベルを入力の上に置いた格子にすることで、
+                ペースの狭い幅でもラベルと入力が離れて折り返さない。
+              */}
+              <div className="border-t px-4 py-3">
+                <div className="@xl:grid-cols-[minmax(0,1fr)_7rem_5.5rem_5.5rem] grid grid-cols-2 gap-x-3 gap-y-2">
+                  <div className="@xl:col-span-1 col-span-2 min-w-0 space-y-1">
+                    <Label className="text-muted-foreground text-xs font-medium">
+                      並び替え
+                    </Label>
+                    <Select
+                      value={sortField}
+                      onValueChange={handleSortFieldChange}
+                    >
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label="並び替えフィールドを選択"
+                      >
+                        <SelectValue className="truncate" />
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[180px]">
+                        {sortFieldOptions.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="whitespace-nowrap"
                           >
-                            <SelectTrigger
-                              className="w-full"
-                              aria-label="並び替えフィールドを選択"
-                            >
-                              <SelectValue className="truncate" />
-                            </SelectTrigger>
-                            <SelectContent className="min-w-[180px]">
-                              {sortFieldOptions.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                  className="whitespace-nowrap"
-                                >
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="w-28 flex-shrink-0">
-                          <Select
-                            value={sortDirection}
-                            onValueChange={setSortDirection}
-                            disabled={sortField === "none"}
+
+                  <div className="min-w-0 space-y-1">
+                    <Label className="text-muted-foreground text-xs font-medium">
+                      順序
+                    </Label>
+                    <Select
+                      value={sortDirection}
+                      onValueChange={setSortDirection}
+                      disabled={sortField === "none"}
+                    >
+                      <SelectTrigger className="w-full" aria-label="並び順を選択">
+                        <SelectValue className="truncate" />
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[120px]">
+                        {sortDirectionOptions.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="whitespace-nowrap"
                           >
-                            <SelectTrigger
-                              className="w-full"
-                              aria-label="並び順を選択"
-                            >
-                              <SelectValue className="truncate" />
-                            </SelectTrigger>
-                            <SelectContent className="min-w-[120px]">
-                              {sortDirectionOptions.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                  className="whitespace-nowrap"
-                                >
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Label
-                    htmlFor="limit"
-                    className="text-muted-foreground ml-2 text-sm"
-                  >
-                    件数
-                  </Label>
-                          <Input
-                            id="limit"
-                            type="number"
-                            min="1"
-                            max="500"
-                            value={limit || ""}
-                            placeholder="例: 100"
-                            onChange={(e) => {
-                              const value = e.target.value
-                                ? Math.max(
-                                    1,
-                                    Math.min(500, Number(e.target.value)),
-                                  )
-                                : undefined;
-                              setLimit(value);
 
-                            }}
-                            aria-label="取得件数を入力"
-                            className="w-24"
-                          />
-                  <Label
-                    htmlFor="offset"
-                    className="text-muted-foreground ml-2 text-sm"
-                  >
-                    スキップ
-                  </Label>
-                          <Input
-                            id="offset"
-                            type="number"
-                            min="0"
-                            value={offset || ""}
-                            placeholder="例: 0"
-                            onChange={(e) => {
-                              const value = e.target.value
-                                ? Math.max(0, Number(e.target.value))
-                                : undefined;
-                              setOffset(value);
-                              
+                  <div className="min-w-0 space-y-1">
+                    <Label
+                      htmlFor="limit"
+                      className="text-muted-foreground text-xs font-medium"
+                    >
+                      件数
+                    </Label>
+                    <Input
+                      id="limit"
+                      type="number"
+                      min="1"
+                      max="500"
+                      value={limit || ""}
+                      placeholder="100"
+                      onChange={(e) => {
+                        const value = e.target.value
+                          ? Math.max(1, Math.min(500, Number(e.target.value)))
+                          : undefined;
+                        setLimit(value);
+                      }}
+                      aria-label="取得件数を入力"
+                      className="w-full"
+                    />
+                  </div>
 
-                            }}
-                            aria-label="スキップ件数を入力"
-                            className="w-24"
-                          />
+                  <div className="min-w-0 space-y-1">
+                    <Label
+                      htmlFor="offset"
+                      className="text-muted-foreground text-xs font-medium"
+                    >
+                      スキップ
+                    </Label>
+                    <Input
+                      id="offset"
+                      type="number"
+                      min="0"
+                      value={offset || ""}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const value = e.target.value
+                          ? Math.max(0, Number(e.target.value))
+                          : undefined;
+                        setOffset(value);
+                      }}
+                      aria-label="スキップ件数を入力"
+                      className="w-full"
+                    />
+                  </div>
                 </div>
               </div>
 
               {/* 出力バンド: 形式切替・クエリ・アクションを1か所に集約 */}
-              <div className="bg-muted/30 space-y-3 rounded-b-lg border-t px-6 py-4">
+              <div className="bg-muted/30 space-y-2 rounded-b-lg border-t px-4 py-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
                     出力
@@ -2594,55 +2712,10 @@ export default function QueryGeneratorPage({
                   <div className="bg-background text-muted-foreground rounded-md border p-3 text-sm">
                     条件を設定するとクエリが表示されます
                   </div>
-                ) : outputView === "api" ? (
-                  <div className="bg-background scrollbar-hover max-h-80 space-y-4 overflow-y-auto rounded-md border p-3">
-                    <div className="space-y-2">
-                      <div className="text-foreground border-b pb-1 text-sm font-medium">
-                        リクエストURL
-                      </div>
-                      <code className="block text-sm break-all">
-                        https://{auth.subdomain}.cybozu.com/k/v1/records.json
-                      </code>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-foreground border-b pb-1 text-sm font-medium">
-                        リクエストヘッダー
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex">
-                          <span className="text-primary w-48 font-mono text-xs">
-                            Content-Type:
-                          </span>
-                          <span className="font-mono text-xs">
-                            application/json
-                          </span>
-                        </div>
-                        <div className="flex">
-                          <span className="text-primary w-48 font-mono text-xs">
-                            X-Cybozu-Authorization:
-                          </span>
-                          <span className="text-muted-foreground font-mono text-xs">
-                            [Base64 encoded credentials]
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-foreground border-b pb-1 text-sm font-medium">
-                        JSONリクエストボディ
-                      </div>
-                      <pre className="overflow-x-auto text-xs whitespace-pre">
-                        <code>{apiRequestBodyJson}</code>
-                      </pre>
-                    </div>
-                  </div>
                 ) : (
                   <div className="bg-background scrollbar-hover max-h-40 overflow-y-auto rounded-md border p-3">
                     <code className="text-foreground font-mono text-sm whitespace-pre-wrap">
-                      {formatQueryForOutput(
-                        generatedQuery,
-                        outputView === "raw" ? "python" : outputView,
-                      )}
+                      {formatQueryForOutput(generatedQuery, outputView)}
                     </code>
                   </div>
                 )}
@@ -2650,49 +2723,14 @@ export default function QueryGeneratorPage({
                 {/* アクション行 */}
                 <div className="flex flex-wrap items-center gap-2">
                             <Button
-                              onClick={async () => {
-                                await executeQuery();
-                                setQueryExecuted(true);
-                                setTimeout(() => setQueryExecuted(false), 2000);
-                              }}
-                              disabled={executing || !generatedQuery}
-                              title="Ctrl+Enterでも実行できます"
-                              size="sm"
-                              className={`h-8 px-4 text-sm transition-all duration-300 ${
-                                executing 
-                                  ? 'bg-primary text-primary-foreground' 
-                                  : queryExecuted
-                                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
-                              }`}
-                            >
-                              {executing ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                  実行中
-                                </>
-                              ) : (
-                                <>
-                                  <Play className={`h-3 w-3 mr-1 transition-all duration-300 ${queryExecuted ? 'fill-current' : ''}`} />
-                                  実行
-                                </>
-                              )}
-                            </Button>
-                            
-                            <Button
                               variant="outline"
                               size="sm"
                               disabled={!generatedQuery}
                               onClick={async () => {
-                                const text =
-                                  outputView === "api"
-                                    ? apiRequestBodyJson
-                                    : formatQueryForOutput(
-                                        generatedQuery,
-                                        outputView === "raw"
-                                          ? "python"
-                                          : outputView,
-                                      );
+                                const text = formatQueryForOutput(
+                                  generatedQuery,
+                                  outputView,
+                                );
                                 await navigator.clipboard.writeText(text);
                                 setClipboardCopied(true);
                                 setTimeout(() => setClipboardCopied(false), 2000);
@@ -2865,262 +2903,227 @@ export default function QueryGeneratorPage({
                     </PopoverContent>
                   </Popover>
 
-                  {/* 実行結果のステータス */}
-                  <div className="ml-auto flex items-center gap-1 text-sm">
-                    {queryResult && !queryResult.error && (
-                      <span className="font-medium text-green-600 dark:text-green-400">
-                        ✓ {queryResult.records?.length || 0}件ヒット
-                      </span>
+                  {/* 一致件数（プレビューは条件を変えるたびに更新される） */}
+                  <div className="ml-auto flex items-center gap-2 text-sm">
+                    {previewLoading && (
+                      <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
                     )}
-                    {queryResult?.error != null && (
+                    {queryResult?.error != null ? (
                       <span className="text-destructive font-medium">
                         ✗ エラー
                       </span>
-                    )}
-                    {queryResult && (
-                      <Button
-                        variant="link"
-                        size="sm"
-                        className="h-auto px-1 text-sm"
-                        onClick={() => setResultsPanelOpen(true)}
-                      >
-                        明細を表示
-                      </Button>
+                    ) : (
+                      queryResult && (
+                        <span className="font-medium text-green-600 dark:text-green-400">
+                          ✓ {formatHitCount(queryResult)}
+                        </span>
+                      )
                     )}
                   </div>
                 </div>
               </div>
             </Card>
 
-            {/* 実行結果スライドオーバー（条件をいじりながら明細を確認できる） */}
-            {resultsPanelOpen && queryResult && (
+          </div>
+        </div>
+        </div>
+
+        {/* 幅の配分を変えるためのつまみ（横並びのときだけ） */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="条件とプレビューの幅を調整"
+          aria-valuenow={Math.round(splitRatio)}
+          aria-valuemin={MIN_SPLIT_RATIO}
+          aria-valuemax={MAX_SPLIT_RATIO}
+          tabIndex={0}
+          onPointerDown={handleSplitPointerDown}
+          onPointerMove={handleSplitPointerMove}
+          onPointerUp={handleSplitPointerUp}
+          onKeyDown={handleSplitKeyDown}
+          onDoubleClick={() => setSplitRatio(46)}
+          title="ドラッグで幅を調整（ダブルクリックで既定に戻す）"
+          className={`no-drag border-border hidden w-2 shrink-0 cursor-col-resize border-l transition-colors lg:block ${
+            resizingSplit ? "bg-primary/60" : "hover:bg-primary/40"
+          }`}
+        />
+
+        {/*
+          右のペインはライブプレビュー専用。左の条件と並べて置くことで、
+          条件を編集しながら結果の変化をそのまま見られる。
+          横幅が足りないウィンドウでは上下に積む。
+        */}
+        <aside
+          aria-label="実行結果"
+          className="bg-card border-border flex min-h-0 min-w-0 shrink-0 grow-0 basis-2/5 flex-col border-t lg:border-t-0"
+          style={
+            isSideBySide ? { flexBasis: `${splitRatio}%` } : undefined
+          }
+        >
+          <div className="border-border flex items-center gap-3 border-b px-3 py-2">
+            <h2 className="text-foreground text-sm font-medium">プレビュー</h2>
+
+            <p className="text-muted-foreground truncate text-xs">
+              {queryResult?.error
+                ? "クエリの実行でエラーが発生しました"
+                : queryResult
+                  ? describePreview(queryResult)
+                  : "レコードを取得しています..."}
+            </p>
+
+            {previewLoading && (
+              <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
+            )}
+          </div>
+
+          <div
+            ref={previewScrollRef}
+            className="scrollbar-thin min-h-0 flex-1 overflow-auto p-3"
+          >
+            {queryResult && (
               <>
-                <div
-                  className="fixed inset-0 z-40 bg-black/30"
-                  onClick={() => setResultsPanelOpen(false)}
-                  aria-hidden="true"
-                />
-                <div
-                  role="dialog"
-                  aria-label="実行結果"
-                  className="bg-card border-border fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col border-l shadow-xl"
-                >
-                  <div className="flex items-center justify-between border-b px-4 py-3">
-                    <div>
-                      <h2 className="text-base font-semibold">実行結果</h2>
-                      <p className="text-muted-foreground text-xs">
-                        {queryResult.error
-                          ? "クエリの実行中にエラーが発生しました"
-                          : `${queryResult.records?.length || 0}件のレコードを取得しました${
-                              (queryResult.records?.length || 0) > 50
-                                ? "（テーブルには最初の50件を表示）"
-                                : ""
-                            }`}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => setResultsPanelOpen(false)}
-                      aria-label="実行結果を閉じる"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="scrollbar-thin flex-1 overflow-y-auto p-4">
-                      {queryResult.error ? (
-                        <div className="bg-muted/40 rounded-md border p-4">
-                          <div className="mb-3 flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                            <h3 className="text-foreground text-sm font-medium">
-                              エラー詳細情報
-                            </h3>
-                          </div>
-                          {(() => {
-                            // エラーがオブジェクトの場合（JSONパース済み）
-                            if (
-                              typeof queryResult.error === "object" &&
-                              queryResult.error !== null
-                            ) {
-                              const errorObj =
-                                queryResult.error as KintoneErrorResponse;
-                              return (
-                                <div className="space-y-3">
-                                  {errorObj.code && (
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
-                                        エラーコード
-                                      </span>
-                                      <span className="rounded bg-red-100 px-2 py-1 font-mono text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                                        {errorObj.code}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {errorObj.message && (
-                                    <div className="flex items-start gap-3">
-                                      <span className="text-muted-foreground min-w-[80px] pt-1 text-xs font-medium">
-                                        メッセージ
-                                      </span>
-                                      <span className="text-foreground text-sm leading-relaxed">
-                                        {errorObj.message}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {errorObj.id && (
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
-                                        リクエストID
-                                      </span>
-                                      <span className="bg-muted text-muted-foreground rounded-sm px-2 py-1 font-mono text-xs">
-                                        {errorObj.id}
-                                      </span>
-                                    </div>
-                                  )}
+                  {queryResult.error ? (
+                    <div className="bg-muted/40 rounded-md border p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                        <h3 className="text-foreground text-sm font-medium">
+                          エラー詳細情報
+                        </h3>
+                      </div>
+                      {(() => {
+                        // エラーがオブジェクトの場合（JSONパース済み）
+                        if (
+                          typeof queryResult.error === "object" &&
+                          queryResult.error !== null
+                        ) {
+                          const errorObj =
+                            queryResult.error as KintoneErrorResponse;
+                          return (
+                            <div className="space-y-3">
+                              {errorObj.code && (
+                                <div className="flex items-center gap-3">
+                                  <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
+                                    エラーコード
+                                  </span>
+                                  <span className="rounded bg-red-100 px-2 py-1 font-mono text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                                    {errorObj.code}
+                                  </span>
                                 </div>
-                              );
-                            }
-                            // エラーが文字列の場合
-                            else {
-                              return (
-                                <div className="text-foreground text-sm">
-                                  <pre className="font-mono text-xs whitespace-pre-wrap">
-                                    {String(queryResult.error)}
-                                  </pre>
+                              )}
+                              {errorObj.message && (
+                                <div className="flex items-start gap-3">
+                                  <span className="text-muted-foreground min-w-[80px] pt-1 text-xs font-medium">
+                                    メッセージ
+                                  </span>
+                                  <span className="text-foreground text-sm leading-relaxed">
+                                    {errorObj.message}
+                                  </span>
                                 </div>
-                              );
-                            }
-                          })()}
-                        </div>
-                      ) : (
-                        <Tabs
-                          value={activeResultTab}
-                          onValueChange={setActiveResultTab}
-                          className="w-full"
-                        >
-                          <TabsList className="bg-muted relative grid w-full grid-cols-2 overflow-hidden rounded-lg border-0 p-1">
-                            <TabsTrigger
-                              value="table"
-                              className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
-                            >
-                              テーブル表示
-                            </TabsTrigger>
-                            <TabsTrigger
-                              value="json"
-                              className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
-                            >
-                              JSON表示
-                            </TabsTrigger>
-                            <div
-                              className={`bg-background border-border absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] rounded-md border shadow-md transition-transform duration-300 ease-out ${
-                                activeResultTab === "json"
-                                  ? "translate-x-full"
-                                  : "translate-x-0"
-                              }`}
-                            />
-                          </TabsList>
-
-                          <TabsContent value="table" className="space-y-4">
-                            {queryResult.records.length > 0 ? (
-                              <div
-                                className="scrollbar-thin max-h-[32rem] overflow-auto rounded-md border"
-                                style={{ direction: "ltr" }}
-                              >
-                                <table
-                                  className="w-full min-w-max border-collapse text-sm"
-                                  style={{
-                                    writingMode: "horizontal-tb",
-                                    textOrientation: "mixed",
-                                  }}
-                                >
-                                  <thead>
-                                    <tr className="bg-muted border-b sticky top-0 z-10">
-                                      {Object.keys(queryResult.records[0]).map(
-                                        (fieldCode) => (
-                                          <th
-                                            key={fieldCode}
-                                            className="border-r p-3 text-left font-medium whitespace-nowrap min-w-[120px]"
-                                            style={{
-                                              writingMode: "horizontal-tb",
-                                            }}
-                                          >
-                                            {fields.find(
-                                              (f) => f.code === fieldCode,
-                                            )?.label || fieldCode}
-                                          </th>
-                                        ),
-                                      )}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {queryResult.records
-                                      .slice(0, 50)
-                                      .map(
-                                        (
-                                          record: Record<string, unknown>,
-                                          index: number,
-                                        ) => (
-                                          <tr
-                                            key={index}
-                                            className="hover:bg-muted/30 border-b"
-                                          >
-                                            {Object.entries(record).map(
-                                              ([fieldCode, fieldData]) => (
-                                                <td
-                                                  key={fieldCode}
-                                                  className="border-r p-3 min-w-[120px] max-w-[300px] overflow-hidden text-ellipsis"
-                                                  style={{
-                                                    writingMode:
-                                                      "horizontal-tb",
-                                                  }}
-                                                  title={queryUtils.formatFieldValue(fieldData)}
-                                                >
-                                                  <div className="truncate">
-                                                    {queryUtils.formatFieldValue(
-                                                      fieldData,
-                                                    )}
-                                                  </div>
-                                                </td>
-                                              ),
-                                            )}
-                                          </tr>
-                                        ),
-                                      )}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <p className="text-muted-foreground py-8 text-center">
-                                レコードがありません
-                              </p>
-                            )}
-                          </TabsContent>
-
-                          <TabsContent value="json" className="space-y-4">
-                            <div className="scrollbar-hover border-border max-h-96 overflow-y-auto rounded-lg border">
-                              <SyntaxHighlighter
-                                language="json"
-                                style={vscDarkPlus}
-                                customStyle={{
-                                  margin: 0,
-                                  borderRadius: "0.5rem",
-                                  fontSize: "0.75rem",
-                                  lineHeight: "1rem",
-                                }}
-                                wrapLongLines={true}
-                              >
-                                {JSON.stringify(queryResult.records, null, 2)}
-                              </SyntaxHighlighter>
+                              )}
+                              {errorObj.id && (
+                                <div className="flex items-center gap-3">
+                                  <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
+                                    リクエストID
+                                  </span>
+                                  <span className="bg-muted text-muted-foreground rounded-sm px-2 py-1 font-mono text-xs">
+                                    {errorObj.id}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                          </TabsContent>
-                        </Tabs>
+                          );
+                        }
+                        // エラーが文字列の場合
+                        else {
+                          return (
+                            <div className="text-foreground text-sm">
+                              <pre className="font-mono text-xs whitespace-pre-wrap">
+                                {String(queryResult.error)}
+                              </pre>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        className="scrollbar-thin overflow-x-auto rounded-md border"
+                        style={{ direction: "ltr" }}
+                      >
+                      {queryResult.records.length > 0 ? (
+                        <table className="w-full min-w-max border-collapse text-sm">
+                          <thead>
+                            <tr className="bg-secondary sticky top-0 z-10 border-b-2">
+                              {previewColumns.map((fieldCode) => (
+                                <th
+                                  key={fieldCode}
+                                  className="min-w-[110px] border-r p-2 text-left font-medium whitespace-nowrap"
+                                >
+                                  {fields.find((f) => f.code === fieldCode)
+                                    ?.label || fieldCode}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {queryResult.records.map(
+                              (
+                                record: Record<string, unknown>,
+                                index: number,
+                              ) => (
+                                <tr
+                                  key={index}
+                                  className="even:bg-muted/50 hover:bg-accent/60 border-b"
+                                >
+                                  {previewColumns.map((fieldCode) => (
+                                    <td
+                                      key={fieldCode}
+                                      className="min-w-[110px] max-w-[240px] border-r p-2"
+                                      title={formatFieldValue(record[fieldCode])}
+                                    >
+                                      <div className="truncate">
+                                        {formatFieldValue(record[fieldCode])}
+                                      </div>
+                                    </td>
+                                  ))}
+                                </tr>
+                              ),
+                            )}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="text-muted-foreground py-10 text-center text-sm">
+                          条件に一致するレコードがありません
+                        </p>
                       )}
-                  </div>
-                </div>
+                    </div>
+
+                    {canLoadMore && (
+                      <div className="flex justify-center pt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={loadMorePreview}
+                          disabled={loadingMore || previewLoading}
+                        >
+                          {loadingMore ? (
+                            <>
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              読み込み中
+                            </>
+                          ) : (
+                            `さらに${PREVIEW_SIZE}件を表示`
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                    </>
+                  )}
               </>
             )}
           </div>
-        </div>
+        </aside>
       </div>
 
       {/* ナビゲーション中のローディングオーバーレイ */}

@@ -110,10 +110,12 @@ function createWindow() {
   }
 
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 780,
-    minWidth: 640,
-    minHeight: 480,
+    // クエリ生成画面を条件（左）とプレビュー（右）で並べられる幅を既定にする。
+    // 狭いときは各画面が縦積みにフォールバックする
+    width: 1280,
+    height: 820,
+    minWidth: 720,
+    minHeight: 560,
     autoHideMenuBar: true,
     // OS標準のタイトルバーを廃止し、レンダラー側の <TitleBar /> を使う。
     // frame:false ではなく titleBarStyle:"hidden" にすることで、リサイズ枠や

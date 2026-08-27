@@ -12,6 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PasswordInput } from "@/components/ui/password-input";
 import ToggleTheme from "@/components/ToggleTheme";
+import WindowControls, {
+  titleBarInsetStyle,
+} from "@/components/template/WindowControls";
 import { PageLoading } from "@/components/ui/page-loading";
 import { KintoneAuth } from "@/types/kintone";
 import { Lock, User, Globe, AlertCircle, Loader2 } from "lucide-react";
@@ -142,10 +145,20 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     };
 
   return (
-    <div className="bg-background absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-      <div className="absolute top-4 right-4 z-10">
-        <ToggleTheme />
-      </div>
+    <div className="bg-background absolute inset-0 flex flex-col overflow-hidden">
+      {/*
+        ログイン画面にはヘッダーがないが、タイトルバーを廃止している以上
+        ウィンドウ操作は必要なので、他の画面と同じ並びの帯だけを置く。
+      */}
+      <header
+        className="draglayer flex h-10 shrink-0 items-center justify-end gap-0.5 pl-1"
+        style={titleBarInsetStyle()}
+      >
+        <ToggleTheme variant="ghost" className="h-7 w-7" />
+        <WindowControls />
+      </header>
+
+      <div className="flex min-h-0 flex-1 items-center justify-center p-4">
 
       <Card className="border-border bg-card w-full max-w-md shadow-lg shadow-black/5">
         <CardHeader className="space-y-3 text-center">
@@ -273,6 +286,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           </form>
         </CardContent>
       </Card>
+      </div>
       {isTransitioning && (
         <PageLoading message="アプリ一覧を読み込んでいます..." />
       )}

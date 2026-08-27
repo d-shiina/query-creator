@@ -4,7 +4,16 @@ import { Button } from "@/components/ui/button";
 import { getCurrentTheme, setTheme } from "@/helpers/theme_helpers";
 import { ThemeMode } from "@/types/theme-mode";
 
-export default function ToggleTheme() {
+interface ToggleThemeProps {
+  /** タイトルバーの中では枠のない ghost、単独で浮かせるときは outline を使う */
+  variant?: "outline" | "ghost";
+  className?: string;
+}
+
+export default function ToggleTheme({
+  variant = "outline",
+  className = "",
+}: ToggleThemeProps) {
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>("system");
   const [isDark, setIsDark] = useState(false);
 
@@ -47,9 +56,12 @@ export default function ToggleTheme() {
   return (
     <Button
       onClick={handleToggle}
-      variant="outline"
+      variant={variant}
       size="icon"
-      className="border-border hover:bg-accent hover:text-accent-foreground"
+      aria-label={isDark ? "ライトテーマに切り替え" : "ダークテーマに切り替え"}
+      className={`hover:bg-accent hover:text-accent-foreground ${
+        variant === "outline" ? "border-border" : ""
+      } ${className}`}
     >
       {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </Button>

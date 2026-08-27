@@ -18,7 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import ToggleTheme from "@/components/ToggleTheme";
+import AppHeader from "@/components/template/AppHeader";
 import AppDataTable from "@/components/AppDataTable";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
@@ -403,35 +403,23 @@ export default function AppManagementPage({
   console.log("Rendering default AppManagementPage");
 
   return (
-    <div className="bg-background min-h-full">
+    <div className="bg-background flex h-full flex-col overflow-hidden">
       {/* ヘッダー */}
-      <header className="border-border bg-card sticky top-0 z-50 border-b">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center gap-4">
-              <h1 className="text-foreground text-base font-semibold">
-                kintone API Query Creator
-              </h1>
-              <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                <span className="font-medium">
-                  {auth.subdomain}.cybozu.com
-                </span>
-                <span className="border-border bg-muted rounded-sm border px-1.5 py-0.5">
-                  {apps.length} アプリ
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <ToggleTheme />
-              <Button variant="outline" size="sm" onClick={onLogout}>
-                ログアウト
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        breadcrumb={[{ label: "アプリ一覧" }]}
+        meta={
+          <span className="text-muted-foreground flex shrink-0 items-center gap-2 px-1 text-xs">
+            <span>{auth.subdomain}.cybozu.com</span>
+            <span className="border-border bg-muted rounded-sm border px-1.5 py-0.5">
+              {apps.length} アプリ
+            </span>
+          </span>
+        }
+        onLogout={onLogout}
+      />
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* エラー表示 */}
         {error && (
           <div
@@ -937,6 +925,7 @@ export default function AppManagementPage({
             )}
           </>
         )}
+        </div>
       </div>
     </div>
   );

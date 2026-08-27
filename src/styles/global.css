@@ -94,32 +94,37 @@
    * - 角丸8px・柔らかい影で軽やかに
    */
   :root {
-    --background: 220 20% 98%;
-    --foreground: 222 22% 16%;
+    /*
+     * ライトは面（白）と地（グレー）の差が2%しかなく、罫線も薄すぎて
+     * カードや表の境目が見えなかったため、地・罫線・ミュートを一段落とし、
+     * 面との差をはっきりさせている。
+     */
+    --background: 220 16% 95%;
+    --foreground: 222 22% 14%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 22% 16%;
+    --card-foreground: 222 22% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 22% 16%;
+    --popover-foreground: 222 22% 14%;
 
     --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 16% 94%;
-    --secondary-foreground: 222 18% 28%;
+    --secondary: 220 15% 92%;
+    --secondary-foreground: 222 18% 26%;
 
-    --muted: 220 16% 95%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 220 15% 93%;
+    --muted-foreground: 220 10% 40%;
 
-    --accent: 217 91% 95%;
-    --accent-foreground: 221 83% 45%;
+    --accent: 217 91% 93%;
+    --accent-foreground: 221 83% 42%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 90%;
-    --input: 220 13% 84%;
+    --border: 220 13% 85%;
+    --input: 220 13% 78%;
     --ring: 221 83% 53%;
 
     --radius: 0.5rem;
@@ -166,6 +171,18 @@
   }
   /* ドラッグ領域の中でもクリック可能にしたい要素（ウィンドウ操作ボタンなど） */
   .no-drag {
+    -webkit-app-region: no-drag;
+  }
+  /*
+   * ヘッダーがタイトルバーを兼ねるため、その中の操作可能な要素は
+   * ドラッグに吸われないよう一括で除外する。個別の指定漏れを防ぐ。
+   */
+  .draglayer button,
+  .draglayer a,
+  .draglayer input,
+  .draglayer select,
+  .draglayer textarea,
+  .draglayer [role="button"] {
     -webkit-app-region: no-drag;
   }
   button {

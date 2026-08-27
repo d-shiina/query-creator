@@ -6,7 +6,6 @@ import {
   Edit,
   Search,
   Trash2,
-  ChevronRight,
   Star,
   X,
   AlertTriangle,
@@ -33,8 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import ToggleTheme from "@/components/ToggleTheme";
-import { BackButton } from "@/components/ui/back-button";
+import AppHeader from "@/components/template/AppHeader";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
 import { KintoneAuth, KintoneApp } from "@/types/kintone";
@@ -222,67 +220,27 @@ export default function QuerySelectionPage({
 
   // Step 2: Header with QueryGeneratorPage style
   return (
-    <div className="bg-background flex min-h-full flex-col">
+    <div className="bg-background flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-border bg-card sticky top-0 z-40 border-b">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center space-x-3">
-              <BackButton
-                onClick={onBack}
-                label="アプリ一覧に戻る"
-              />
-              <div>
-                <h1 className="text-foreground text-lg font-semibold">
-                  {app.name}
-                </h1>
-                <div className="text-muted-foreground flex items-center space-x-2 text-sm">
-                  <Search className="h-3 w-3" />
-                  <span>クエリ管理</span>
-                  <span className="text-muted-foreground/60">•</span>
-                  <span>{savedQueries?.length || 0}件のクエリ</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <ToggleTheme />
-              <Button
-                variant="outline"
-                onClick={onLogout}
-                size="sm"
-              >
-                ログアウト
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        onBack={onBack}
+        backLabel="アプリ一覧に戻る"
+        breadcrumb={[
+          { label: "アプリ一覧", onClick: onBack },
+          { label: app.name, truncate: true },
+          { label: "クエリ管理" },
+        ]}
+        meta={
+          <span className="text-muted-foreground shrink-0 px-1 text-xs">
+            {savedQueries?.length || 0}件
+          </span>
+        }
+        onLogout={onLogout}
+      />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          {/* Breadcrumb */}
-          <nav className="mb-6">
-            <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
-              <li>
-                <button
-                  onClick={onBack}
-                  className="hover:text-foreground transition-colors"
-                >
-                  アプリ一覧
-                </button>
-              </li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li className="text-foreground font-medium">{app.name}</li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li className="text-foreground font-medium">クエリ管理</li>
-            </ol>
-          </nav>
 
           {/* Controls */}
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
