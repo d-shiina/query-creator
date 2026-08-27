@@ -1065,7 +1065,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       */}
       <div className="flex flex-wrap items-center gap-1.5">
         {/* 左ガター: グリップ + 条件番号 / AND・OR（行をまたいで幅を揃える） */}
-        <div className="flex w-[6.5rem] shrink-0 items-center gap-1">
+        <div className="flex w-[5.75rem] shrink-0 items-center gap-1">
           <span
             draggable
             onDragStart={(e) => {
@@ -1091,7 +1091,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             >
               <SelectTrigger
                 size="sm"
-                className="w-20 text-xs"
+                className="w-[4.25rem] gap-1 px-2 text-xs"
                 aria-label="論理演算子を選択"
               >
                 <SelectValue />
@@ -1181,7 +1181,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             演算子の値はクエリにそのまま入る文字列なので、
             生成されるクエリと同じものが並ぶことにもなる。
           */}
-          <div className="w-24 shrink-0">
+          <div className="shrink-0">
             <Select
               value={condition.operator}
               onValueChange={(value) =>
@@ -1190,7 +1190,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             >
               <SelectTrigger
                 size="sm"
-                className="w-full"
+                className="gap-1 px-2"
                 aria-label={`演算子: ${operatorLabel}`}
                 title={
                   [operatorLabel, getOperatorHint(condition.operator)]
