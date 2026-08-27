@@ -995,6 +995,11 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       fieldInfo?.type === "CHECK_BOX" ||
       fieldInfo?.type === "MULTI_SELECT") &&
     optionChoices.length > 0;
+  // 選択後は記号だけを出すので、説明はツールチップと読み上げ用に取っておく
+  const availableOperators = getAvailableOperators(condition.field);
+  const operatorLabel =
+    availableOperators.find((op) => op.value === condition.operator)?.label ??
+    condition.operator;
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
@@ -1052,9 +1057,15 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         isDragOver ? "ring-primary/60 bg-muted/40 ring-2" : ""
       }`}
     >
-      <div className="@xl:flex-row @xl:items-center flex flex-col gap-1.5">
-        {/* 左ガター: グリップ + 条件番号 / AND・OR */}
-        <div className="@xl:w-[4.5rem] @xl:shrink-0 flex w-full items-center gap-0.5">
+      {/*
+        幅に応じてブレークポイントで組み替えるのではなく、各要素に必要な最小幅を
+        持たせて折り返しに任せる。広ければ1行、足りなければ値の入力から順に
+        次の行へ落ちる。ペインの幅は自由に変えられるので、切り替え点を決め打ちすると
+        その前後で必ず窮屈になる。
+      */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* 左ガター: グリップ + 条件番号 / AND・OR（行をまたいで幅を揃える） */}
+        <div className="flex w-[6.5rem] shrink-0 items-center gap-1">
           <span
             draggable
             onDragStart={(e) => {
@@ -1080,7 +1091,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             >
               <SelectTrigger
                 size="sm"
-                className="w-full text-xs"
+                className="w-20 text-xs"
                 aria-label="論理演算子を選択"
               >
                 <SelectValue />
@@ -1094,7 +1105,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
           {/* フィールド選択 */}
-          <div className="@xl:basis-52 min-w-0 flex-1">
+          <div className="min-w-[10rem] flex-1">
             <Popover
               open={fieldComboboxOpen}
               onOpenChange={setFieldComboboxOpen}
@@ -1165,8 +1176,12 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             </Popover>
           </div>
 
-          {/* 演算子選択 */}
-          <div className="@xl:basis-36 @xl:grow-0 min-w-0 flex-1">
+          {/*
+            演算子は選ぶときだけ日本語で説明し、選んだ後は記号だけを出す。
+            演算子の値はクエリにそのまま入る文字列なので、
+            生成されるクエリと同じものが並ぶことにもなる。
+          */}
+          <div className="w-24 shrink-0">
             <Select
               value={condition.operator}
               onValueChange={(value) =>
@@ -1176,19 +1191,28 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               <SelectTrigger
                 size="sm"
                 className="w-full"
-                aria-label="演算子を選択"
-                title={getOperatorHint(condition.operator) ?? undefined}
+                aria-label={`演算子: ${operatorLabel}`}
+                title={
+                  [operatorLabel, getOperatorHint(condition.operator)]
+                    .filter(Boolean)
+                    .join(" — ") || undefined
+                }
               >
-                <SelectValue className="truncate" />
+                <span className="truncate font-mono text-sm">
+                  {condition.operator}
+                </span>
               </SelectTrigger>
               <SelectContent className="min-w-[200px]">
-                {getAvailableOperators(condition.field).map(
+                {availableOperators.map(
                   (op: { value: QueryOperator; label: string }) => (
                     <SelectItem
                       key={op.value}
                       value={op.value}
                       className="whitespace-nowrap"
                     >
+                      <span className="text-muted-foreground w-14 shrink-0 font-mono text-xs">
+                        {op.value}
+                      </span>
                       {op.label}
                     </SelectItem>
                   ),
@@ -1198,7 +1222,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
 
         {/* 値入力エリア */}
-        <div className="@xl:basis-64 min-w-0 flex-1">
+        <div className="min-w-[10rem] flex-1">
         {!isNullOperator ? (
           <div className="space-y-2">
             {isInOperator ? (
@@ -1645,7 +1669,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
         {/* 行アクション: 行の一部なので普段は控えめに、ホバーで前に出す */}
-        <div className="flex shrink-0 items-center gap-0.5 self-end opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 @xl:self-center">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           <Button
             variant="ghost"
             size="sm"
