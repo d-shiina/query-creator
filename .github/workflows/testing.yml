@@ -6,37 +6,58 @@ on:
     branches: [main]
 
 jobs:
-  tests-unit:
+  unit:
+    name: ユニットテスト
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - name: Install dependencies
         run: npm ci
       - name: Run unit tests
-        run: npm run test:unit
+        run: npm test
 
-  test-e2e:
-    timeout-minutes: 10
+  e2e:
+    name: 画面テスト
+    # パッケージ済みのElectronは起動時のライセンス検証に通らないとウィンドウを
+    # 作らないため、CIでは起動できない（確認ダイアログが出たまま止まる）。
+    # レンダラーをビルドしてブラウザで動かし、preloadの窓口だけ差し替えて検証する。
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run browser tests
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  build:
+    name: Windowsビルド
+    # 画面テストが起動しない代わりに、アプリが実際に組み上がることはここで見る
+    timeout-minutes: 20
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-      - name: Create Executable
-        run: npm run make
-      - name: Run Playwright tests
-        run: npm run test:e2e
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7
+      - name: Package application
+        run: npm run package
