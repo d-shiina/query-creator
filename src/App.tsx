@@ -81,7 +81,7 @@ function App() {
           タイトルバーの帯は持たず、各画面のヘッダーがドラッグ領域を兼ねる */}
       <div className="flex h-screen flex-col overflow-hidden">
         <WindowControls />
-        <div className="scrollbar-thin relative min-h-0 flex-1 overflow-auto pb-16">
+        <div className="scrollbar-thin relative min-h-0 flex-1 overflow-auto pb-8">
           {renderContent()}
         </div>
         <SimpleFooter />
