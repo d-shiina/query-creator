@@ -487,7 +487,7 @@ const ModernDateTimePicker: React.FC<{
         <Button
           variant="outline"
           size="sm"
-          className="h-10 w-10 p-0"
+          className="h-8 w-8 p-0"
           disabled={disabled}
           title={getButtonTitle()}
           aria-label={getButtonTitle()}
@@ -1245,6 +1245,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                         }}
                       >
                         <SelectTrigger
+                          size="sm"
                           className="flex-1"
                           aria-label={`値 ${valueIndex + 1} を選択`}
                         >
@@ -1267,13 +1268,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           onUpdate(index, { values: newValues });
                         }}
                         placeholder={getPlaceholder()}
-                        className="flex-1"
+                        className="h-8 flex-1"
                         aria-label={`値 ${valueIndex + 1}`}
                       />
                     )}
 
                     {/* ボタン群 */}
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 empty:hidden">
                       {/* カレンダーボタン（日付フィールドの場合） */}
                       {isDateField && (
                         <ModernDateTimePicker
@@ -1307,7 +1308,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-10 w-10 p-0"
+                              className="h-8 w-8 p-0"
                               onClick={() => {
                                 if (!usersLoaded && users.length === 0) {
                                   onFetchUsers();
@@ -1374,7 +1375,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-10 w-10 p-0"
+                              className="h-8 w-8 p-0"
                               title="関数を選択"
                               aria-label="関数を選択"
                             >
@@ -1453,7 +1454,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           newValues.splice(valueIndex, 1);
                           onUpdate(index, { values: newValues });
                         }}
-                        className="text-destructive hover:text-destructive h-10 w-10 p-0"
+                        className="text-destructive hover:text-destructive h-8 w-8 p-0"
                         aria-label={`値 ${valueIndex + 1} を削除`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1470,10 +1471,10 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                     const newValues = [...(condition.values || [""]), ""];
                     onUpdate(index, { values: newValues });
                   }}
-                  className="w-full"
+                  className="text-muted-foreground hover:text-foreground h-8 w-full border-dashed"
                   aria-label="値を追加"
                 >
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="mr-1 h-3.5 w-3.5" />
                   値を追加
                 </Button>
               </div>
@@ -1490,7 +1491,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                         onUpdate(index, { value });
                       }}
                     >
-                      <SelectTrigger className="flex-1" aria-label="値を選択">
+                      <SelectTrigger size="sm" className="flex-1" aria-label="値を選択">
                         <SelectValue placeholder="選択肢から選ぶ" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1506,13 +1507,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                       value={localValue}
                       onChange={(e) => setLocalValue(e.target.value)}
                       placeholder={getPlaceholder()}
-                      className="flex-1"
+                      className="h-8 flex-1"
                       aria-label="値を入力"
                     />
                   )}
 
                   {/* ボタン群 */}
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 empty:hidden">
                     {/* カレンダーボタン（日付フィールドの場合） */}
                     {isDateField && (
                       <ModernDateTimePicker
@@ -1544,7 +1545,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-10 w-10 p-0"
+                            className="h-8 w-8 p-0"
                             onClick={() => {
                               if (!usersLoaded && users.length === 0) {
                                 onFetchUsers();
@@ -1602,7 +1603,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-10 w-10 p-0"
+                            className="h-8 w-8 p-0"
                             title="関数を選択"
                             aria-label="関数を選択"
                           >
@@ -1666,7 +1667,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             )}
           </div>
         ) : (
-          <div className="text-muted-foreground flex h-9 items-center text-sm">
+          <div className="text-muted-foreground flex h-8 items-center text-sm">
             値の入力は不要です
           </div>
         )}
@@ -1703,7 +1704,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         (isInOperator
           ? (condition.values || []).every((v) => !v.trim())
           : !localValue.trim()) && (
-          <p className="mt-1 pl-24 text-xs text-yellow-700 dark:text-yellow-400">
+          <p className="mt-1 pl-[6.125rem] text-xs text-yellow-700 dark:text-yellow-400">
             値が未入力のため、この条件はクエリに含まれません
           </p>
         )}
@@ -1714,7 +1715,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       */}
       {condition.field && operatorShortHint && (
         <p
-          className="text-muted-foreground mt-1 pl-24 text-xs"
+          className="text-muted-foreground mt-1 pl-[6.125rem] text-xs"
           title={getOperatorHint(condition.operator) ?? undefined}
         >
           {operatorShortHint}
