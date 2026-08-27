@@ -78,6 +78,7 @@ import {
   type QueryOutputFormat,
 } from "@/utils/query-format";
 import { getOperatorHint } from "@/utils/query-operator-hints";
+import { formatFieldValue } from "@/utils/kintone-field-value";
 import { useToast } from "@/components/ui/toast";
 
 /** 出力バンドの表示モード（クエリ形式＋生クエリ＋APIプレビュー） */
@@ -611,52 +612,6 @@ const ModernDateTimePicker: React.FC<{
 
 // ユーティリティ関数
 const queryUtils = {
-  // フィールド値のフォーマット
-  formatFieldValue: (fieldData: unknown): string => {
-    if (!fieldData) return "";
-
-    if (
-      typeof fieldData === "object" &&
-      fieldData !== null &&
-      "value" in fieldData
-    ) {
-      const data = fieldData as { value: unknown; type?: string };
-      const { value } = data;
-
-      if (data.type === "FILE" && Array.isArray(value)) {
-        return value
-          .map((file: { name?: string }) => file.name || "")
-          .join(", ");
-      }
-
-      if (
-        Array.isArray(value) &&
-        value.length > 0 &&
-        typeof value[0] === "object" &&
-        value[0] !== null &&
-        "name" in value[0]
-      ) {
-        return value.map((user: { name: string }) => user.name).join(", ");
-      }
-
-      if (typeof value === "object") {
-        return JSON.stringify(value);
-      }
-
-      return String(value);
-    }
-
-    if (Array.isArray(fieldData)) {
-      return fieldData.map((item) => String(item)).join(", ");
-    }
-
-    if (typeof fieldData === "object") {
-      return JSON.stringify(fieldData);
-    }
-
-    return String(fieldData);
-  },
-
   // 条件のバリデーション
   validateCondition: (condition: QueryCondition): string[] => {
     const errors: string[] = [];
@@ -1729,8 +1684,6 @@ export default function QueryGeneratorPage({
   // 画面を開いた時点でレコードが見えている
   const [resultsPanelExpanded, setResultsPanelExpanded] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [resultsPanelHeight, setResultsPanelHeight] = useState(0);
-  const resultsPanelRef = useRef<HTMLDivElement>(null);
   /** 最新リクエストの世代。古いレスポンスの追い越しを捨てるために使う */
   const queryRequestId = useRef(0);
   /** 直前に投げたクエリ。同じ内容なら投げ直さない */
@@ -1983,21 +1936,6 @@ export default function QueryGeneratorPage({
     });
     return built || `limit ${PREVIEW_SIZE}`;
   }, [conditions, fields, queryOptions]);
-
-  // 結果パネルは画面下部に固定なので、その高さぶんの余白を本文に足して
-  // 最後のコンテンツが隠れないようにする
-  useEffect(() => {
-    const element = resultsPanelRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(() =>
-      setResultsPanelHeight(element.offsetHeight),
-    );
-    observer.observe(element);
-    setResultsPanelHeight(element.offsetHeight);
-
-    return () => observer.disconnect();
-  }, [loading]);
 
   // 条件を編集するたびにプレビューを取り直す。
   // 値の入力途中に連打しないよう待ってから投げ、内容が変わらなければ投げない。
@@ -2295,16 +2233,15 @@ export default function QueryGeneratorPage({
   }
 
   return (
-    <div
-      className="bg-background flex min-h-full flex-col"
-      style={{ paddingBottom: resultsPanelHeight }}
-    >
+    <div className="bg-background flex min-h-full flex-col">
       {/* Header */}
-      {/* ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域） */}
-      <header
-        className="draglayer border-border bg-card sticky top-0 z-40 border-b"
-        style={windowControlsInsetStyle()}
-      >
+      {/* ヘッダーとプレビューは上部に固定し、条件の編集は下でスクロールさせる */}
+      <div className="sticky top-0 z-40">
+        {/* ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域） */}
+        <header
+          className="draglayer border-border bg-card border-b"
+          style={windowControlsInsetStyle()}
+        >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-3">
             <div className="flex items-center space-x-3">
@@ -2394,6 +2331,236 @@ export default function QueryGeneratorPage({
 
 
       </header>
+
+    {/*
+      レコードを先に見せ、その下で条件を組み立てる。
+      モーダルにしない（背景を敷かない）ので、条件を編集しながら
+      結果の変化をそのまま見られる。
+    */}
+    <div
+      aria-label="実行結果"
+      className="bg-card border-border flex flex-col border-b"
+    >
+          <div className="flex items-center gap-3 px-4 py-2">
+            <button
+              type="button"
+              onClick={() => setResultsPanelExpanded((open) => !open)}
+              aria-expanded={resultsPanelExpanded}
+              className="hover:text-foreground text-muted-foreground flex items-center gap-1.5 text-sm font-medium"
+            >
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${
+                  resultsPanelExpanded ? "" : "-rotate-90"
+                }`}
+              />
+              <span className="text-foreground">プレビュー</span>
+            </button>
+
+            <p className="text-muted-foreground truncate text-xs">
+              {queryResult?.error
+                ? "クエリの実行でエラーが発生しました"
+                : queryResult
+                  ? describePreview(queryResult)
+                  : "レコードを取得しています..."}
+            </p>
+
+            {previewLoading && (
+              <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
+            )}
+          </div>
+
+          {resultsPanelExpanded && queryResult && (
+              <div className="scrollbar-thin max-h-[32vh] overflow-y-auto px-4 pb-4">
+                  {queryResult.error ? (
+                    <div className="bg-muted/40 rounded-md border p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                        <h3 className="text-foreground text-sm font-medium">
+                          エラー詳細情報
+                        </h3>
+                      </div>
+                      {(() => {
+                        // エラーがオブジェクトの場合（JSONパース済み）
+                        if (
+                          typeof queryResult.error === "object" &&
+                          queryResult.error !== null
+                        ) {
+                          const errorObj =
+                            queryResult.error as KintoneErrorResponse;
+                          return (
+                            <div className="space-y-3">
+                              {errorObj.code && (
+                                <div className="flex items-center gap-3">
+                                  <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
+                                    エラーコード
+                                  </span>
+                                  <span className="rounded bg-red-100 px-2 py-1 font-mono text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                                    {errorObj.code}
+                                  </span>
+                                </div>
+                              )}
+                              {errorObj.message && (
+                                <div className="flex items-start gap-3">
+                                  <span className="text-muted-foreground min-w-[80px] pt-1 text-xs font-medium">
+                                    メッセージ
+                                  </span>
+                                  <span className="text-foreground text-sm leading-relaxed">
+                                    {errorObj.message}
+                                  </span>
+                                </div>
+                              )}
+                              {errorObj.id && (
+                                <div className="flex items-center gap-3">
+                                  <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
+                                    リクエストID
+                                  </span>
+                                  <span className="bg-muted text-muted-foreground rounded-sm px-2 py-1 font-mono text-xs">
+                                    {errorObj.id}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        // エラーが文字列の場合
+                        else {
+                          return (
+                            <div className="text-foreground text-sm">
+                              <pre className="font-mono text-xs whitespace-pre-wrap">
+                                {String(queryResult.error)}
+                              </pre>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  ) : (
+                    <Tabs
+                      value={activeResultTab}
+                      onValueChange={setActiveResultTab}
+                      className="w-full"
+                    >
+                      <TabsList className="bg-muted relative grid w-full max-w-xs grid-cols-2 overflow-hidden rounded-lg border-0 p-1">
+                        <TabsTrigger
+                          value="table"
+                          className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
+                        >
+                          テーブル表示
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="json"
+                          className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
+                        >
+                          JSON表示
+                        </TabsTrigger>
+                        <div
+                          className={`bg-background border-border absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] rounded-md border shadow-md transition-transform duration-300 ease-out ${
+                            activeResultTab === "json"
+                              ? "translate-x-full"
+                              : "translate-x-0"
+                          }`}
+                        />
+                      </TabsList>
+
+                      <TabsContent value="table" className="space-y-4">
+                        {queryResult.records.length > 0 ? (
+                          <div
+                            className="scrollbar-thin overflow-x-auto rounded-md border"
+                            style={{ direction: "ltr" }}
+                          >
+                            <table
+                              className="w-full min-w-max border-collapse text-sm"
+                              style={{
+                                writingMode: "horizontal-tb",
+                                textOrientation: "mixed",
+                              }}
+                            >
+                              <thead>
+                                <tr className="bg-muted border-b sticky top-0 z-10">
+                                  {Object.keys(queryResult.records[0]).map(
+                                    (fieldCode) => (
+                                      <th
+                                        key={fieldCode}
+                                        className="border-r p-2 text-left font-medium whitespace-nowrap min-w-[120px]"
+                                        style={{
+                                          writingMode: "horizontal-tb",
+                                        }}
+                                      >
+                                        {fields.find(
+                                          (f) => f.code === fieldCode,
+                                        )?.label || fieldCode}
+                                      </th>
+                                    ),
+                                  )}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {queryResult.records
+                                  .slice(0, 50)
+                                  .map(
+                                    (
+                                      record: Record<string, unknown>,
+                                      index: number,
+                                    ) => (
+                                      <tr
+                                        key={index}
+                                        className="hover:bg-muted/30 border-b"
+                                      >
+                                        {Object.entries(record).map(
+                                          ([fieldCode, fieldData]) => (
+                                            <td
+                                              key={fieldCode}
+                                              className="border-r p-2 min-w-[120px] max-w-[300px] overflow-hidden text-ellipsis"
+                                              style={{
+                                                writingMode:
+                                                  "horizontal-tb",
+                                              }}
+                                              title={formatFieldValue(fieldData)}
+                                            >
+                                              <div className="truncate">
+                                                {formatFieldValue(
+                                                  fieldData,
+                                                )}
+                                              </div>
+                                            </td>
+                                          ),
+                                        )}
+                                      </tr>
+                                    ),
+                                  )}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground py-8 text-center">
+                            レコードがありません
+                          </p>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="json" className="space-y-4">
+                        <div className="scrollbar-hover border-border max-h-96 overflow-y-auto rounded-lg border">
+                          <SyntaxHighlighter
+                            language="json"
+                            style={vscDarkPlus}
+                            customStyle={{
+                              margin: 0,
+                              borderRadius: "0.5rem",
+                              fontSize: "0.75rem",
+                              lineHeight: "1rem",
+                            }}
+                            wrapLongLines={true}
+                          >
+                            {JSON.stringify(queryResult.records, null, 2)}
+                          </SyntaxHighlighter>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  )}
+              </div>
+          )}
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
@@ -3005,235 +3172,6 @@ export default function QueryGeneratorPage({
               </div>
             </Card>
 
-            {/*
-              結果パネル。モーダルにしない（背景を敷かない）ので、
-              条件を編集しながら結果の変化を見られる。
-              フッターの高さ(28px)だけ上に浮かせている。
-            */}
-            <div
-              ref={resultsPanelRef}
-              aria-label="実行結果"
-              className="bg-card border-border fixed right-0 bottom-7 left-0 z-30 flex flex-col border-t shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
-            >
-              <div className="flex items-center gap-3 px-4 py-2">
-                <button
-                  type="button"
-                  onClick={() => setResultsPanelExpanded((open) => !open)}
-                  aria-expanded={resultsPanelExpanded}
-                  className="hover:text-foreground text-muted-foreground flex items-center gap-1.5 text-sm font-medium"
-                >
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      resultsPanelExpanded ? "" : "-rotate-90"
-                    }`}
-                  />
-                  <span className="text-foreground">プレビュー</span>
-                </button>
-
-                <p className="text-muted-foreground truncate text-xs">
-                  {queryResult?.error
-                    ? "クエリの実行でエラーが発生しました"
-                    : queryResult
-                      ? describePreview(queryResult)
-                      : "レコードを取得しています..."}
-                </p>
-
-                {previewLoading && (
-                  <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
-                )}
-              </div>
-
-              {resultsPanelExpanded && queryResult && (
-                  <div className="scrollbar-thin max-h-[32vh] overflow-y-auto px-4 pb-4">
-                      {queryResult.error ? (
-                        <div className="bg-muted/40 rounded-md border p-4">
-                          <div className="mb-3 flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                            <h3 className="text-foreground text-sm font-medium">
-                              エラー詳細情報
-                            </h3>
-                          </div>
-                          {(() => {
-                            // エラーがオブジェクトの場合（JSONパース済み）
-                            if (
-                              typeof queryResult.error === "object" &&
-                              queryResult.error !== null
-                            ) {
-                              const errorObj =
-                                queryResult.error as KintoneErrorResponse;
-                              return (
-                                <div className="space-y-3">
-                                  {errorObj.code && (
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
-                                        エラーコード
-                                      </span>
-                                      <span className="rounded bg-red-100 px-2 py-1 font-mono text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                                        {errorObj.code}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {errorObj.message && (
-                                    <div className="flex items-start gap-3">
-                                      <span className="text-muted-foreground min-w-[80px] pt-1 text-xs font-medium">
-                                        メッセージ
-                                      </span>
-                                      <span className="text-foreground text-sm leading-relaxed">
-                                        {errorObj.message}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {errorObj.id && (
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-muted-foreground min-w-[80px] text-xs font-medium">
-                                        リクエストID
-                                      </span>
-                                      <span className="bg-muted text-muted-foreground rounded-sm px-2 py-1 font-mono text-xs">
-                                        {errorObj.id}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            }
-                            // エラーが文字列の場合
-                            else {
-                              return (
-                                <div className="text-foreground text-sm">
-                                  <pre className="font-mono text-xs whitespace-pre-wrap">
-                                    {String(queryResult.error)}
-                                  </pre>
-                                </div>
-                              );
-                            }
-                          })()}
-                        </div>
-                      ) : (
-                        <Tabs
-                          value={activeResultTab}
-                          onValueChange={setActiveResultTab}
-                          className="w-full"
-                        >
-                          <TabsList className="bg-muted relative grid w-full max-w-xs grid-cols-2 overflow-hidden rounded-lg border-0 p-1">
-                            <TabsTrigger
-                              value="table"
-                              className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
-                            >
-                              テーブル表示
-                            </TabsTrigger>
-                            <TabsTrigger
-                              value="json"
-                              className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
-                            >
-                              JSON表示
-                            </TabsTrigger>
-                            <div
-                              className={`bg-background border-border absolute top-1 bottom-1 left-1 w-[calc(50%-0.125rem)] rounded-md border shadow-md transition-transform duration-300 ease-out ${
-                                activeResultTab === "json"
-                                  ? "translate-x-full"
-                                  : "translate-x-0"
-                              }`}
-                            />
-                          </TabsList>
-
-                          <TabsContent value="table" className="space-y-4">
-                            {queryResult.records.length > 0 ? (
-                              <div
-                                className="scrollbar-thin overflow-x-auto rounded-md border"
-                                style={{ direction: "ltr" }}
-                              >
-                                <table
-                                  className="w-full min-w-max border-collapse text-sm"
-                                  style={{
-                                    writingMode: "horizontal-tb",
-                                    textOrientation: "mixed",
-                                  }}
-                                >
-                                  <thead>
-                                    <tr className="bg-muted border-b sticky top-0 z-10">
-                                      {Object.keys(queryResult.records[0]).map(
-                                        (fieldCode) => (
-                                          <th
-                                            key={fieldCode}
-                                            className="border-r p-2 text-left font-medium whitespace-nowrap min-w-[120px]"
-                                            style={{
-                                              writingMode: "horizontal-tb",
-                                            }}
-                                          >
-                                            {fields.find(
-                                              (f) => f.code === fieldCode,
-                                            )?.label || fieldCode}
-                                          </th>
-                                        ),
-                                      )}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {queryResult.records
-                                      .slice(0, 50)
-                                      .map(
-                                        (
-                                          record: Record<string, unknown>,
-                                          index: number,
-                                        ) => (
-                                          <tr
-                                            key={index}
-                                            className="hover:bg-muted/30 border-b"
-                                          >
-                                            {Object.entries(record).map(
-                                              ([fieldCode, fieldData]) => (
-                                                <td
-                                                  key={fieldCode}
-                                                  className="border-r p-2 min-w-[120px] max-w-[300px] overflow-hidden text-ellipsis"
-                                                  style={{
-                                                    writingMode:
-                                                      "horizontal-tb",
-                                                  }}
-                                                  title={queryUtils.formatFieldValue(fieldData)}
-                                                >
-                                                  <div className="truncate">
-                                                    {queryUtils.formatFieldValue(
-                                                      fieldData,
-                                                    )}
-                                                  </div>
-                                                </td>
-                                              ),
-                                            )}
-                                          </tr>
-                                        ),
-                                      )}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <p className="text-muted-foreground py-8 text-center">
-                                レコードがありません
-                              </p>
-                            )}
-                          </TabsContent>
-
-                          <TabsContent value="json" className="space-y-4">
-                            <div className="scrollbar-hover border-border max-h-96 overflow-y-auto rounded-lg border">
-                              <SyntaxHighlighter
-                                language="json"
-                                style={vscDarkPlus}
-                                customStyle={{
-                                  margin: 0,
-                                  borderRadius: "0.5rem",
-                                  fontSize: "0.75rem",
-                                  lineHeight: "1rem",
-                                }}
-                                wrapLongLines={true}
-                              >
-                                {JSON.stringify(queryResult.records, null, 2)}
-                              </SyntaxHighlighter>
-                            </div>
-                          </TabsContent>
-                        </Tabs>
-                      )}
-                  </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
