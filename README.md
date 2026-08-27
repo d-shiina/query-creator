@@ -43,7 +43,7 @@ To develop a Electron app, you probably will need some UI, test, formatter, styl
 
 ### CI/CD 🚀
 
-- Pre-configured [GitHub Actions workflow](https://github.com/LuanRoger/electron-shadcn/blob/main/.github/workflows/playwright.yml), for test with Playwright
+- [GitHub Actions workflow](.github/workflows/testing.yml) で、push / pull request のたびに Vitest のユニットテストを実行
 
 ### Project preferences 🎯
 
@@ -109,6 +109,8 @@ npm run <script>
 - `test:all`: Run all tests (Vitest and Playwright)
 
 > The test scripts involving Playwright require the app be builded before running the tests. So, before run the tests, run the `package`, `make` or `publish` script.
+
+> Playwright の e2e テストは CI では実行しない。製品はライセンスファイルが必須で、ライセンスが無い環境ではウィンドウを開く前にモーダルを出して終了するため、GitHub ホストランナーでは起動できない。e2e はライセンスを配置した実機で実行する。
 
 ## How to use
 
