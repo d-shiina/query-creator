@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import AppHeader from "@/components/template/AppHeader";
-import AppTable from "@/components/AppTable";
+import AppTable, { AppTableHandle } from "@/components/AppTable";
 import AppDetailDialog from "@/components/AppDetailDialog";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
@@ -68,6 +68,7 @@ export default function AppManagementPage({
     showPinnedOnly: false,
   });
   const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<AppTableHandle>(null);
 
   // アプリ一覧を取得（100件ずつ、なくなるまで）
   useEffect(() => {
@@ -138,29 +139,46 @@ export default function AppManagementPage({
     };
   }, [refreshQueryCounts]);
 
-  // 「/」で検索へ。一覧を眺めながら絞り込みに入れるようにする
+  /*
+   * キーボードだけで「絞る → 選ぶ → 開く」まで行けるようにする。
+   *   起動直後: 検索欄にフォーカス（打てばすぐ絞れる）
+   *   ↓       : 検索欄からでも、どこも掴んでいない状態からでも一覧へ入る
+   *   /       : どこからでも検索欄へ戻る
+   * 一覧に入ったあとの ↑↓ / Enter / Space は AppTable 側が持つ。
+   */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
       const target = event.target as HTMLElement | null;
-      if (
-        target &&
+      const inTextField =
+        !!target &&
         (target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
+          target.isContentEditable);
+
+      if (event.key === "/" && !inTextField) {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
         return;
       }
-      event.preventDefault();
-      searchRef.current?.focus();
-      searchRef.current?.select();
+
+      // どこもフォーカスしていない状態（背景をクリックした後など）からも一覧へ
+      if (event.key === "ArrowDown" && target === document.body) {
+        event.preventDefault();
+        tableRef.current?.focusRow(0);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // 開いて最初にすることは絞り込みなので、検索欄から始める
+  useEffect(() => {
+    if (!loading) searchRef.current?.focus();
+  }, [loading]);
 
   const togglePin = (appId: string) => {
     const app = apps.find((a) => a.appId === appId);
@@ -285,6 +303,21 @@ export default function AppManagementPage({
               if (event.key === "Escape") {
                 setFilter((prev) => ({ ...prev, searchTerm: "" }));
                 event.currentTarget.blur();
+                return;
+              }
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                tableRef.current?.focusRow(0);
+                return;
+              }
+              // 候補が1件に絞れているなら、そのままEnterで開く
+              if (event.key === "Enter" && filteredApps.length > 0) {
+                event.preventDefault();
+                if (filteredApps.length === 1) {
+                  handleAppSelect(filteredApps[0]);
+                } else {
+                  tableRef.current?.focusRow(0);
+                }
               }
             }}
             placeholder="アプリ名、ID、コード、担当者で絞り込む"
@@ -366,37 +399,38 @@ export default function AppManagementPage({
         </div>
       )}
 
-      {/* 一覧：行だけがスクロールし、見出しは貼り付いたまま */}
-      <div className="min-h-0 flex-1 px-4 py-4">
-        <div className="border-border bg-card flex h-full flex-col overflow-hidden rounded-lg border shadow-sm">
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
-            {loading ? (
-              <TableSkeleton />
-            ) : filteredApps.length > 0 ? (
-              <AppTable
-                apps={filteredApps}
-                queryCounts={queryCounts}
-                recentAppIds={recentAppIds}
-                onSelectApp={handleAppSelect}
-                onTogglePin={togglePin}
-                onShowDetail={setDetailApp}
-              />
-            ) : (
-              <EmptyState
-                isFiltered={isFiltered}
-                onClear={() =>
-                  setFilter({ searchTerm: "", showPinnedOnly: false })
-                }
-              />
-            )}
-          </div>
+      {/*
+        一覧：行だけがスクロールし、見出しは貼り付いたまま。
+        この画面は一覧そのものがページなので、枠で囲わず窓いっぱいに置く。
+        帯の区切りは罫線だけで足り、行のハイライトも端まで伸びる。
+      */}
+      <div className="bg-card scrollbar-thin min-h-0 flex-1 overflow-auto">
+        {loading ? (
+          <TableSkeleton />
+        ) : filteredApps.length > 0 ? (
+          <AppTable
+            ref={tableRef}
+            apps={filteredApps}
+            queryCounts={queryCounts}
+            recentAppIds={recentAppIds}
+            onSelectApp={handleAppSelect}
+            onTogglePin={togglePin}
+            onShowDetail={setDetailApp}
+          />
+        ) : (
+          <EmptyState
+            isFiltered={isFiltered}
+            onClear={() => setFilter({ searchTerm: "", showPinnedOnly: false })}
+          />
+        )}
+      </div>
 
-          <div className="border-border text-muted-foreground flex h-8 shrink-0 items-center gap-3 border-t px-3 text-xs">
-            <span>↑↓ 行を移動</span>
-            <span>Enter 開く</span>
-            <span>Space 詳細</span>
-          </div>
-        </div>
+      <div className="border-border bg-card text-muted-foreground flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs">
+        <ShortcutHint keys="/" label="検索" />
+        <ShortcutHint keys="↓" label="一覧へ" />
+        <ShortcutHint keys="↑↓" label="行を移動" />
+        <ShortcutHint keys="Enter" label="開く" />
+        <ShortcutHint keys="Space" label="詳細" />
       </div>
 
       <AppDetailDialog
@@ -409,14 +443,25 @@ export default function AppManagementPage({
   );
 }
 
+function ShortcutHint({ keys, label }: { keys: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1">
+      <kbd className="border-border text-muted-foreground rounded border px-1 py-0.5 font-mono text-[10px] leading-none">
+        {keys}
+      </kbd>
+      {label}
+    </span>
+  );
+}
+
 /** 読み込み中も行の高さと列位置を保って、表示が切り替わるときに飛ばない */
 function TableSkeleton() {
   return (
-    <div aria-busy="true" aria-label="アプリを読み込み中" className="px-2">
+    <div aria-busy="true" aria-label="アプリを読み込み中">
       {Array.from({ length: 12 }).map((_, index) => (
         <div
           key={index}
-          className="border-border/60 flex h-12 items-center gap-4 border-b px-2 last:border-0"
+          className="border-border/60 flex h-11 items-center gap-4 border-b px-4"
         >
           <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
           <Skeleton

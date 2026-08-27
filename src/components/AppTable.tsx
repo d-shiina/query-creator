@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   TableBody,
   TableCell,
@@ -38,7 +38,14 @@ import { cn } from "@/utils/tailwind";
 type SortField = "name" | "appId" | "queryCount" | "modifiedAt";
 type SortOrder = "asc" | "desc";
 
+/** 一覧の外（検索欄など）からキーボード操作を渡すための取っ手 */
+export interface AppTableHandle {
+  /** 指定した行へフォーカスを移す。省略すると先頭 */
+  focusRow: (index?: number) => void;
+}
+
 interface AppTableProps {
+  ref?: React.Ref<AppTableHandle>;
   apps: KintoneApp[];
   /** appId -> 保存済みクエリ数 */
   queryCounts: Record<string, number>;
@@ -73,6 +80,7 @@ const COLUMNS: {
 ];
 
 export default function AppTable({
+  ref,
   apps,
   queryCounts,
   recentAppIds,
@@ -82,7 +90,13 @@ export default function AppTable({
 }: AppTableProps) {
   const [sortField, setSortField] = useState<SortField>("modifiedAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  /** Tabで入れる行はひとつだけ。何百行もタブ送りさせない（roving tabindex） */
+  const [activeIndex, setActiveIndex] = useState(0);
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    focusRow: (index = 0) => rowRefs.current[index]?.focus(),
+  }));
 
   const sections = useMemo(() => {
     const direction = sortOrder === "asc" ? 1 : -1;
@@ -131,6 +145,12 @@ export default function AppTable({
   const flatApps = useMemo(
     () => sections.flatMap((section) => section.apps),
     [sections],
+  );
+
+  // 絞り込みで行が減ったときに、Tabで入れる行が消えたままにならないようにする
+  const focusableIndex = Math.min(
+    activeIndex,
+    Math.max(flatApps.length - 1, 0),
   );
 
   const handleSort = (field: SortField) => {
@@ -187,7 +207,7 @@ export default function AppTable({
     <table className="w-full table-fixed text-sm">
       <thead className="bg-card sticky top-0 z-10">
         <tr className="border-border border-b">
-          <TableHead className="w-9" aria-label="ピン留め" />
+          <TableHead className="w-12" aria-label="ピン留め" />
           {COLUMNS.map((column) => {
             const field = column.field;
 
@@ -225,7 +245,7 @@ export default function AppTable({
               </TableHead>
             );
           })}
-          <TableHead className="w-16" aria-label="操作" />
+          <TableHead className="w-16 pr-4" aria-label="操作" />
         </tr>
       </thead>
 
@@ -235,7 +255,7 @@ export default function AppTable({
             <tr>
               <td
                 colSpan={COLUMNS.length + 2}
-                className="text-muted-foreground bg-muted/30 border-border border-b px-3 py-1 text-xs"
+                className="text-muted-foreground bg-muted/40 border-border border-b px-4 py-1 text-xs"
               >
                 {section.label}
                 <span className="ml-1.5 opacity-60">{section.apps.length}</span>
@@ -255,12 +275,13 @@ export default function AppTable({
                 ref={(element) => {
                   rowRefs.current[index] = element;
                 }}
-                tabIndex={0}
+                tabIndex={index === focusableIndex ? 0 : -1}
+                onFocus={() => setActiveIndex(index)}
                 onClick={() => onSelectApp(app)}
                 onKeyDown={(event) => handleKeyDown(event, index)}
-                className="focus-visible:bg-muted/60 focus-visible:ring-ring/60 group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
+                className="focus-visible:bg-accent/60 focus-visible:ring-primary group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
               >
-                <TableCell className="px-1 text-center">
+                <TableCell className="pr-1 pl-3 text-center">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -334,7 +355,7 @@ export default function AppTable({
                   {relative || "-"}
                 </TableCell>
 
-                <TableCell className="pr-2 text-right">
+                <TableCell className="pr-4 text-right">
                   <div className="flex items-center justify-end">
                     <Button
                       variant="ghost"

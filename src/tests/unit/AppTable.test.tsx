@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import AppTable from "@/components/AppTable";
+import AppTable, { AppTableHandle } from "@/components/AppTable";
 import { KintoneApp } from "@/types/kintone";
 
 const apps: KintoneApp[] = [
@@ -141,6 +141,26 @@ describe("AppTable", () => {
     expect(onSelectApp).toHaveBeenCalledWith(
       expect.objectContaining({ appId: "5" }),
     );
+  });
+
+  it("Tabで入れる行はひとつだけ（何百行もタブ送りさせない）", () => {
+    renderTable();
+
+    const tabbable = appRows().filter(
+      (row) => row.getAttribute("tabindex") === "0",
+    );
+
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]).toBe(appRows()[0]);
+  });
+
+  it("外から先頭行にフォーカスできる", () => {
+    const ref = React.createRef<AppTableHandle>();
+    renderTable({ ref });
+
+    ref.current?.focusRow(0);
+
+    expect(appRows()[0]).toHaveFocus();
   });
 
   it("Spaceで詳細を開く", async () => {
