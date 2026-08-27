@@ -46,18 +46,24 @@ interface AppTableProps {
   onShowDetail: (app: KintoneApp) => void;
 }
 
+/**
+ * 幅は列ごとに固定する（table-fixed）。説明のように長さが読めない値があると、
+ * 自動幅では列が押し出されて横スクロールになるため。
+ * 余りは説明に渡し、広い画面ほど説明が読めるようにする。
+ */
 const COLUMNS: {
-  field: SortField;
+  /** 並べ替えできない列は field を持たない */
+  field?: SortField;
   label: string;
   className: string;
   align?: "right";
-  /** 幅が足りないときに落とす列 */
-  hideBelow?: string;
 }[] = [
-  { field: "name", label: "アプリ名", className: "min-w-0" },
-  { field: "appId", label: "ID", className: "w-20" },
+  { field: "name", label: "アプリ名", className: "w-[32rem]" },
+  // 幅を持たない列が余りを受け取る。広い画面では説明が伸びる
+  { label: "説明", className: "hidden xl:table-cell" },
+  { field: "appId", label: "ID", className: "w-16" },
   { field: "queryCount", label: "クエリ", className: "w-16", align: "right" },
-  { field: "modifiedAt", label: "更新", className: "w-28" },
+  { field: "modifiedAt", label: "更新", className: "w-24" },
 ];
 
 export default function AppTable({
@@ -147,42 +153,47 @@ export default function AppTable({
   }
 
   return (
-    <table className="w-full text-sm">
+    <table className="w-full table-fixed text-sm">
       <thead className="bg-card sticky top-0 z-10">
         <tr className="border-border border-b">
           <TableHead className="w-9" aria-label="ブックマーク" />
-          {COLUMNS.map((column) => (
-            <TableHead
-              key={column.field}
-              className={cn(
-                column.className,
-                column.align === "right" && "text-right",
-              )}
-              aria-sort={
-                sortField === column.field
-                  ? sortOrder === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-            >
-              <button
-                type="button"
-                onClick={() => handleSort(column.field)}
+          {COLUMNS.map((column) => {
+            const field = column.field;
+
+            return (
+              <TableHead
+                key={column.label}
                 className={cn(
-                  "group hover:text-foreground inline-flex items-center gap-1 transition-colors",
-                  column.align === "right" && "flex-row-reverse",
-                  sortField === column.field && "text-foreground",
+                  column.className,
+                  column.align === "right" && "text-right",
                 )}
+                aria-sort={
+                  field && sortField === field
+                    ? sortOrder === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : undefined
+                }
               >
-                {column.label}
-                <SortIcon
-                  active={sortField === column.field}
-                  order={sortOrder}
-                />
-              </button>
-            </TableHead>
-          ))}
+                {field ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSort(field)}
+                    className={cn(
+                      "group hover:text-foreground inline-flex items-center gap-1 transition-colors",
+                      column.align === "right" && "flex-row-reverse",
+                      sortField === field && "text-foreground",
+                    )}
+                  >
+                    {column.label}
+                    <SortIcon active={sortField === field} order={sortOrder} />
+                  </button>
+                ) : (
+                  column.label
+                )}
+              </TableHead>
+            );
+          })}
           <TableHead className="w-16" aria-label="操作" />
         </tr>
       </thead>
@@ -228,13 +239,10 @@ export default function AppTable({
                 </Button>
               </TableCell>
 
-              {/* 1行1アプリ。説明は名前の続きに薄く添え、行の高さは揃える */}
-              <TableCell className="min-w-0">
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <span
-                    className="max-w-[26rem] shrink-0 truncate font-medium"
-                    title={app.name}
-                  >
+              {/* 1行1アプリ。名前もコードも説明も、はみ出す分は列の幅で切る */}
+              <TableCell>
+                <div className="flex items-baseline gap-2">
+                  <span className="truncate font-medium" title={app.name}>
                     {app.name}
                   </span>
                   {app.code && (
@@ -242,15 +250,20 @@ export default function AppTable({
                       {app.code}
                     </span>
                   )}
-                  {app.description && (
-                    <span
-                      className="text-muted-foreground/70 hidden min-w-0 flex-1 truncate text-xs lg:inline"
-                      title={cleanAndTruncateText(app.description, 200)}
-                    >
-                      {cleanAndTruncateText(app.description, 120)}
-                    </span>
-                  )}
                 </div>
+              </TableCell>
+
+              <TableCell className="hidden xl:table-cell">
+                {app.description ? (
+                  <div
+                    className="text-muted-foreground truncate text-xs"
+                    title={cleanAndTruncateText(app.description, 300)}
+                  >
+                    {cleanAndTruncateText(app.description, 120)}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground/30 text-xs">-</span>
+                )}
               </TableCell>
 
               <TableCell className="text-muted-foreground font-mono text-xs tabular-nums">
