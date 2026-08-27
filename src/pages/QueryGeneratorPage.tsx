@@ -19,6 +19,8 @@ import {
   User,
   CalendarIcon,
   ChevronRight,
+  ArrowLeft,
+  LogOut,
   Clock,
   Clipboard,
   ClipboardCheck,
@@ -77,20 +79,22 @@ import { getOperatorHint } from "@/utils/query-operator-hints";
 import { formatFieldValue } from "@/utils/kintone-field-value";
 import { useToast } from "@/components/ui/toast";
 
-/** 出力バンドの表示モード（クエリ形式＋生クエリ＋APIプレビュー） */
-type OutputView = QueryOutputFormat | "raw" | "api";
-const OUTPUT_VIEWS: ReadonlyArray<{ value: OutputView; label: string }> = [
-  ...QUERY_OUTPUT_FORMATS,
-  { value: "raw", label: "生クエリ" },
-  { value: "api", label: "APIプレビュー" },
-];
+/** 出力バンドの表示モード（貼り付け先の言語） */
+type OutputView = QueryOutputFormat;
+const OUTPUT_VIEWS: ReadonlyArray<{ value: OutputView; label: string }> =
+  QUERY_OUTPUT_FORMATS;
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
 import { windowControlsInsetStyle } from "@/components/template/WindowControls";
-import { BackButton } from "@/components/ui/back-button";
 import { PageLoading } from "@/components/ui/page-loading";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
+import {
+  MAX_SPLIT_RATIO,
+  MIN_SPLIT_RATIO,
+  useMediaQuery,
+  useSplitRatio,
+} from "@/hooks/useSplitRatio";
 import {
   KintoneAuth,
   KintoneApp,
@@ -2020,6 +2024,55 @@ export default function QueryGeneratorPage({
     app.spaceId,
   ]);
 
+  // 左右ペインの幅（右ペインの割合%）。ドラッグで変えられ、次回も維持される
+  const [splitRatio, setSplitRatio] = useSplitRatio(
+    "queryGenerator.splitRatio",
+    46,
+  );
+  const isSideBySide = useMediaQuery("(min-width: 1024px)");
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [resizingSplit, setResizingSplit] = useState(false);
+
+  const handleSplitPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setResizingSplit(true);
+    },
+    [],
+  );
+
+  const handleSplitPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!resizingSplit) return;
+      const bounds = splitContainerRef.current?.getBoundingClientRect();
+      if (!bounds || bounds.width === 0) return;
+      setSplitRatio(((bounds.right - event.clientX) / bounds.width) * 100);
+    },
+    [resizingSplit, setSplitRatio],
+  );
+
+  const handleSplitPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      setResizingSplit(false);
+    },
+    [],
+  );
+
+  // ポインタが使えない場合でも調整できるようにする
+  const handleSplitKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setSplitRatio(splitRatio + 2);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setSplitRatio(splitRatio - 2);
+      }
+    },
+    [splitRatio, setSplitRatio],
+  );
+
   /**
    * 続きを読めるのは、件数を指定していないとき（＝どこまで見るかを
    * プレビュー側で決めているとき）だけ。件数を指定しているなら、
@@ -2028,18 +2081,6 @@ export default function QueryGeneratorPage({
   const canLoadMore =
     limit === undefined && hasMoreRecords(queryResult, offset ?? 0);
 
-
-  // APIプレビュー表示・コピーで共用するJSONリクエストボディ
-  const apiRequestBodyJson = JSON.stringify(
-    {
-      app: app.appId,
-      ...(generatedQuery && { query: generatedQuery }),
-      ...(limit && { size: parseInt(limit.toString()) }),
-      ...(offset && { offset: parseInt(offset.toString()) }),
-    },
-    null,
-    2,
-  );
 
   const handleSaveQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
@@ -2292,136 +2333,129 @@ export default function QueryGeneratorPage({
     <div className="bg-background flex h-full flex-col overflow-hidden">
       {/*
         ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域）。
-        タイトルバーの空き幅にアプリ操作をまとめて1行に収め、
-        本文に使える高さを稼ぐ。
+        現在地・対象アプリ・画面の操作をこの1行に集約する。枠付きのボタンを
+        並べると帯が騒がしくなるので、操作はすべて枠なしにして、
+        色と太さだけで主従をつける。
       */}
       <header
-        className="draglayer border-border bg-card flex shrink-0 items-center gap-3 border-b py-1.5 pl-3"
+        className="draglayer border-border bg-card flex h-10 shrink-0 items-center gap-1 border-b pl-1"
         style={windowControlsInsetStyle()}
       >
-        <BackButton onClick={onBack} label="クエリ管理に戻る" />
-
-        <h1 className="text-foreground truncate text-sm font-semibold">
-          {app.name}
-        </h1>
-
         <Button
-          variant="outline"
-          size="sm"
-          onClick={openAppInBrowser}
-          className="h-7 shrink-0 px-2 text-xs"
-          title={`${app.name}をブラウザで開く`}
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={onBack}
+          aria-label="クエリ管理に戻る"
+          title="クエリ管理に戻る"
         >
-          <ExternalLink className="mr-1 h-3 w-3" />
-          ブラウザで開く
+          <ArrowLeft className="h-4 w-4" />
         </Button>
 
-        <div className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">
-          <Database className="h-3 w-3" />
-          <span>アプリID: {app.appId}</span>
-          <Button
+        {/* 現在地。本文側と二重に出さないよう、パンくずはここだけに置く */}
+        <nav
+          aria-label="パンくずナビゲーション"
+          className="flex min-w-0 items-center gap-1 text-sm"
+        >
+          <button
             type="button"
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6 p-0"
-            title="アプリIDをコピー"
-            onClick={async () => {
-              await navigator.clipboard.writeText(app.appId);
-              setAppIdCopied(true);
-              setTimeout(() => setAppIdCopied(false), 1500);
-            }}
+            onClick={() => onBackToAppList?.()}
+            className="text-muted-foreground hover:text-foreground shrink-0 rounded px-1 transition-colors"
           >
-            {appIdCopied ? (
-              <ClipboardCheck className="h-3.5 w-3.5 text-green-600" />
-            ) : (
-              <Clipboard className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
+            アプリ一覧
+          </button>
+          <ChevronRight className="text-muted-foreground/40 h-3.5 w-3.5 shrink-0" />
+          <span className="text-muted-foreground truncate px-1" title={app.name}>
+            {app.name}
+          </span>
+          <ChevronRight className="text-muted-foreground/40 h-3.5 w-3.5 shrink-0" />
+          <button
+            type="button"
+            onClick={() => onBack?.()}
+            className="text-muted-foreground hover:text-foreground shrink-0 rounded px-1 transition-colors"
+          >
+            クエリ管理
+          </button>
+          <ChevronRight className="text-muted-foreground/40 h-3.5 w-3.5 shrink-0" />
+          <span className="text-foreground shrink-0 px-1 font-medium">
+            {isEditMode ? "クエリ編集" : "新規作成"}
+          </span>
+        </nav>
+
+        {/* 対象アプリの手掛かり。押すとIDをコピーできる */}
+        <button
+          type="button"
+          onClick={async () => {
+            await navigator.clipboard.writeText(app.appId);
+            setAppIdCopied(true);
+            setTimeout(() => setAppIdCopied(false), 1500);
+          }}
+          title="アプリIDをコピー"
+          className="text-muted-foreground hover:bg-muted hover:text-foreground ml-1 flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs transition-colors"
+        >
+          #{app.appId}
+          {appIdCopied ? (
+            <ClipboardCheck className="h-3 w-3 text-green-600" />
+          ) : (
+            <Clipboard className="h-3 w-3 opacity-60" />
+          )}
+        </button>
 
         {app.spaceId && (
-          <div className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">
-            <span>ゲストスペース: {app.spaceId}</span>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="h-6 w-6 p-0"
-              title="ゲストスペースIDをコピー"
-              onClick={async () => {
-                await navigator.clipboard.writeText(app.spaceId!);
-                setSpaceIdCopied(true);
-                setTimeout(() => setSpaceIdCopied(false), 1500);
-              }}
-            >
-              {spaceIdCopied ? (
-                <ClipboardCheck className="h-3.5 w-3.5 text-green-600" />
-              ) : (
-                <Clipboard className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await navigator.clipboard.writeText(app.spaceId!);
+              setSpaceIdCopied(true);
+              setTimeout(() => setSpaceIdCopied(false), 1500);
+            }}
+            title="ゲストスペースIDをコピー"
+            className="text-muted-foreground hover:bg-muted hover:text-foreground flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs transition-colors"
+          >
+            space:{app.spaceId}
+            {spaceIdCopied ? (
+              <ClipboardCheck className="h-3 w-3 text-green-600" />
+            ) : (
+              <Clipboard className="h-3 w-3 opacity-60" />
+            )}
+          </button>
         )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 pr-2">
-          <ToggleTheme />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={openAppInBrowser}
+          aria-label={`${app.name}をブラウザで開く`}
+          title={`${app.name}をブラウザで開く`}
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Button>
+
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 pr-1">
+          <ToggleTheme variant="ghost" className="h-7 w-7" />
           <Button
-            variant="outline"
-            onClick={onLogout}
+            variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs"
+            onClick={onLogout}
+            className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
           >
+            <LogOut className="mr-1 h-3.5 w-3.5" />
             ログアウト
           </Button>
         </div>
       </header>
 
-      {/* 左で条件を組み立て、右でその結果を見る */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      {/* 左で条件を組み立て、右でその結果を見る（境目はドラッグで動かせる） */}
+      <div
+        ref={splitContainerRef}
+        className={`flex min-h-0 flex-1 flex-col lg:flex-row ${
+          resizingSplit ? "cursor-col-resize select-none" : ""
+        }`}
+      >
         {/* 左: 条件の編集 */}
         <div className="scrollbar-thin min-h-0 min-w-0 flex-1 overflow-auto">
           <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-          {/* Breadcrumb */}
-          <nav className="mb-6" aria-label="パンくずナビゲーション">
-            <ol className="text-muted-foreground flex items-center space-x-2 text-sm">
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (typeof onBackToAppList === "function")
-                      onBackToAppList();
-                  }}
-                  className="hover:text-foreground transition-colors"
-                >
-                  アプリ一覧
-                </button>
-              </li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li className="text-foreground font-medium">{app.name}</li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (typeof onBack === "function") onBack();
-                  }}
-                  className="hover:text-foreground transition-colors"
-                >
-                  クエリ管理
-                </button>
-              </li>
-              <li>
-                <ChevronRight className="h-4 w-4" />
-              </li>
-              <li className="text-foreground font-medium">
-                {isEditMode ? "クエリ編集" : "新規作成"}
-              </li>
-            </ol>
-          </nav>
 
           {error && <ErrorAlert error={error} />}
 
@@ -2690,55 +2724,10 @@ export default function QueryGeneratorPage({
                   <div className="bg-background text-muted-foreground rounded-md border p-3 text-sm">
                     条件を設定するとクエリが表示されます
                   </div>
-                ) : outputView === "api" ? (
-                  <div className="bg-background scrollbar-hover max-h-80 space-y-4 overflow-y-auto rounded-md border p-3">
-                    <div className="space-y-2">
-                      <div className="text-foreground border-b pb-1 text-sm font-medium">
-                        リクエストURL
-                      </div>
-                      <code className="block text-sm break-all">
-                        https://{auth.subdomain}.cybozu.com/k/v1/records.json
-                      </code>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-foreground border-b pb-1 text-sm font-medium">
-                        リクエストヘッダー
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex">
-                          <span className="text-primary w-48 font-mono text-xs">
-                            Content-Type:
-                          </span>
-                          <span className="font-mono text-xs">
-                            application/json
-                          </span>
-                        </div>
-                        <div className="flex">
-                          <span className="text-primary w-48 font-mono text-xs">
-                            X-Cybozu-Authorization:
-                          </span>
-                          <span className="text-muted-foreground font-mono text-xs">
-                            [Base64 encoded credentials]
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-foreground border-b pb-1 text-sm font-medium">
-                        JSONリクエストボディ
-                      </div>
-                      <pre className="overflow-x-auto text-xs whitespace-pre">
-                        <code>{apiRequestBodyJson}</code>
-                      </pre>
-                    </div>
-                  </div>
                 ) : (
                   <div className="bg-background scrollbar-hover max-h-40 overflow-y-auto rounded-md border p-3">
                     <code className="text-foreground font-mono text-sm whitespace-pre-wrap">
-                      {formatQueryForOutput(
-                        generatedQuery,
-                        outputView === "raw" ? "python" : outputView,
-                      )}
+                      {formatQueryForOutput(generatedQuery, outputView)}
                     </code>
                   </div>
                 )}
@@ -2750,15 +2739,10 @@ export default function QueryGeneratorPage({
                               size="sm"
                               disabled={!generatedQuery}
                               onClick={async () => {
-                                const text =
-                                  outputView === "api"
-                                    ? apiRequestBodyJson
-                                    : formatQueryForOutput(
-                                        generatedQuery,
-                                        outputView === "raw"
-                                          ? "python"
-                                          : outputView,
-                                      );
+                                const text = formatQueryForOutput(
+                                  generatedQuery,
+                                  outputView,
+                                );
                                 await navigator.clipboard.writeText(text);
                                 setClipboardCopied(true);
                                 setTimeout(() => setClipboardCopied(false), 2000);
@@ -2956,6 +2940,26 @@ export default function QueryGeneratorPage({
         </div>
         </div>
 
+        {/* 幅の配分を変えるためのつまみ（横並びのときだけ） */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="条件とプレビューの幅を調整"
+          aria-valuenow={Math.round(splitRatio)}
+          aria-valuemin={MIN_SPLIT_RATIO}
+          aria-valuemax={MAX_SPLIT_RATIO}
+          tabIndex={0}
+          onPointerDown={handleSplitPointerDown}
+          onPointerMove={handleSplitPointerMove}
+          onPointerUp={handleSplitPointerUp}
+          onKeyDown={handleSplitKeyDown}
+          onDoubleClick={() => setSplitRatio(46)}
+          title="ドラッグで幅を調整（ダブルクリックで既定に戻す）"
+          className={`no-drag border-border hidden w-2 shrink-0 cursor-col-resize border-l transition-colors lg:block ${
+            resizingSplit ? "bg-primary/60" : "hover:bg-primary/40"
+          }`}
+        />
+
         {/*
           右のペインはライブプレビュー専用。左の条件と並べて置くことで、
           条件を編集しながら結果の変化をそのまま見られる。
@@ -2963,7 +2967,10 @@ export default function QueryGeneratorPage({
         */}
         <aside
           aria-label="実行結果"
-          className="bg-card border-border flex min-h-0 min-w-0 shrink-0 grow-0 basis-2/5 flex-col border-t lg:basis-[46%] lg:border-t-0 lg:border-l"
+          className="bg-card border-border flex min-h-0 min-w-0 shrink-0 grow-0 basis-2/5 flex-col border-t lg:border-t-0"
+          style={
+            isSideBySide ? { flexBasis: `${splitRatio}%` } : undefined
+          }
         >
           <div className="border-border flex items-center gap-3 border-b px-3 py-2">
             <h2 className="text-foreground text-sm font-medium">プレビュー</h2>

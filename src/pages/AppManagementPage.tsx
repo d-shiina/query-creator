@@ -426,9 +426,14 @@ export default function AppManagementPage({
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <ToggleTheme />
-              <Button variant="outline" size="sm" onClick={onLogout}>
+            <div className="flex items-center gap-0.5">
+              <ToggleTheme variant="ghost" className="h-7 w-7" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onLogout}
+                className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
+              >
                 ログアウト
               </Button>
             </div>

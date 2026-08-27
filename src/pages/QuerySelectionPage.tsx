@@ -250,12 +250,13 @@ export default function QuerySelectionPage({
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
-              <ToggleTheme />
+            <div className="flex items-center gap-0.5">
+              <ToggleTheme variant="ghost" className="h-7 w-7" />
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={onLogout}
                 size="sm"
+                className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
               >
                 ログアウト
               </Button>
