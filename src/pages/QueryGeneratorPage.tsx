@@ -9,7 +9,6 @@ import {
   Database,
   Settings,
   Code,
-  Play,
   Loader2,
   Plus,
   Trash2,
@@ -131,8 +130,6 @@ interface QueryResult {
   records: Record<string, unknown>[];
   /** 条件に一致した総件数。取得件数(limit)には頭打ちされない。取れなければnull */
   totalCount: number | null;
-  /** 自動プレビューの結果か、実行ボタンで取得した結果か */
-  source: "preview" | "manual";
   error?: string | KintoneErrorResponse;
 }
 
@@ -152,13 +149,12 @@ function formatHitCount(result: QueryResult): string {
 function describePreview(result: QueryResult): string {
   const shown = result.records.length;
   const total = result.totalCount;
-  const prefix = result.source === "manual" ? "実行結果 " : "";
 
-  if (total == null) return `${prefix}${shown.toLocaleString()}件を取得`;
+  if (total == null) return `${shown.toLocaleString()}件を取得`;
   if (shown < total) {
-    return `${prefix}条件に一致 ${total.toLocaleString()}件（${shown.toLocaleString()}件を表示中）`;
+    return `条件に一致 ${total.toLocaleString()}件（${shown.toLocaleString()}件を表示中）`;
   }
-  return `${prefix}条件に一致 ${total.toLocaleString()}件`;
+  return `条件に一致 ${total.toLocaleString()}件`;
 }
 
 /** 取得済みの先に、まだ読めるレコードが残っているか */
@@ -1703,7 +1699,6 @@ export default function QueryGeneratorPage({
   const [sortDirection, setSortDirection] = useState("asc");
   const [limit, setLimit] = useState<number>();
   const [offset, setOffset] = useState<number>();
-  const [executing, setExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
@@ -1759,7 +1754,6 @@ export default function QueryGeneratorPage({
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const [appIdCopied, setAppIdCopied] = useState(false);
   const [spaceIdCopied, setSpaceIdCopied] = useState(false);
-  const [queryExecuted, setQueryExecuted] = useState(false);
   const [users, setUsers] = useState<
     Array<{ code: string; name: string; email: string }>
   >([]);
@@ -1871,17 +1865,12 @@ export default function QueryGeneratorPage({
   }, [auth, usersLoaded, users.length]);
 
   /**
-   * クエリを投げて結果パネルに反映する。
-   * 自動プレビューと実行ボタンで共用し、常に最新のリクエストだけを採用する。
+   * プレビューを取り直す。常に最新のリクエストだけを採用する。
    */
   const runQuery = useCallback(
-    async (query: string, source: "preview" | "manual") => {
+    async (query: string) => {
       const requestId = ++queryRequestId.current;
-      if (source === "manual") {
-        setExecuting(true);
-      } else {
-        setPreviewLoading(true);
-      }
+      setPreviewLoading(true);
 
       try {
         const result = await window.kintoneAPI.executeQuery(
@@ -1899,7 +1888,6 @@ export default function QueryGeneratorPage({
           setQueryResult({
             records: result.data.records ?? [],
             totalCount: parseTotalCount(result.data.totalCount),
-            source,
           });
           // 結果を入れ替えたのに深い位置のままだと、別の条件の途中を
           // 見ていることになるので先頭に戻す
@@ -1908,7 +1896,6 @@ export default function QueryGeneratorPage({
           setQueryResult({
             records: [],
             totalCount: null,
-            source,
             error: normalizeQueryError(result.error),
           });
         }
@@ -1917,14 +1904,12 @@ export default function QueryGeneratorPage({
         setQueryResult({
           records: [],
           totalCount: null,
-          source,
           error: `エラーが発生しました: ${
             err instanceof Error ? err.message : "Unknown error"
           }`,
         });
       } finally {
         if (requestId === queryRequestId.current) {
-          setExecuting(false);
           setPreviewLoading(false);
         }
       }
@@ -1955,7 +1940,7 @@ export default function QueryGeneratorPage({
     const timer = setTimeout(() => {
       if (lastRequestedQuery.current === previewQuery) return;
       lastRequestedQuery.current = previewQuery;
-      runQuery(previewQuery, "preview");
+      runQuery(previewQuery);
     }, PREVIEW_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
@@ -2018,12 +2003,6 @@ export default function QueryGeneratorPage({
     app.spaceId,
   ]);
 
-  // 実行ボタンは、取得件数・開始位置の指定も含めた「本番のクエリ」をそのまま叩く
-  const executeQuery = useCallback(async () => {
-    lastRequestedQuery.current = null;
-    await runQuery(generatedQuery || `limit ${PREVIEW_SIZE}`, "manual");
-  }, [generatedQuery, runQuery]);
-
 
   // APIプレビュー表示・コピーで共用するJSONリクエストボディ
   const apiRequestBodyJson = JSON.stringify(
@@ -2036,20 +2015,6 @@ export default function QueryGeneratorPage({
     null,
     2,
   );
-
-  // Ctrl+Enter（macはCmd+Enter）でクエリ実行
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        if (generatedQuery && !executing) {
-          e.preventDefault();
-          executeQuery();
-        }
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [generatedQuery, executing, executeQuery]);
 
   const handleSaveQuery = useCallback(async () => {
     if (!generatedQuery || !currentQueryName.trim()) {
@@ -2556,110 +2521,114 @@ export default function QueryGeneratorPage({
                     </div>
                   </CardContent>
 
-              {/* 並び替え・件数（インライン行） */}
+              {/*
+                並び替え・件数。ラベルを入力の上に置いた格子にすることで、
+                ペースの狭い幅でもラベルと入力が離れて折り返さない。
+              */}
               <div className="border-t px-6 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Label className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
-                    並び替え
-                  </Label>
-                  <div className="min-w-[12rem] flex-1">
-                          <Select
-                            value={sortField}
-                            onValueChange={handleSortFieldChange}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_7rem_5.5rem_5.5rem]">
+                  <div className="col-span-2 min-w-0 space-y-1 sm:col-span-1">
+                    <Label className="text-muted-foreground text-xs font-medium">
+                      並び替え
+                    </Label>
+                    <Select
+                      value={sortField}
+                      onValueChange={handleSortFieldChange}
+                    >
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label="並び替えフィールドを選択"
+                      >
+                        <SelectValue className="truncate" />
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[180px]">
+                        {sortFieldOptions.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="whitespace-nowrap"
                           >
-                            <SelectTrigger
-                              className="w-full"
-                              aria-label="並び替えフィールドを選択"
-                            >
-                              <SelectValue className="truncate" />
-                            </SelectTrigger>
-                            <SelectContent className="min-w-[180px]">
-                              {sortFieldOptions.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                  className="whitespace-nowrap"
-                                >
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="w-28 flex-shrink-0">
-                          <Select
-                            value={sortDirection}
-                            onValueChange={setSortDirection}
-                            disabled={sortField === "none"}
+
+                  <div className="min-w-0 space-y-1">
+                    <Label className="text-muted-foreground text-xs font-medium">
+                      順序
+                    </Label>
+                    <Select
+                      value={sortDirection}
+                      onValueChange={setSortDirection}
+                      disabled={sortField === "none"}
+                    >
+                      <SelectTrigger className="w-full" aria-label="並び順を選択">
+                        <SelectValue className="truncate" />
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[120px]">
+                        {sortDirectionOptions.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="whitespace-nowrap"
                           >
-                            <SelectTrigger
-                              className="w-full"
-                              aria-label="並び順を選択"
-                            >
-                              <SelectValue className="truncate" />
-                            </SelectTrigger>
-                            <SelectContent className="min-w-[120px]">
-                              {sortDirectionOptions.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                  className="whitespace-nowrap"
-                                >
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Label
-                    htmlFor="limit"
-                    className="text-muted-foreground ml-2 text-sm"
-                  >
-                    件数
-                  </Label>
-                          <Input
-                            id="limit"
-                            type="number"
-                            min="1"
-                            max="500"
-                            value={limit || ""}
-                            placeholder="例: 100"
-                            onChange={(e) => {
-                              const value = e.target.value
-                                ? Math.max(
-                                    1,
-                                    Math.min(500, Number(e.target.value)),
-                                  )
-                                : undefined;
-                              setLimit(value);
 
-                            }}
-                            aria-label="取得件数を入力"
-                            className="w-24"
-                          />
-                  <Label
-                    htmlFor="offset"
-                    className="text-muted-foreground ml-2 text-sm"
-                  >
-                    スキップ
-                  </Label>
-                          <Input
-                            id="offset"
-                            type="number"
-                            min="0"
-                            value={offset || ""}
-                            placeholder="例: 0"
-                            onChange={(e) => {
-                              const value = e.target.value
-                                ? Math.max(0, Number(e.target.value))
-                                : undefined;
-                              setOffset(value);
-                              
+                  <div className="min-w-0 space-y-1">
+                    <Label
+                      htmlFor="limit"
+                      className="text-muted-foreground text-xs font-medium"
+                    >
+                      件数
+                    </Label>
+                    <Input
+                      id="limit"
+                      type="number"
+                      min="1"
+                      max="500"
+                      value={limit || ""}
+                      placeholder="100"
+                      onChange={(e) => {
+                        const value = e.target.value
+                          ? Math.max(1, Math.min(500, Number(e.target.value)))
+                          : undefined;
+                        setLimit(value);
+                      }}
+                      aria-label="取得件数を入力"
+                      className="w-full"
+                    />
+                  </div>
 
-                            }}
-                            aria-label="スキップ件数を入力"
-                            className="w-24"
-                          />
+                  <div className="min-w-0 space-y-1">
+                    <Label
+                      htmlFor="offset"
+                      className="text-muted-foreground text-xs font-medium"
+                    >
+                      スキップ
+                    </Label>
+                    <Input
+                      id="offset"
+                      type="number"
+                      min="0"
+                      value={offset || ""}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const value = e.target.value
+                          ? Math.max(0, Number(e.target.value))
+                          : undefined;
+                        setOffset(value);
+                      }}
+                      aria-label="スキップ件数を入力"
+                      className="w-full"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -2751,36 +2720,6 @@ export default function QueryGeneratorPage({
 
                 {/* アクション行 */}
                 <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              onClick={async () => {
-                                await executeQuery();
-                                setQueryExecuted(true);
-                                setTimeout(() => setQueryExecuted(false), 2000);
-                              }}
-                              disabled={executing || !generatedQuery}
-                              title="Ctrl+Enterでも実行できます"
-                              size="sm"
-                              className={`h-8 px-4 text-sm transition-all duration-300 ${
-                                executing 
-                                  ? 'bg-primary text-primary-foreground' 
-                                  : queryExecuted
-                                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
-                              }`}
-                            >
-                              {executing ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                  実行中
-                                </>
-                              ) : (
-                                <>
-                                  <Play className={`h-3 w-3 mr-1 transition-all duration-300 ${queryExecuted ? 'fill-current' : ''}`} />
-                                  実行
-                                </>
-                              )}
-                            </Button>
-                            
                             <Button
                               variant="outline"
                               size="sm"
@@ -3095,7 +3034,7 @@ export default function QueryGeneratorPage({
                       {queryResult.records.length > 0 ? (
                         <table className="w-full min-w-max border-collapse text-sm">
                           <thead>
-                            <tr className="bg-muted sticky top-0 z-10 border-b">
+                            <tr className="bg-secondary sticky top-0 z-10 border-b-2">
                               {Object.keys(queryResult.records[0]).map(
                                 (fieldCode) => (
                                   <th
@@ -3117,7 +3056,7 @@ export default function QueryGeneratorPage({
                               ) => (
                                 <tr
                                   key={index}
-                                  className="hover:bg-muted/30 border-b"
+                                  className="even:bg-muted/50 hover:bg-accent/60 border-b"
                                 >
                                   {Object.entries(record).map(
                                     ([fieldCode, fieldData]) => (
