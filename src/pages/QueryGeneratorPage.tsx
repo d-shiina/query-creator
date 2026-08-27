@@ -28,6 +28,7 @@ import {
   Edit,
   ArrowRight,
   ExternalLink,
+  Lightbulb,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
@@ -74,7 +75,7 @@ import {
 } from "@/utils/query-format";
 import {
   getOperatorHint,
-  getOperatorShortHint,
+  getOperatorTip,
 } from "@/utils/query-operator-hints";
 import { formatFieldValue } from "@/utils/kintone-field-value";
 import { orderRecordColumns } from "@/utils/kintone-record-columns";
@@ -1003,7 +1004,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   const operatorLabel =
     availableOperators.find((op) => op.value === condition.operator)?.label ??
     condition.operator;
-  const operatorShortHint = getOperatorShortHint(condition.operator);
+  const operatorTip = getOperatorTip(condition.operator);
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
@@ -1712,14 +1713,26 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       {/*
         「含む」と読める演算子でも部分一致にはならない。
         ツールチップだけでは気づけないので、選んだ時点で行に出す。
+        要点だけでは「では何なら当たるのか」が分からないので、
+        具体例を添えたヒントの体裁にし、全文はtitleに残す。
       */}
-      {condition.field && operatorShortHint && (
-        <p
-          className="text-muted-foreground mt-1 pl-[6.125rem] text-xs"
+      {condition.field && operatorTip && (
+        <div
+          className="border-border bg-muted/40 mt-1 ml-[6.125rem] flex items-start gap-1.5 rounded-md border px-2 py-1.5"
           title={getOperatorHint(condition.operator) ?? undefined}
         >
-          {operatorShortHint}
-        </p>
+          <Lightbulb
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500"
+            aria-hidden="true"
+          />
+          <div className="text-muted-foreground min-w-0 space-y-0.5 text-xs">
+            <p>
+              <span className="text-foreground font-medium">ヒント: </span>
+              {operatorTip.summary}
+            </p>
+            <p>{operatorTip.example}</p>
+          </div>
+        </div>
       )}
     </div>
   );
