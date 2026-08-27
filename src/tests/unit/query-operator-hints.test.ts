@@ -15,7 +15,7 @@ describe("getOperatorHint", () => {
     const hint = getOperatorHint("like");
 
     expect(hint).toContain("日本語は2文字以上");
-    expect(hint).toContain("英数字は単語の先頭から");
+    expect(hint).toContain("英数字は単語まるごと");
   });
 
   test("likeの説明は具体例をそのまま示す", () => {
@@ -23,12 +23,13 @@ describe("getOperatorHint", () => {
 
     // 日本語は途中の2文字でヒットする
     expect(hint).toContain("「日本語」は「本語」でヒット");
-    // 英数字は先頭でヒットし、途中では当たらない
-    expect(hint).toContain("「SalesReport」は「Sales」でヒット");
-    expect(hint).toContain("「Report」ではヒットしません");
+    // 英数字は単語の一部では当たらない
+    expect(hint).toContain(
+      "「cybozu kintone2」は「kintone2」でヒットし、「kintone」ではヒットしません",
+    );
     // 記号は単語を区切らない
     expect(hint).toContain(
-      "「cybozu_kintone」は1単語で、途中の「kintone」ではヒットしません",
+      "「cybozu_kintone」は1単語で、「cybozu」でも「kintone」でもヒットしません",
     );
   });
 
@@ -55,10 +56,10 @@ describe("getOperatorTip", () => {
     const tip = getOperatorTip("like");
 
     expect(tip?.summary).toBe(
-      "日本語は2文字以上で途中も一致、英数字は単語の先頭からのみ一致します。",
+      "日本語は2文字以上で途中も一致、英数字は単語まるごとの一致が必要です。",
     );
     expect(tip?.example).toBe(
-      "例:「SalesReport」は「Sales」で見つかりますが、「Report」では見つかりません。",
+      "例:「cybozu kintone2」は「kintone2」で見つかりますが、「kintone」では見つかりません。",
     );
   });
 

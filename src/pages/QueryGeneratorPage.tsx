@@ -1068,9 +1068,14 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         次の行へ落ちる。ペインの幅は自由に変えられるので、切り替え点を決め打ちすると
         その前後で必ず窮屈になる。
       */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/*
+        inの値入力は［値を追加］の分だけ縦に伸びる。中央揃えだと伸びた分だけ
+        値の入力欄が上にずれ、フィールドや演算子と高さが合わなくなるので、
+        上端で揃えて［値を追加］が下に伸びるようにする。
+      */}
+      <div className="flex flex-wrap items-start gap-1.5">
         {/* 左ガター: グリップ + 条件番号 / AND・OR（行をまたいで幅を揃える） */}
-        <div className="flex w-[5.75rem] shrink-0 items-center gap-1">
+        <div className="flex h-8 w-[5.75rem] shrink-0 items-center gap-1">
           <span
             draggable
             onDragStart={(e) => {
@@ -1675,7 +1680,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
         {/* 行アクション: 行の一部なので普段は控えめに、ホバーで前に出す */}
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="ml-auto flex h-8 shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           <Button
             variant="ghost"
             size="sm"
