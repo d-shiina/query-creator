@@ -28,6 +28,7 @@ import {
   Edit,
   ArrowRight,
   ExternalLink,
+  Lightbulb,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
@@ -74,7 +75,7 @@ import {
 } from "@/utils/query-format";
 import {
   getOperatorHint,
-  getOperatorShortHint,
+  getOperatorTip,
 } from "@/utils/query-operator-hints";
 import { formatFieldValue } from "@/utils/kintone-field-value";
 import { orderRecordColumns } from "@/utils/kintone-record-columns";
@@ -1003,7 +1004,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
   const operatorLabel =
     availableOperators.find((op) => op.value === condition.operator)?.label ??
     condition.operator;
-  const operatorShortHint = getOperatorShortHint(condition.operator);
+  const operatorTip = getOperatorTip(condition.operator);
   const isInOperator =
     condition.operator === "in" || condition.operator === "not in";
   const isNullOperator =
@@ -1067,9 +1068,14 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         次の行へ落ちる。ペインの幅は自由に変えられるので、切り替え点を決め打ちすると
         その前後で必ず窮屈になる。
       */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/*
+        inの値入力は［値を追加］の分だけ縦に伸びる。中央揃えだと伸びた分だけ
+        値の入力欄が上にずれ、フィールドや演算子と高さが合わなくなるので、
+        上端で揃えて［値を追加］が下に伸びるようにする。
+      */}
+      <div className="flex flex-wrap items-start gap-1.5">
         {/* 左ガター: グリップ + 条件番号 / AND・OR（行をまたいで幅を揃える） */}
-        <div className="flex w-[5.75rem] shrink-0 items-center gap-1">
+        <div className="flex h-8 w-[5.75rem] shrink-0 items-center gap-1">
           <span
             draggable
             onDragStart={(e) => {
@@ -1674,7 +1680,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
         {/* 行アクション: 行の一部なので普段は控えめに、ホバーで前に出す */}
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="ml-auto flex h-8 shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           <Button
             variant="ghost"
             size="sm"
@@ -1712,14 +1718,29 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
       {/*
         「含む」と読める演算子でも部分一致にはならない。
         ツールチップだけでは気づけないので、選んだ時点で行に出す。
+        要点だけでは「では何なら当たるのか」が分からないので、
+        具体例を添えたヒントの体裁にし、全文はtitleに残す。
       */}
-      {condition.field && operatorShortHint && (
-        <p
-          className="text-muted-foreground mt-1 pl-[6.125rem] text-xs"
+      {condition.field && operatorTip && (
+        <div
+          className="border-border bg-muted/40 mt-1 ml-[6.125rem] flex items-start gap-1.5 rounded-md border px-2 py-1.5"
           title={getOperatorHint(condition.operator) ?? undefined}
         >
-          {operatorShortHint}
-        </p>
+          <Lightbulb
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500"
+            aria-hidden="true"
+          />
+          <div className="text-muted-foreground min-w-0 space-y-0.5 text-xs">
+            <p>
+              <span className="text-foreground font-medium">ヒント: </span>
+              {operatorTip.summary}
+            </p>
+            <p>{operatorTip.example}</p>
+            {operatorTip.note && (
+              <p className="text-muted-foreground/80">{operatorTip.note}</p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   getOperatorHint,
   getOperatorShortHint,
+  getOperatorTip,
 } from "@/utils/query-operator-hints";
 
 /**
@@ -14,18 +15,27 @@ describe("getOperatorHint", () => {
     const hint = getOperatorHint("like");
 
     expect(hint).toContain("日本語は2文字以上");
-    expect(hint).toContain("英数字は単語まるごと");
+    expect(hint).toContain("英数字は単語ごとの一致");
   });
 
-  test("likeの説明は公式の例をそのまま示す", () => {
+  test("likeの説明は具体例をそのまま示す", () => {
     const hint = getOperatorHint("like") ?? "";
 
     // 日本語は途中の2文字でヒットする
-    expect(hint).toContain("「日本語」は「本語」でヒット");
+    expect(hint).toContain("「日本語」は「日本」「本語」「日本語」でヒット");
     // 英数字は単語の一部では当たらない
-    expect(hint).toContain("「kintone2」は「kintone」ではヒットしません");
+    expect(hint).toContain(
+      "「cybozu kintone2」は「cybozu」「kintone2」でヒット",
+    );
+    expect(hint).toContain(
+      "「cy」や「kintone」など単語の一部ではヒットしません",
+    );
+    // 大文字小文字・全角半角は区別されない
+    expect(hint).toContain("大文字と小文字、全角と半角");
     // 記号は単語を区切らない
-    expect(hint).toContain("「cybozu_kintone」は「cybozu」ではヒットしません");
+    expect(hint).toContain(
+      "「cybozu_kintone」は1単語で、「cybozu」でも「kintone」でもヒットしません",
+    );
   });
 
   test("not likeにもlikeと同じ説明を返す", () => {
@@ -39,6 +49,12 @@ describe("getOperatorHint", () => {
     expect(hint).toContain("like");
   });
 
+  test("このアプリでは中国語には触れない", () => {
+    expect(getOperatorHint("like")).not.toContain("中国語");
+    expect(getOperatorTip("like")?.summary).not.toContain("中国語");
+    expect(getOperatorTip("like")?.note).not.toContain("中国語");
+  });
+
   test("誤解の余地がない演算子には注意書きを持たせない", () => {
     expect(getOperatorHint("=")).toBeNull();
     expect(getOperatorHint(">=")).toBeNull();
@@ -46,12 +62,61 @@ describe("getOperatorHint", () => {
   });
 });
 
-describe("getOperatorShortHint", () => {
-  test("行内には要点だけを1行で出す", () => {
-    expect(getOperatorShortHint("like")).toBe(
-      "日本語は2文字以上で部分一致、英数字は単語まるごとの一致が必要です",
+describe("getOperatorTip", () => {
+  test("行内のヒントは要点と具体例に分かれている", () => {
+    const tip = getOperatorTip("like");
+
+    expect(tip?.summary).toBe(
+      "日本語は2文字以上なら途中でも一致します。英数字は単語ごとの一致で、単語の一部では一致しません。",
     );
-    expect(getOperatorShortHint("in")).toContain("部分一致しません");
+    expect(tip?.example).toBe(
+      "例:「日本語」は「本語」で見つかります。「cybozu kintone2」は「kintone2」では見つかりますが、「kintone」では見つかりません。",
+    );
+  });
+
+  test("likeのヒントは「単語」が何で区切られるかまで補足する", () => {
+    const note = getOperatorTip("like")?.note ?? "";
+
+    // スペースと記号が区切りになる
+    expect(note).toContain("スペースや記号で区切られます");
+    // _ # + は区切りにならない
+    expect(note).toContain("「cybozu_kintone」で1単語");
+  });
+
+  test("inのヒントには補足を持たせない", () => {
+    expect(getOperatorTip("in")?.note).toBeUndefined();
+  });
+
+  test("inのヒントは完全一致であることと代わりの探し方を示す", () => {
+    const tip = getOperatorTip("in");
+
+    expect(tip?.summary).toContain("部分一致はしません");
+    expect(tip?.example).toContain("like");
+  });
+
+  test("not inにもinと同じヒントを返す", () => {
+    expect(getOperatorTip("not in")).toEqual(getOperatorTip("in"));
+  });
+
+  test("誤解の余地がない演算子には出さない", () => {
+    expect(getOperatorTip("=")).toBeNull();
+    expect(getOperatorTip("is not")).toBeNull();
+  });
+});
+
+describe("getOperatorShortHint", () => {
+  test("1行しか置けない場所向けに要点と具体例と補足をつなげる", () => {
+    const tip = getOperatorTip("like");
+
+    expect(getOperatorShortHint("like")).toBe(
+      `${tip?.summary}${tip?.example}${tip?.note}`,
+    );
+  });
+
+  test("補足がない演算子は要点と具体例だけをつなげる", () => {
+    const tip = getOperatorTip("in");
+
+    expect(getOperatorShortHint("in")).toBe(`${tip?.summary}${tip?.example}`);
   });
 
   test("短い注意書きは全文より短い", () => {
