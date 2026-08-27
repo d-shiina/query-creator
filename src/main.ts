@@ -112,7 +112,16 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 780,
+    minWidth: 640,
+    minHeight: 480,
     autoHideMenuBar: true,
+    // OS標準のタイトルバーを廃止し、レンダラー側の <TitleBar /> を使う。
+    // frame:false ではなく titleBarStyle:"hidden" にすることで、リサイズ枠や
+    // スナップなどWindowsのウィンドウ挙動は残したままタイトルバーだけを消せる。
+    // macOSでは信号機ボタンがそのまま表示される。
+    titleBarStyle: "hidden",
+    // 初回描画までウィンドウを出さず、起動時のちらつきを避ける
+    show: false,
     icon: appIcon,
     webPreferences: {
       devTools: inDevelopment,
@@ -125,6 +134,11 @@ function createWindow() {
     },
   });
   registerListeners(mainWindow);
+
+  // 描画準備が整ってから表示し、フレームレス特有のちらつきを抑える
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
+  });
 
   // 外部リンクを既定のブラウザで開くように設定
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

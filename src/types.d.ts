@@ -30,6 +30,10 @@ interface ElectronWindow {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
+  isMaximized: () => Promise<boolean>;
+  /** 最大化状態の変化を購読する。戻り値を呼ぶと購読を解除できる */
+  onMaximizeChange: (callback: (isMaximized: boolean) => void) => () => void;
+  platform: NodeJS.Platform;
   toggleDevTools: () => Promise<void>;
   openDevTools: () => Promise<void>;
   closeDevTools: () => Promise<void>;
@@ -39,13 +43,22 @@ interface KintoneAPIContext {
   login: (auth: KintoneAuth) => Promise<{ success: boolean; error?: string }>;
   getApps: (
     auth: KintoneAuth,
-  ) => Promise<{ success: boolean; data?: KintoneApp[]; error?: string }>;
+    options?: { offset?: number; limit?: number },
+  ) => Promise<{
+    success: boolean;
+    data?: { apps: KintoneApp[]; hasMore: boolean };
+    error?: string;
+  }>;
   getAppFields: (
     auth: KintoneAuth,
     appId: string,
     /** ゲストスペースのアプリの場合に必要なスペースID */
     spaceId?: string | null,
-  ) => Promise<{ success: boolean; data?: KintoneField[]; error?: string }>;
+  ) => Promise<{
+    success: boolean;
+    data?: { fields: KintoneField[] };
+    error?: string;
+  }>;
   executeQuery: (
     auth: KintoneAuth,
     appId: string,
@@ -98,9 +111,15 @@ interface ElectronAppAPIContext {
   openExternalURL: (url: string) => Promise<{ success: boolean; error?: string }>;
 }
 
-declare interface Window {
-  themeMode: ThemeModeContext;
-  electronWindow: ElectronWindow;
-  kintoneAPI: KintoneAPIContext;
-  electronAppAPI: ElectronAppAPIContext;
+// このファイルは import を含むためモジュール扱いになる。
+// Window の拡張をグローバルへ届けるには declare global が必要。
+declare global {
+  interface Window {
+    themeMode: ThemeModeContext;
+    electronWindow: ElectronWindow;
+    kintoneAPI: KintoneAPIContext;
+    electronAppAPI: ElectronAppAPIContext;
+  }
 }
+
+export {};

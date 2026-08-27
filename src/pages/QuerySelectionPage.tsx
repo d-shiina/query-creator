@@ -222,7 +222,7 @@ export default function QuerySelectionPage({
 
   // Step 2: Header with QueryGeneratorPage style
   return (
-    <div className="bg-background flex min-h-screen flex-col">
+    <div className="bg-background flex min-h-full flex-col">
       {/* Header */}
       <header className="border-border bg-card sticky top-0 z-40 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

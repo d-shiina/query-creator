@@ -3,6 +3,7 @@ import LoginPage from "@/pages/LoginPage";
 import AppManagementPage from "@/pages/AppManagementPage";
 import QueryGeneratorPage from "@/pages/QueryGeneratorPage";
 import SimpleFooter from "@/components/template/SimpleFooter";
+import TitleBar from "@/components/template/TitleBar";
 import { KintoneAuth, KintoneApp } from "@/types/kintone";
 import { syncThemeWithLocal } from "@/helpers/theme_helpers";
 import { ToastProvider } from "@/components/ui/toast";
@@ -63,6 +64,7 @@ function App() {
             auth={auth}
             app={selectedApp}
             onBack={handleBackToApps}
+            onLogout={handleLogout}
           />
         ) : (
           <LoginPage onLogin={handleLogin} />
@@ -75,8 +77,10 @@ function App() {
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen flex-col">
-        <div className="scrollbar-thin flex-1 overflow-auto pb-16">
+      {/* 独自タイトルバー + 本体。ウィンドウ高に収め、スクロールは本体側だけで行う */}
+      <div className="flex h-screen flex-col overflow-hidden">
+        <TitleBar />
+        <div className="scrollbar-thin relative min-h-0 flex-1 overflow-auto pb-16">
           {renderContent()}
         </div>
         <SimpleFooter />

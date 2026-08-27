@@ -13,45 +13,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { PasswordInput } from "@/components/ui/password-input";
 import ToggleTheme from "@/components/ToggleTheme";
 import { PageLoading } from "@/components/ui/page-loading";
-import { KintoneAuth, KintoneField, KintoneUser } from "@/types/kintone";
+import { KintoneAuth } from "@/types/kintone";
 import { Lock, User, Globe, AlertCircle, Loader2 } from "lucide-react";
-import { AppIcon } from "@/components/ui/app-icon";
 import { AppLogo } from "@/components/ui/app-logo";
-
-// Window型を拡張
-declare global {
-  interface Window {
-    kintoneAPI: {
-      login: (
-        auth: KintoneAuth,
-      ) => Promise<{ success: boolean; error?: string }>;
-      getUsers: (
-        auth: KintoneAuth,
-      ) => Promise<{ success: boolean; data?: KintoneUser[]; error?: string }>;
-      getAppFields: (
-        auth: KintoneAuth,
-        appId: string,
-        /** ゲストスペースのアプリの場合に必要なスペースID */
-        spaceId?: string | null,
-      ) => Promise<{
-        success: boolean;
-        data?: { fields: KintoneField[] };
-        error?: string;
-      }>;
-      executeQuery: (
-        auth: KintoneAuth,
-        appId: string,
-        query: string,
-        /** ゲストスペースのアプリの場合に必要なスペースID */
-        spaceId?: string | null,
-      ) => Promise<{
-        success: boolean;
-        data?: { records: Record<string, unknown>[] };
-        error?: string;
-      }>;
-    };
-  }
-}
 
 interface LoginPageProps {
   onLogin: (auth: KintoneAuth) => void;
@@ -178,7 +142,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     };
 
   return (
-    <div className="bg-background fixed inset-0 flex items-center justify-center overflow-hidden p-4">
+    <div className="bg-background absolute inset-0 flex items-center justify-center overflow-hidden p-4">
       <div className="absolute top-4 right-4 z-10">
         <ToggleTheme />
       </div>
@@ -186,8 +150,10 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       <Card className="border-border bg-card w-full max-w-md shadow-lg shadow-black/5">
         <CardHeader className="space-y-3 text-center">
           <div className="flex justify-center">
-            <div className="bg-accent flex h-14 w-14 items-center justify-center rounded-xl p-2">
-              <AppLogo size={36} />
+            {/* ロゴ自体が角丸プレート込みの画像なので、内側に余白を持たせず
+                プレートいっぱいに描画する（小さく見えるのを防ぐ） */}
+            <div className="bg-accent flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl">
+              <AppLogo size={56} />
             </div>
           </div>
           <div className="space-y-1">
