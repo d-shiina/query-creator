@@ -403,7 +403,7 @@ export default function AppManagementPage({
   console.log("Rendering default AppManagementPage");
 
   return (
-    <div className="bg-background min-h-screen">
+    <div className="bg-background min-h-full">
       {/* ヘッダー */}
       <header className="border-border bg-card sticky top-0 z-50 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

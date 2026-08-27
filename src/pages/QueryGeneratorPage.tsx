@@ -96,15 +96,6 @@ import {
   QueryOperator,
 } from "@/types/kintone";
 
-// Window型の拡張
-declare global {
-  interface Window {
-    electronAppAPI: {
-      openExternalURL: (url: string) => Promise<{ success: boolean; error?: string }>;
-    };
-  }
-}
-
 interface QueryGeneratorPageProps {
   auth: KintoneAuth;
   app: KintoneApp;
@@ -2202,7 +2193,7 @@ export default function QueryGeneratorPage({
   }
 
   return (
-    <div className="bg-background flex min-h-screen flex-col">
+    <div className="bg-background flex min-h-full flex-col">
       {/* Header */}
       <header className="border-border bg-card sticky top-0 z-40 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

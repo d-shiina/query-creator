@@ -160,9 +160,13 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* 独自タイトルバーのドラッグ領域 */
   .draglayer {
-    @apply bg-background;
     -webkit-app-region: drag;
+  }
+  /* ドラッグ領域の中でもクリック可能にしたい要素（ウィンドウ操作ボタンなど） */
+  .no-drag {
+    -webkit-app-region: no-drag;
   }
   button {
     @apply cursor-pointer;
