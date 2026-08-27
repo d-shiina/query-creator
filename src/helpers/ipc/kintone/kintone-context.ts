@@ -82,6 +82,7 @@ export function exposeKintoneAPI() {
       appId: string,
       query: string,
       spaceId?: string | null,
+      options?: { totalCount?: boolean },
     ) => {
       try {
         console.log(
@@ -94,6 +95,7 @@ export function exposeKintoneAPI() {
           appId,
           query,
           spaceId,
+          options,
         );
         return result;
       } catch (error) {

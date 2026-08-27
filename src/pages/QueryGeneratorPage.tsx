@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Database,
   Settings,
@@ -17,7 +23,6 @@ import {
   Clock,
   Clipboard,
   ClipboardCheck,
-  X,
   FileText,
   RotateCcw,
   Copy,
@@ -119,9 +124,62 @@ interface KintoneErrorResponse {
   id?: string;
 }
 
+/** プレビューで取得するレコード件数 */
+const PREVIEW_SIZE = 20;
+/** 入力が落ち着いてからプレビューを取り直すまでの待ち時間 */
+const PREVIEW_DEBOUNCE_MS = 500;
+
 interface QueryResult {
   records: Record<string, unknown>[];
-  error?: string;
+  /** 条件に一致した総件数。取得件数(limit)には頭打ちされない。取れなければnull */
+  totalCount: number | null;
+  /** 自動プレビューの結果か、実行ボタンで取得した結果か */
+  source: "preview" | "manual";
+  error?: string | KintoneErrorResponse;
+}
+
+/** kintoneはtotalCountを文字列で返すので数値に直す */
+function parseTotalCount(value?: string | null): number | null {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** 実行ボタンの隣に出す一致件数 */
+function formatHitCount(result: QueryResult): string {
+  return `${(result.totalCount ?? result.records.length).toLocaleString()}件`;
+}
+
+/** 結果パネルの見出しに出す説明 */
+function describePreview(result: QueryResult): string {
+  const shown = result.records.length;
+  const total = result.totalCount;
+  const prefix = result.source === "manual" ? "実行結果 " : "";
+
+  if (total == null) return `${prefix}${shown}件を取得`;
+  if (shown < total) {
+    return `${prefix}条件に一致 ${total.toLocaleString()}件（表示は先頭${shown}件）`;
+  }
+  return `${prefix}条件に一致 ${total.toLocaleString()}件`;
+}
+
+/** 文字列中にJSONが埋まっているエラーは、パースして構造化して表示する */
+function normalizeQueryError(
+  error: unknown,
+): string | KintoneErrorResponse | undefined {
+  if (typeof error !== "string") {
+    return error == null ? undefined : String(error);
+  }
+
+  const jsonMatch = error.match(/\{.*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]) as KintoneErrorResponse;
+    } catch {
+      return error;
+    }
+  }
+  return error;
 }
 
 interface ConditionInputProps {
@@ -1667,7 +1725,16 @@ export default function QueryGeneratorPage({
     DEFAULT_QUERY_OUTPUT_FORMAT,
   );
   const [savePopoverOpen, setSavePopoverOpen] = useState(false);
-  const [resultsPanelOpen, setResultsPanelOpen] = useState(false);
+  // 結果パネルは常設（モーダルにしない）。開いた状態で始めるので、
+  // 画面を開いた時点でレコードが見えている
+  const [resultsPanelExpanded, setResultsPanelExpanded] = useState(true);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [resultsPanelHeight, setResultsPanelHeight] = useState(0);
+  const resultsPanelRef = useRef<HTMLDivElement>(null);
+  /** 最新リクエストの世代。古いレスポンスの追い越しを捨てるために使う */
+  const queryRequestId = useRef(0);
+  /** 直前に投げたクエリ。同じ内容なら投げ直さない */
+  const lastRequestedQuery = useRef<string | null>(null);
   const [error, setError] = useState<string>("");
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
@@ -1844,76 +1911,115 @@ export default function QueryGeneratorPage({
     }
   }, [auth, usersLoaded, users.length]);
 
-  const executeQuery = useCallback(async () => {
-    if (!generatedQuery) {
-      toast("クエリが生成されていません", "error");
-      return;
-    }
-
-    try {
-      setExecuting(true);
-      setError("");
-      setQueryResult(null);
-
-      console.log("=== クエリ実行開始 ===");
-      console.log("App ID:", app.appId);
-      console.log("Query:", generatedQuery);
-
-      const result = await window.kintoneAPI.executeQuery(
-        auth,
-        app.appId,
-        generatedQuery,
-        app.spaceId,
-      );
-
-      // レスポンス全体をログ出力
-      console.log("=== クエリ実行結果 ===");
-      console.log("Full Response JSON:", JSON.stringify(result, null, 2));
-      console.log("===================");
-
-      if (result.success && result.data) {
-        console.log("✅ クエリ実行成功");
-        console.log("取得レコード数:", result.data.records?.length || 0);
-        setQueryResult({ records: result.data.records });
+  /**
+   * クエリを投げて結果パネルに反映する。
+   * 自動プレビューと実行ボタンで共用し、常に最新のリクエストだけを採用する。
+   */
+  const runQuery = useCallback(
+    async (query: string, source: "preview" | "manual") => {
+      const requestId = ++queryRequestId.current;
+      if (source === "manual") {
+        setExecuting(true);
       } else {
-        console.log("❌ クエリ実行エラー");
-        console.log("Error Details:", result.error);
+        setPreviewLoading(true);
+      }
 
-        // シンプルなエラー処理：文字列内のJSONを検出して整形
-        let errorForDisplay = result.error;
+      try {
+        const result = await window.kintoneAPI.executeQuery(
+          auth,
+          app.appId,
+          query,
+          app.spaceId,
+          { totalCount: true },
+        );
 
-        if (typeof result.error === "string") {
-          // 文字列内にJSONが含まれているかチェック
-          const jsonMatch = result.error.match(/\{.*\}/);
-          if (jsonMatch) {
-            try {
-              // JSONをパースして整形
-              const parsedError = JSON.parse(jsonMatch[0]);
-              errorForDisplay = parsedError;
-            } catch {
-              // パースに失敗した場合は元の文字列をそのまま使用
-              errorForDisplay = result.error;
-            }
-          }
+        // 入力が進んで後続のリクエストが出ていたら、古いレスポンスは捨てる
+        if (requestId !== queryRequestId.current) return;
+
+        if (result.success && result.data) {
+          setQueryResult({
+            records: result.data.records ?? [],
+            totalCount: parseTotalCount(result.data.totalCount),
+            source,
+          });
+        } else {
+          setQueryResult({
+            records: [],
+            totalCount: null,
+            source,
+            error: normalizeQueryError(result.error),
+          });
         }
-
+      } catch (err) {
+        if (requestId !== queryRequestId.current) return;
         setQueryResult({
           records: [],
-          error: errorForDisplay,
+          totalCount: null,
+          source,
+          error: `エラーが発生しました: ${
+            err instanceof Error ? err.message : "Unknown error"
+          }`,
         });
+      } finally {
+        if (requestId === queryRequestId.current) {
+          setExecuting(false);
+          setPreviewLoading(false);
+        }
       }
-    } catch (err) {
-      console.log("❌ クエリ実行例外エラー");
-      console.error("Exception Details:", err);
-      const errorMessage = `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`;
-      setQueryResult({
-        records: [],
-        error: errorMessage,
-      });
-    } finally {
-      setExecuting(false);
-    }
-  }, [generatedQuery, auth, app.appId, app.spaceId]);
+    },
+    [auth, app.appId, app.spaceId],
+  );
+
+  /**
+   * プレビュー用のクエリ。条件と並び順はそのまま使い、取得件数と開始位置だけ
+   * プレビュー用に固定する（貼り付け用に生成するクエリ文字列とは別物）。
+   * 条件が1つもないときは全レコードの先頭を出す。
+   */
+  const previewQuery = useMemo(() => {
+    const built = queryUtils.generateQuery(conditions, fields, {
+      ...queryOptions,
+      limit: PREVIEW_SIZE,
+      offset: undefined,
+    });
+    return built || `limit ${PREVIEW_SIZE}`;
+  }, [conditions, fields, queryOptions]);
+
+  // 結果パネルは画面下部に固定なので、その高さぶんの余白を本文に足して
+  // 最後のコンテンツが隠れないようにする
+  useEffect(() => {
+    const element = resultsPanelRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() =>
+      setResultsPanelHeight(element.offsetHeight),
+    );
+    observer.observe(element);
+    setResultsPanelHeight(element.offsetHeight);
+
+    return () => observer.disconnect();
+  }, [loading]);
+
+  // 条件を編集するたびにプレビューを取り直す。
+  // 値の入力途中に連打しないよう待ってから投げ、内容が変わらなければ投げない。
+  // （未入力の条件はgenerateQueryが除外するので、組み立て途中で不正クエリにはならない）
+  useEffect(() => {
+    if (loading) return;
+
+    const timer = setTimeout(() => {
+      if (lastRequestedQuery.current === previewQuery) return;
+      lastRequestedQuery.current = previewQuery;
+      runQuery(previewQuery, "preview");
+    }, PREVIEW_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [previewQuery, loading, runQuery]);
+
+  // 実行ボタンは、取得件数・開始位置の指定も含めた「本番のクエリ」をそのまま叩く
+  const executeQuery = useCallback(async () => {
+    lastRequestedQuery.current = null;
+    await runQuery(generatedQuery || `limit ${PREVIEW_SIZE}`, "manual");
+  }, [generatedQuery, runQuery]);
+
 
   // APIプレビュー表示・コピーで共用するJSONリクエストボディ
   const apiRequestBodyJson = JSON.stringify(
@@ -1926,11 +2032,6 @@ export default function QueryGeneratorPage({
     null,
     2,
   );
-
-  // 実行エラー時は明細パネルを自動で開く（エラー詳細を見せる）
-  useEffect(() => {
-    if (queryResult?.error) setResultsPanelOpen(true);
-  }, [queryResult]);
 
   // Ctrl+Enter（macはCmd+Enter）でクエリ実行
   useEffect(() => {
@@ -2194,7 +2295,10 @@ export default function QueryGeneratorPage({
   }
 
   return (
-    <div className="bg-background flex min-h-full flex-col">
+    <div
+      className="bg-background flex min-h-full flex-col"
+      style={{ paddingBottom: resultsPanelHeight }}
+    >
       {/* Header */}
       {/* ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域） */}
       <header
@@ -2870,24 +2974,28 @@ export default function QueryGeneratorPage({
                     </PopoverContent>
                   </Popover>
 
-                  {/* 実行結果のステータス */}
-                  <div className="ml-auto flex items-center gap-1 text-sm">
-                    {queryResult && !queryResult.error && (
-                      <span className="font-medium text-green-600 dark:text-green-400">
-                        ✓ {queryResult.records?.length || 0}件ヒット
-                      </span>
+                  {/* 一致件数（プレビューは条件を変えるたびに更新される） */}
+                  <div className="ml-auto flex items-center gap-2 text-sm">
+                    {previewLoading && (
+                      <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
                     )}
-                    {queryResult?.error != null && (
+                    {queryResult?.error != null ? (
                       <span className="text-destructive font-medium">
                         ✗ エラー
                       </span>
+                    ) : (
+                      queryResult && (
+                        <span className="font-medium text-green-600 dark:text-green-400">
+                          ✓ {formatHitCount(queryResult)}
+                        </span>
+                      )
                     )}
-                    {queryResult && (
+                    {!resultsPanelExpanded && (
                       <Button
                         variant="link"
                         size="sm"
                         className="h-auto px-1 text-sm"
-                        onClick={() => setResultsPanelOpen(true)}
+                        onClick={() => setResultsPanelExpanded(true)}
                       >
                         明細を表示
                       </Button>
@@ -2897,43 +3005,46 @@ export default function QueryGeneratorPage({
               </div>
             </Card>
 
-            {/* 実行結果スライドオーバー（条件をいじりながら明細を確認できる） */}
-            {resultsPanelOpen && queryResult && (
-              <>
-                <div
-                  className="fixed inset-0 z-40 bg-black/30"
-                  onClick={() => setResultsPanelOpen(false)}
-                  aria-hidden="true"
-                />
-                <div
-                  role="dialog"
-                  aria-label="実行結果"
-                  className="bg-card border-border fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col border-l shadow-xl"
+            {/*
+              結果パネル。モーダルにしない（背景を敷かない）ので、
+              条件を編集しながら結果の変化を見られる。
+              フッターの高さ(28px)だけ上に浮かせている。
+            */}
+            <div
+              ref={resultsPanelRef}
+              aria-label="実行結果"
+              className="bg-card border-border fixed right-0 bottom-7 left-0 z-30 flex flex-col border-t shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
+            >
+              <div className="flex items-center gap-3 px-4 py-2">
+                <button
+                  type="button"
+                  onClick={() => setResultsPanelExpanded((open) => !open)}
+                  aria-expanded={resultsPanelExpanded}
+                  className="hover:text-foreground text-muted-foreground flex items-center gap-1.5 text-sm font-medium"
                 >
-                  <div className="flex items-center justify-between border-b px-4 py-3">
-                    <div>
-                      <h2 className="text-base font-semibold">実行結果</h2>
-                      <p className="text-muted-foreground text-xs">
-                        {queryResult.error
-                          ? "クエリの実行中にエラーが発生しました"
-                          : `${queryResult.records?.length || 0}件のレコードを取得しました${
-                              (queryResult.records?.length || 0) > 50
-                                ? "（テーブルには最初の50件を表示）"
-                                : ""
-                            }`}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => setResultsPanelOpen(false)}
-                      aria-label="実行結果を閉じる"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="scrollbar-thin flex-1 overflow-y-auto p-4">
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${
+                      resultsPanelExpanded ? "" : "-rotate-90"
+                    }`}
+                  />
+                  <span className="text-foreground">プレビュー</span>
+                </button>
+
+                <p className="text-muted-foreground truncate text-xs">
+                  {queryResult?.error
+                    ? "クエリの実行でエラーが発生しました"
+                    : queryResult
+                      ? describePreview(queryResult)
+                      : "レコードを取得しています..."}
+                </p>
+
+                {previewLoading && (
+                  <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
+                )}
+              </div>
+
+              {resultsPanelExpanded && queryResult && (
+                  <div className="scrollbar-thin max-h-[32vh] overflow-y-auto px-4 pb-4">
                       {queryResult.error ? (
                         <div className="bg-muted/40 rounded-md border p-4">
                           <div className="mb-3 flex items-center gap-2">
@@ -3003,7 +3114,7 @@ export default function QueryGeneratorPage({
                           onValueChange={setActiveResultTab}
                           className="w-full"
                         >
-                          <TabsList className="bg-muted relative grid w-full grid-cols-2 overflow-hidden rounded-lg border-0 p-1">
+                          <TabsList className="bg-muted relative grid w-full max-w-xs grid-cols-2 overflow-hidden rounded-lg border-0 p-1">
                             <TabsTrigger
                               value="table"
                               className="data-[state=active]:text-foreground relative z-10 rounded-md transition-colors duration-300 hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:shadow-none"
@@ -3028,7 +3139,7 @@ export default function QueryGeneratorPage({
                           <TabsContent value="table" className="space-y-4">
                             {queryResult.records.length > 0 ? (
                               <div
-                                className="scrollbar-thin max-h-[32rem] overflow-auto rounded-md border"
+                                className="scrollbar-thin overflow-x-auto rounded-md border"
                                 style={{ direction: "ltr" }}
                               >
                                 <table
@@ -3044,7 +3155,7 @@ export default function QueryGeneratorPage({
                                         (fieldCode) => (
                                           <th
                                             key={fieldCode}
-                                            className="border-r p-3 text-left font-medium whitespace-nowrap min-w-[120px]"
+                                            className="border-r p-2 text-left font-medium whitespace-nowrap min-w-[120px]"
                                             style={{
                                               writingMode: "horizontal-tb",
                                             }}
@@ -3073,7 +3184,7 @@ export default function QueryGeneratorPage({
                                               ([fieldCode, fieldData]) => (
                                                 <td
                                                   key={fieldCode}
-                                                  className="border-r p-3 min-w-[120px] max-w-[300px] overflow-hidden text-ellipsis"
+                                                  className="border-r p-2 min-w-[120px] max-w-[300px] overflow-hidden text-ellipsis"
                                                   style={{
                                                     writingMode:
                                                       "horizontal-tb",
@@ -3121,9 +3232,8 @@ export default function QueryGeneratorPage({
                         </Tabs>
                       )}
                   </div>
-                </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

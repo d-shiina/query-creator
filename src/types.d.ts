@@ -65,9 +65,12 @@ interface KintoneAPIContext {
     query: string,
     /** ゲストスペースのアプリの場合に必要なスペースID */
     spaceId?: string | null,
+    /** totalCount: true で、limit句に頭打ちされない一致件数を取得する */
+    options?: { totalCount?: boolean },
   ) => Promise<{
     success: boolean;
-    data?: { records: KintoneRecord[]; totalCount: number };
+    /** kintoneのレスポンスそのまま。totalCountは要求したときだけ文字列で返る */
+    data?: { records: KintoneRecord[]; totalCount?: string | null };
     error?: string;
   }>;
   getUsers: (

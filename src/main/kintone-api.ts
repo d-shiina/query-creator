@@ -496,6 +496,7 @@ export function setupKintoneAPI() {
       appId: string,
       query: string,
       spaceId?: string | null,
+      options?: { totalCount?: boolean },
     ) => {
       try {
         console.log(`=== Executing query for app ${appId} ===`);
@@ -504,6 +505,11 @@ export function setupKintoneAPI() {
         let endpoint = `records.json?app=${appId}`;
         if (query.trim()) {
           endpoint += `&query=${encodeURIComponent(query)}`;
+        }
+        // totalCountはlimit句に関係なく条件に一致した総件数を返す。
+        // 「何件ヒットしたか」を取得件数の上限に頭打ちさせないために使う。
+        if (options?.totalCount) {
+          endpoint += `&totalCount=true`;
         }
 
         const response = await makeKintoneAppRequest(
