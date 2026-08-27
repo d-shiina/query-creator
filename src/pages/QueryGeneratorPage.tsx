@@ -18,9 +18,6 @@ import {
   AlertCircle,
   User,
   CalendarIcon,
-  ChevronRight,
-  ArrowLeft,
-  LogOut,
   Clock,
   Clipboard,
   ClipboardCheck,
@@ -77,6 +74,7 @@ import {
 } from "@/utils/query-format";
 import { getOperatorHint } from "@/utils/query-operator-hints";
 import { formatFieldValue } from "@/utils/kintone-field-value";
+import { orderRecordColumns } from "@/utils/kintone-record-columns";
 import { useToast } from "@/components/ui/toast";
 
 /** 出力バンドの表示モード（貼り付け先の言語） */
@@ -84,8 +82,9 @@ type OutputView = QueryOutputFormat;
 const OUTPUT_VIEWS: ReadonlyArray<{ value: OutputView; label: string }> =
   QUERY_OUTPUT_FORMATS;
 import { Calendar } from "@/components/ui/calendar";
-import ToggleTheme from "@/components/ToggleTheme";
-import { windowControlsInsetStyle } from "@/components/template/WindowControls";
+import AppHeader, {
+  HeaderIdChip,
+} from "@/components/template/AppHeader";
 import { PageLoading } from "@/components/ui/page-loading";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
@@ -1049,13 +1048,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
         if (!Number.isNaN(from) && from !== index) onMove(from, index);
       }}
-      className={`bg-muted/20 min-w-0 rounded-md border p-2.5 break-words transition-shadow ${
+      className={`bg-muted/20 min-w-0 rounded-md border p-2 break-words transition-shadow ${
         isDragOver ? "ring-primary/60 ring-2" : ""
       }`}
     >
-      <div className="flex flex-wrap items-start gap-2">
+      <div className="@2xl:flex-row @2xl:flex-wrap @2xl:items-start flex flex-col gap-1.5">
         {/* 左ガター: グリップ + 条件番号 / AND・OR */}
-        <div className="flex w-24 flex-shrink-0 items-center gap-1 self-center">
+        <div className="@2xl:w-20 @2xl:shrink-0 @2xl:self-center flex w-full items-center gap-1">
           <span
             draggable
             onDragStart={(e) => {
@@ -1094,7 +1093,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
           {/* フィールド選択 */}
-          <div className="w-64 min-w-[13rem] flex-shrink-0">
+          <div className="@2xl:w-56 @2xl:flex-none min-w-0 flex-1">
             <Popover
               open={fieldComboboxOpen}
               onOpenChange={setFieldComboboxOpen}
@@ -1166,7 +1165,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
 
           {/* 演算子選択 */}
-          <div className="w-44 flex-shrink-0">
+          <div className="@2xl:w-40 @2xl:flex-none min-w-0 flex-1">
             <Select
               value={condition.operator}
               onValueChange={(value) =>
@@ -1197,7 +1196,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
 
         {/* 値入力エリア */}
-        <div className="min-w-[14rem] flex-1">
+        <div className="@2xl:min-w-[12rem] min-w-0 flex-1">
         {!isNullOperator ? (
           <div className="space-y-2">
             {isInOperator ? (
@@ -1644,7 +1643,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
         {/* 行アクション */}
-        <div className="flex flex-shrink-0 items-center gap-1 self-center">
+        <div className="@2xl:self-center flex shrink-0 items-center gap-1 self-end">
           <Button
             variant="ghost"
             size="sm"
@@ -2024,6 +2023,16 @@ export default function QueryGeneratorPage({
     app.spaceId,
   ]);
 
+  // 表の列順。レスポンスのキー順は意味を持たないので並べ直す
+  const previewColumns = useMemo(
+    () =>
+      orderRecordColumns(
+        Object.keys(queryResult?.records[0] ?? {}),
+        fields,
+      ),
+    [queryResult, fields],
+  );
+
   // 左右ペインの幅（右ペインの割合%）。ドラッグで変えられ、次回も維持される
   const [splitRatio, setSplitRatio] = useSplitRatio(
     "queryGenerator.splitRatio",
@@ -2331,120 +2340,55 @@ export default function QueryGeneratorPage({
 
   return (
     <div className="bg-background flex h-full flex-col overflow-hidden">
-      {/*
-        ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域）。
-        現在地・対象アプリ・画面の操作をこの1行に集約する。枠付きのボタンを
-        並べると帯が騒がしくなるので、操作はすべて枠なしにして、
-        色と太さだけで主従をつける。
-      */}
-      <header
-        className="draglayer border-border bg-card flex h-10 shrink-0 items-center gap-1 border-b pl-1"
-        style={windowControlsInsetStyle()}
-      >
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0"
-          onClick={onBack}
-          aria-label="クエリ管理に戻る"
-          title="クエリ管理に戻る"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-
-        {/* 現在地。本文側と二重に出さないよう、パンくずはここだけに置く */}
-        <nav
-          aria-label="パンくずナビゲーション"
-          className="flex min-w-0 items-center gap-1 text-sm"
-        >
-          <button
-            type="button"
-            onClick={() => onBackToAppList?.()}
-            className="text-muted-foreground hover:text-foreground shrink-0 rounded px-1 transition-colors"
-          >
-            アプリ一覧
-          </button>
-          <ChevronRight className="text-muted-foreground/40 h-3.5 w-3.5 shrink-0" />
-          <span className="text-muted-foreground truncate px-1" title={app.name}>
-            {app.name}
-          </span>
-          <ChevronRight className="text-muted-foreground/40 h-3.5 w-3.5 shrink-0" />
-          <button
-            type="button"
-            onClick={() => onBack?.()}
-            className="text-muted-foreground hover:text-foreground shrink-0 rounded px-1 transition-colors"
-          >
-            クエリ管理
-          </button>
-          <ChevronRight className="text-muted-foreground/40 h-3.5 w-3.5 shrink-0" />
-          <span className="text-foreground shrink-0 px-1 font-medium">
-            {isEditMode ? "クエリ編集" : "新規作成"}
-          </span>
-        </nav>
-
-        {/* 対象アプリの手掛かり。押すとIDをコピーできる */}
-        <button
-          type="button"
-          onClick={async () => {
-            await navigator.clipboard.writeText(app.appId);
-            setAppIdCopied(true);
-            setTimeout(() => setAppIdCopied(false), 1500);
-          }}
-          title="アプリIDをコピー"
-          className="text-muted-foreground hover:bg-muted hover:text-foreground ml-1 flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs transition-colors"
-        >
-          #{app.appId}
-          {appIdCopied ? (
-            <ClipboardCheck className="h-3 w-3 text-green-600" />
-          ) : (
-            <Clipboard className="h-3 w-3 opacity-60" />
-          )}
-        </button>
-
-        {app.spaceId && (
-          <button
-            type="button"
-            onClick={async () => {
-              await navigator.clipboard.writeText(app.spaceId!);
-              setSpaceIdCopied(true);
-              setTimeout(() => setSpaceIdCopied(false), 1500);
-            }}
-            title="ゲストスペースIDをコピー"
-            className="text-muted-foreground hover:bg-muted hover:text-foreground flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs transition-colors"
-          >
-            space:{app.spaceId}
-            {spaceIdCopied ? (
-              <ClipboardCheck className="h-3 w-3 text-green-600" />
-            ) : (
-              <Clipboard className="h-3 w-3 opacity-60" />
+      <AppHeader
+        onBack={onBack}
+        backLabel="クエリ管理に戻る"
+        breadcrumb={[
+          { label: "アプリ一覧", onClick: () => onBackToAppList?.() },
+          { label: app.name, truncate: true },
+          { label: "クエリ管理", onClick: () => onBack?.() },
+          { label: isEditMode ? "クエリ編集" : "新規作成" },
+        ]}
+        meta={
+          <>
+            <HeaderIdChip
+              label={`#${app.appId}`}
+              copied={appIdCopied}
+              title="アプリIDをコピー"
+              onCopy={async () => {
+                await navigator.clipboard.writeText(app.appId);
+                setAppIdCopied(true);
+                setTimeout(() => setAppIdCopied(false), 1500);
+              }}
+            />
+            {app.spaceId && (
+              <HeaderIdChip
+                label={`space:${app.spaceId}`}
+                copied={spaceIdCopied}
+                title="ゲストスペースIDをコピー"
+                onCopy={async () => {
+                  await navigator.clipboard.writeText(app.spaceId!);
+                  setSpaceIdCopied(true);
+                  setTimeout(() => setSpaceIdCopied(false), 1500);
+                }}
+              />
             )}
-          </button>
-        )}
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0"
-          onClick={openAppInBrowser}
-          aria-label={`${app.name}をブラウザで開く`}
-          title={`${app.name}をブラウザで開く`}
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
-
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 pr-1">
-          <ToggleTheme variant="ghost" className="h-7 w-7" />
+          </>
+        }
+        actions={
           <Button
             variant="ghost"
-            size="sm"
-            onClick={onLogout}
-            className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={openAppInBrowser}
+            aria-label={`${app.name}をブラウザで開く`}
+            title={`${app.name}をブラウザで開く`}
           >
-            <LogOut className="mr-1 h-3.5 w-3.5" />
-            ログアウト
+            <ExternalLink className="h-3.5 w-3.5" />
           </Button>
-        </div>
-      </header>
+        }
+        onLogout={onLogout}
+      />
 
       {/* 左で条件を組み立て、右でその結果を見る（境目はドラッグで動かせる） */}
       <div
@@ -2454,8 +2398,8 @@ export default function QueryGeneratorPage({
         }`}
       >
         {/* 左: 条件の編集 */}
-        <div className="scrollbar-thin min-h-0 min-w-0 flex-1 overflow-auto">
-          <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        <div className="@container scrollbar-thin min-h-0 min-w-0 flex-1 overflow-auto">
+          <div className="mx-auto max-w-5xl px-4 py-4">
 
           {error && <ErrorAlert error={error} />}
 
@@ -2584,9 +2528,9 @@ export default function QueryGeneratorPage({
                 並び替え・件数。ラベルを入力の上に置いた格子にすることで、
                 ペースの狭い幅でもラベルと入力が離れて折り返さない。
               */}
-              <div className="border-t px-6 py-3">
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_7rem_5.5rem_5.5rem]">
-                  <div className="col-span-2 min-w-0 space-y-1 sm:col-span-1">
+              <div className="border-t px-4 py-3">
+                <div className="@xl:grid-cols-[minmax(0,1fr)_7rem_5.5rem_5.5rem] grid grid-cols-2 gap-x-3 gap-y-2">
+                  <div className="@xl:col-span-1 col-span-2 min-w-0 space-y-1">
                     <Label className="text-muted-foreground text-xs font-medium">
                       並び替え
                     </Label>
@@ -2692,7 +2636,7 @@ export default function QueryGeneratorPage({
               </div>
 
               {/* 出力バンド: 形式切替・クエリ・アクションを1か所に集約 */}
-              <div className="bg-muted/30 space-y-3 rounded-b-lg border-t px-6 py-4">
+              <div className="bg-muted/30 space-y-2 rounded-b-lg border-t px-4 py-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
                     出力
@@ -3067,17 +3011,15 @@ export default function QueryGeneratorPage({
                         <table className="w-full min-w-max border-collapse text-sm">
                           <thead>
                             <tr className="bg-secondary sticky top-0 z-10 border-b-2">
-                              {Object.keys(queryResult.records[0]).map(
-                                (fieldCode) => (
-                                  <th
-                                    key={fieldCode}
-                                    className="min-w-[110px] border-r p-2 text-left font-medium whitespace-nowrap"
-                                  >
-                                    {fields.find((f) => f.code === fieldCode)
-                                      ?.label || fieldCode}
-                                  </th>
-                                ),
-                              )}
+                              {previewColumns.map((fieldCode) => (
+                                <th
+                                  key={fieldCode}
+                                  className="min-w-[110px] border-r p-2 text-left font-medium whitespace-nowrap"
+                                >
+                                  {fields.find((f) => f.code === fieldCode)
+                                    ?.label || fieldCode}
+                                </th>
+                              ))}
                             </tr>
                           </thead>
                           <tbody>
@@ -3090,19 +3032,17 @@ export default function QueryGeneratorPage({
                                   key={index}
                                   className="even:bg-muted/50 hover:bg-accent/60 border-b"
                                 >
-                                  {Object.entries(record).map(
-                                    ([fieldCode, fieldData]) => (
-                                      <td
-                                        key={fieldCode}
-                                        className="min-w-[110px] max-w-[240px] border-r p-2"
-                                        title={formatFieldValue(fieldData)}
-                                      >
-                                        <div className="truncate">
-                                          {formatFieldValue(fieldData)}
-                                        </div>
-                                      </td>
-                                    ),
-                                  )}
+                                  {previewColumns.map((fieldCode) => (
+                                    <td
+                                      key={fieldCode}
+                                      className="min-w-[110px] max-w-[240px] border-r p-2"
+                                      title={formatFieldValue(record[fieldCode])}
+                                    >
+                                      <div className="truncate">
+                                        {formatFieldValue(record[fieldCode])}
+                                      </div>
+                                    </td>
+                                  ))}
                                 </tr>
                               ),
                             )}

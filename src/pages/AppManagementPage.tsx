@@ -18,8 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import ToggleTheme from "@/components/ToggleTheme";
-import { windowControlsInsetStyle } from "@/components/template/WindowControls";
+import AppHeader from "@/components/template/AppHeader";
 import AppDataTable from "@/components/AppDataTable";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
@@ -406,40 +405,18 @@ export default function AppManagementPage({
   return (
     <div className="bg-background min-h-full">
       {/* ヘッダー */}
-      {/* ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域） */}
-      <header
-        className="draglayer border-border bg-card sticky top-0 z-50 border-b"
-        style={windowControlsInsetStyle()}
-      >
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center gap-4">
-              <h1 className="text-foreground text-base font-semibold">
-                kintone API Query Creator
-              </h1>
-              <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                <span className="font-medium">
-                  {auth.subdomain}.cybozu.com
-                </span>
-                <span className="border-border bg-muted rounded-sm border px-1.5 py-0.5">
-                  {apps.length} アプリ
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <ToggleTheme variant="ghost" className="h-7 w-7" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onLogout}
-                className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
-              >
-                ログアウト
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        breadcrumb={[{ label: "アプリ一覧" }]}
+        meta={
+          <span className="text-muted-foreground flex shrink-0 items-center gap-2 px-1 text-xs">
+            <span>{auth.subdomain}.cybozu.com</span>
+            <span className="border-border bg-muted rounded-sm border px-1.5 py-0.5">
+              {apps.length} アプリ
+            </span>
+          </span>
+        }
+        onLogout={onLogout}
+      />
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* エラー表示 */}
