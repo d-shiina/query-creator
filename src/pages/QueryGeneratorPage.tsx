@@ -122,8 +122,8 @@ interface KintoneErrorResponse {
   id?: string;
 }
 
-/** プレビューで取得するレコード件数 */
-const PREVIEW_SIZE = 20;
+/** プレビューで一度に取得するレコード件数（続きは「さらに表示」で足す） */
+const PREVIEW_SIZE = 100;
 /** 入力が落ち着いてからプレビューを取り直すまでの待ち時間 */
 const PREVIEW_DEBOUNCE_MS = 500;
 
@@ -154,11 +154,21 @@ function describePreview(result: QueryResult): string {
   const total = result.totalCount;
   const prefix = result.source === "manual" ? "実行結果 " : "";
 
-  if (total == null) return `${prefix}${shown}件を取得`;
+  if (total == null) return `${prefix}${shown.toLocaleString()}件を取得`;
   if (shown < total) {
-    return `${prefix}条件に一致 ${total.toLocaleString()}件（表示は先頭${shown}件）`;
+    return `${prefix}条件に一致 ${total.toLocaleString()}件（${shown.toLocaleString()}件を表示中）`;
   }
   return `${prefix}条件に一致 ${total.toLocaleString()}件`;
+}
+
+/** 取得済みの先に、まだ読めるレコードが残っているか */
+function hasMoreRecords(result: QueryResult | null): boolean {
+  if (!result || result.error) return false;
+  if (result.totalCount != null) return result.records.length < result.totalCount;
+  // totalCountが取れない場合は、ちょうど1ページ分返ってきたら続きがあるとみなす
+  return (
+    result.records.length > 0 && result.records.length % PREVIEW_SIZE === 0
+  );
 }
 
 /** 文字列中にJSONが埋まっているエラーは、パースして構造化して表示する */
@@ -1678,6 +1688,9 @@ export default function QueryGeneratorPage({
   );
   const [savePopoverOpen, setSavePopoverOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /** プレビューの表を取り直したときに先頭へ戻すためのスクロール領域 */
+  const previewScrollRef = useRef<HTMLDivElement>(null);
   /** 最新リクエストの世代。古いレスポンスの追い越しを捨てるために使う */
   const queryRequestId = useRef(0);
   /** 直前に投げたクエリ。同じ内容なら投げ直さない */
@@ -1888,6 +1901,9 @@ export default function QueryGeneratorPage({
             totalCount: parseTotalCount(result.data.totalCount),
             source,
           });
+          // 結果を入れ替えたのに深い位置のままだと、別の条件の途中を
+          // 見ていることになるので先頭に戻す
+          previewScrollRef.current?.scrollTo({ top: 0 });
         } else {
           setQueryResult({
             records: [],
@@ -1944,6 +1960,63 @@ export default function QueryGeneratorPage({
 
     return () => clearTimeout(timer);
   }, [previewQuery, loading, runQuery]);
+
+  /**
+   * 取得済みの続きを読み足す。
+   * プレビュー本体（runQuery）が置き換えなのに対し、こちらは末尾に追加する。
+   * 読んでいる最中に条件が変わったら、その結果は捨てる。
+   */
+  const loadMorePreview = useCallback(async () => {
+    if (previewLoading || loadingMore) return;
+
+    const offsetForNext = queryResult?.records.length ?? 0;
+    const requestId = queryRequestId.current;
+    const query =
+      queryUtils.generateQuery(conditions, fields, {
+        ...queryOptions,
+        limit: PREVIEW_SIZE,
+        offset: offsetForNext,
+      }) || `limit ${PREVIEW_SIZE} offset ${offsetForNext}`;
+
+    setLoadingMore(true);
+    try {
+      const result = await window.kintoneAPI.executeQuery(
+        auth,
+        app.appId,
+        query,
+        app.spaceId,
+        { totalCount: true },
+      );
+
+      // 読んでいる間に条件が変わっていたら、続きとして足すのは誤り
+      if (requestId !== queryRequestId.current) return;
+      if (!result.success || !result.data) return;
+
+      const added = result.data.records ?? [];
+      setQueryResult((current) =>
+        current
+          ? {
+              ...current,
+              records: [...current.records, ...added],
+              totalCount:
+                parseTotalCount(result.data?.totalCount) ?? current.totalCount,
+            }
+          : current,
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [
+    previewLoading,
+    loadingMore,
+    queryResult,
+    conditions,
+    fields,
+    queryOptions,
+    auth,
+    app.appId,
+    app.spaceId,
+  ]);
 
   // 実行ボタンは、取得件数・開始位置の指定も含めた「本番のクエリ」をそのまま叩く
   const executeQuery = useCallback(async () => {
@@ -2944,7 +3017,10 @@ export default function QueryGeneratorPage({
             )}
           </div>
 
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-auto p-3">
+          <div
+            ref={previewScrollRef}
+            className="scrollbar-thin min-h-0 flex-1 overflow-auto p-3"
+          >
             {queryResult && (
               <>
                   {queryResult.error ? (
@@ -3011,10 +3087,11 @@ export default function QueryGeneratorPage({
                       })()}
                     </div>
                   ) : (
-                    <div
-                      className="scrollbar-thin overflow-x-auto rounded-md border"
-                      style={{ direction: "ltr" }}
-                    >
+                    <>
+                      <div
+                        className="scrollbar-thin overflow-x-auto rounded-md border"
+                        style={{ direction: "ltr" }}
+                      >
                       {queryResult.records.length > 0 ? (
                         <table className="w-full min-w-max border-collapse text-sm">
                           <thead>
@@ -3066,6 +3143,27 @@ export default function QueryGeneratorPage({
                         </p>
                       )}
                     </div>
+
+                    {hasMoreRecords(queryResult) && (
+                      <div className="flex justify-center pt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={loadMorePreview}
+                          disabled={loadingMore || previewLoading}
+                        >
+                          {loadingMore ? (
+                            <>
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              読み込み中
+                            </>
+                          ) : (
+                            `さらに${PREVIEW_SIZE}件を表示`
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                    </>
                   )}
               </>
             )}
