@@ -1048,13 +1048,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
         if (!Number.isNaN(from) && from !== index) onMove(from, index);
       }}
-      className={`bg-muted/20 min-w-0 rounded-md border p-2 break-words transition-shadow ${
-        isDragOver ? "ring-primary/60 ring-2" : ""
+      className={`hover:bg-muted/40 group min-w-0 rounded-md px-1 py-1 break-words transition-colors ${
+        isDragOver ? "ring-primary/60 bg-muted/40 ring-2" : ""
       }`}
     >
-      <div className="@2xl:flex-row @2xl:flex-wrap @2xl:items-start flex flex-col gap-1.5">
+      <div className="@xl:flex-row @xl:items-center flex flex-col gap-1.5">
         {/* 左ガター: グリップ + 条件番号 / AND・OR */}
-        <div className="@2xl:w-20 @2xl:shrink-0 @2xl:self-center flex w-full items-center gap-1">
+        <div className="@xl:w-[4.5rem] @xl:shrink-0 flex w-full items-center gap-0.5">
           <span
             draggable
             onDragStart={(e) => {
@@ -1068,8 +1068,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             <GripVertical className="h-4 w-4" />
           </span>
           {index === 0 ? (
-            <span className="text-muted-foreground text-xs font-medium">
-              条件 1
+            <span className="text-muted-foreground/70 px-1 text-xs">
+              条件
             </span>
           ) : (
             <Select
@@ -1079,7 +1079,8 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               }
             >
               <SelectTrigger
-                className="h-9 w-full text-xs"
+                size="sm"
+                className="w-full text-xs"
                 aria-label="論理演算子を選択"
               >
                 <SelectValue />
@@ -1093,7 +1094,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         </div>
 
           {/* フィールド選択 */}
-          <div className="@2xl:w-56 @2xl:flex-none min-w-0 flex-1">
+          <div className="@xl:basis-52 min-w-0 flex-1">
             <Popover
               open={fieldComboboxOpen}
               onOpenChange={setFieldComboboxOpen}
@@ -1104,7 +1105,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
                   role="combobox"
                   aria-expanded={fieldComboboxOpen}
                   aria-label="フィールドを選択"
-                  className="w-full justify-between"
+                  className="h-8 w-full justify-between font-normal"
                 >
                   <span className="truncate">
                     {condition.field
@@ -1165,7 +1166,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
 
           {/* 演算子選択 */}
-          <div className="@2xl:w-40 @2xl:flex-none min-w-0 flex-1">
+          <div className="@xl:basis-36 @xl:grow-0 min-w-0 flex-1">
             <Select
               value={condition.operator}
               onValueChange={(value) =>
@@ -1173,6 +1174,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
               }
             >
               <SelectTrigger
+                size="sm"
                 className="w-full"
                 aria-label="演算子を選択"
                 title={getOperatorHint(condition.operator) ?? undefined}
@@ -1196,7 +1198,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
           </div>
 
         {/* 値入力エリア */}
-        <div className="@2xl:min-w-[12rem] min-w-0 flex-1">
+        <div className="@xl:basis-64 min-w-0 flex-1">
         {!isNullOperator ? (
           <div className="space-y-2">
             {isInOperator ? (
@@ -1642,13 +1644,13 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
         )}
         </div>
 
-        {/* 行アクション */}
-        <div className="@2xl:self-center flex shrink-0 items-center gap-1 self-end">
+        {/* 行アクション: 行の一部なので普段は控えめに、ホバーで前に出す */}
+        <div className="flex shrink-0 items-center gap-0.5 self-end opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 @xl:self-center">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onDuplicate(index)}
-            className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+            className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
             title="この条件を複製"
             aria-label="条件を複製"
           >
@@ -1658,7 +1660,7 @@ const ConditionInput: React.FC<ConditionInputProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => onRemove(index)}
-            className="text-destructive hover:text-destructive h-8 w-8 p-0"
+            className="text-destructive hover:text-destructive h-7 w-7 p-0"
             disabled={!canRemove}
             aria-label="条件を削除"
           >

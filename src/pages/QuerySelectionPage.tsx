@@ -220,7 +220,7 @@ export default function QuerySelectionPage({
 
   // Step 2: Header with QueryGeneratorPage style
   return (
-    <div className="bg-background flex min-h-full flex-col">
+    <div className="bg-background flex h-full flex-col overflow-hidden">
       {/* Header */}
       <AppHeader
         onBack={onBack}
@@ -239,7 +239,7 @@ export default function QuerySelectionPage({
       />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
           {/* Controls */}

@@ -2,7 +2,9 @@ import React from "react";
 import { ArrowLeft, ChevronRight, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ToggleTheme from "@/components/ToggleTheme";
-import { windowControlsInsetStyle } from "@/components/template/WindowControls";
+import WindowControls, {
+  titleBarInsetStyle,
+} from "@/components/template/WindowControls";
 
 /**
  * 全画面で共通のヘッダー。OS標準のタイトルバーを廃止しているので、
@@ -44,7 +46,7 @@ export default function AppHeader({
   return (
     <header
       className="draglayer border-border bg-card flex h-10 shrink-0 items-center gap-1 border-b pl-1"
-      style={windowControlsInsetStyle()}
+      style={titleBarInsetStyle()}
     >
       {onBack ? (
         <Button
@@ -108,17 +110,20 @@ export default function AppHeader({
       {meta}
       {actions}
 
-      <div className="ml-auto flex shrink-0 items-center gap-0.5 pr-1">
-        <ToggleTheme variant="ghost" className="h-7 w-7" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onLogout}
-          className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
-        >
-          <LogOut className="mr-1 h-3.5 w-3.5" />
-          ログアウト
-        </Button>
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 self-stretch pl-1">
+        <div className="flex items-center gap-0.5 self-center">
+          <ToggleTheme variant="ghost" className="h-7 w-7" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onLogout}
+            className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
+          >
+            <LogOut className="mr-1 h-3.5 w-3.5" />
+            ログアウト
+          </Button>
+        </div>
+        <WindowControls />
       </div>
     </header>
   );

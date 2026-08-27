@@ -3,7 +3,6 @@ import LoginPage from "@/pages/LoginPage";
 import AppManagementPage from "@/pages/AppManagementPage";
 import QueryGeneratorPage from "@/pages/QueryGeneratorPage";
 import SimpleFooter from "@/components/template/SimpleFooter";
-import WindowControls from "@/components/template/WindowControls";
 import { KintoneAuth, KintoneApp } from "@/types/kintone";
 import { syncThemeWithLocal } from "@/helpers/theme_helpers";
 import { ToastProvider } from "@/components/ui/toast";
@@ -77,11 +76,11 @@ function App() {
 
   return (
     <ToastProvider>
-      {/* ウィンドウ高に収め、スクロールは本体側だけで行う。
-          タイトルバーの帯は持たず、各画面のヘッダーがドラッグ領域を兼ねる */}
+      {/* ウィンドウ高に収める。スクロールは各画面が自分のヘッダーより下だけで行う
+          （ここでスクロールさせると、スクロールバーがヘッダーまで伸びて
+            ウィンドウ操作ボタンのクリックを奪ってしまう） */}
       <div className="flex h-screen flex-col overflow-hidden">
-        <WindowControls />
-        <div className="scrollbar-thin relative min-h-0 flex-1 overflow-auto pb-8">
+        <div className="relative min-h-0 flex-1 overflow-hidden pb-8">
           {renderContent()}
         </div>
         <SimpleFooter />

@@ -2,16 +2,18 @@ import React, { useEffect, useState } from "react";
 
 /**
  * OS標準のタイトルバーを廃止（BrowserWindowのtitleBarStyle:"hidden"）した代わりの
- * ウィンドウ操作ボタン。独立した帯を持たず、各画面のヘッダーの右上に重ねて描画する
- * ことで、アプリのUIと地続きに見せる。
+ * ウィンドウ操作ボタン。ヘッダーの右端に、テーマ切替やログアウトと同じ並びの
+ * 一要素として置く。
+ *
+ * 以前は画面右上に fixed で重ねていたが、その真下にスクロール領域の
+ * スクロールバーが入るとクリックがスクロールバー側に取られ、
+ * 閉じるボタンが押せなくなっていた。流し込みの要素にすればその衝突は起きない。
  *
  * - ヘッダー側は `draglayer` を付けてバー全体をドラッグ領域にする
  * - ボタンはドラッグ対象から外す（.no-drag）
  * - macOSは信号機ボタンがOS側に残るので、独自ボタンは描画しない
  */
 
-/** ボタン3つ分の幅。ヘッダー側で右端に空ける余白と一致させる */
-export const WINDOW_CONTROLS_WIDTH = 138;
 /** macOSの信号機ボタンを避けるために左端へ空ける余白 */
 export const TRAFFIC_LIGHTS_WIDTH = 78;
 
@@ -111,13 +113,11 @@ function WindowButton({
 
 /**
  * タイトルバーを兼ねるヘッダーに当てる余白。
- * ウィンドウ操作ボタン（macOSでは信号機ボタン）とヘッダー自身のボタンが
- * 重ならないよう、ボタンが乗る側に幅を空ける。
+ * Windows/Linuxのボタンはヘッダーの中に並ぶので余白は要らないが、
+ * macOSの信号機ボタンはOSが左上に描くため、その分だけ左を空ける。
  */
-export function windowControlsInsetStyle(): React.CSSProperties {
-  return isMacOS()
-    ? { paddingLeft: TRAFFIC_LIGHTS_WIDTH }
-    : { paddingRight: WINDOW_CONTROLS_WIDTH };
+export function titleBarInsetStyle(): React.CSSProperties {
+  return isMacOS() ? { paddingLeft: TRAFFIC_LIGHTS_WIDTH } : {};
 }
 
 export default function WindowControls() {
@@ -144,7 +144,7 @@ export default function WindowControls() {
   if (isMacOS()) return null;
 
   return (
-    <div className="fixed top-0 right-0 z-[70] flex">
+    <div className="ml-1 flex self-stretch">
       <WindowButton
         label="最小化"
         onClick={() => window.electronWindow?.minimize()}

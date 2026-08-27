@@ -403,7 +403,7 @@ export default function AppManagementPage({
   console.log("Rendering default AppManagementPage");
 
   return (
-    <div className="bg-background min-h-full">
+    <div className="bg-background flex h-full flex-col overflow-hidden">
       {/* ヘッダー */}
       <AppHeader
         breadcrumb={[{ label: "アプリ一覧" }]}
@@ -418,7 +418,8 @@ export default function AppManagementPage({
         onLogout={onLogout}
       />
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* エラー表示 */}
         {error && (
           <div
@@ -924,6 +925,7 @@ export default function AppManagementPage({
             )}
           </>
         )}
+        </div>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import React from "react";
 import WindowControls, {
-  windowControlsInsetStyle,
+  titleBarInsetStyle,
 } from "@/components/template/WindowControls";
 
 type MaximizeListener = (isMaximized: boolean) => void;
@@ -94,10 +94,13 @@ describe("WindowControls", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  test("ヘッダーの余白はボタンが乗る側に空ける", () => {
-    expect(windowControlsInsetStyle()).toEqual({ paddingRight: 138 });
+  test("Windowsではボタンがヘッダーの中に並ぶので余白は要らない", () => {
+    expect(titleBarInsetStyle()).toEqual({});
+  });
 
+  test("macOSは信号機ボタンのぶんだけ左を空ける", () => {
     stubElectronWindow({ platform: "darwin" });
-    expect(windowControlsInsetStyle()).toEqual({ paddingLeft: 78 });
+
+    expect(titleBarInsetStyle()).toEqual({ paddingLeft: 78 });
   });
 });
