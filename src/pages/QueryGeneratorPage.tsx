@@ -157,10 +157,23 @@ function describePreview(result: QueryResult): string {
   return `条件に一致 ${total.toLocaleString()}件`;
 }
 
-/** 取得済みの先に、まだ読めるレコードが残っているか */
-function hasMoreRecords(result: QueryResult | null): boolean {
+/**
+ * 条件が1つもないとgenerateQueryは空文字を返すので、
+ * 取得範囲（limit / offset）だけのクエリを組み立てる。
+ */
+function buildRangeOnlyQuery(size: number, skip?: number): string {
+  return skip ? `limit ${size} offset ${skip}` : `limit ${size}`;
+}
+
+/**
+ * 取得済みの先に、まだ読めるレコードが残っているか。
+ * skipの分だけ手前を飛ばして読んでいるので、総件数との比較にも足す。
+ */
+function hasMoreRecords(result: QueryResult | null, skip = 0): boolean {
   if (!result || result.error) return false;
-  if (result.totalCount != null) return result.records.length < result.totalCount;
+  if (result.totalCount != null) {
+    return skip + result.records.length < result.totalCount;
+  }
   // totalCountが取れない場合は、ちょうど1ページ分返ってきたら続きがあるとみなす
   return (
     result.records.length > 0 && result.records.length % PREVIEW_SIZE === 0
@@ -1918,18 +1931,18 @@ export default function QueryGeneratorPage({
   );
 
   /**
-   * プレビュー用のクエリ。条件と並び順はそのまま使い、取得件数と開始位置だけ
-   * プレビュー用に固定する（貼り付け用に生成するクエリ文字列とは別物）。
-   * 条件が1つもないときは全レコードの先頭を出す。
+   * プレビュー用のクエリ。書いているクエリがそのまま返すものを見せたいので、
+   * 並び順・件数・スキップはすべて反映する。
+   * 件数が未指定のときだけ、全件を引かないようプレビュー用の既定値で頭を止める。
    */
   const previewQuery = useMemo(() => {
+    const size = limit ?? PREVIEW_SIZE;
     const built = queryUtils.generateQuery(conditions, fields, {
       ...queryOptions,
-      limit: PREVIEW_SIZE,
-      offset: undefined,
+      limit: size,
     });
-    return built || `limit ${PREVIEW_SIZE}`;
-  }, [conditions, fields, queryOptions]);
+    return built || buildRangeOnlyQuery(size, offset);
+  }, [conditions, fields, queryOptions, limit, offset]);
 
   // 条件を編集するたびにプレビューを取り直す。
   // 値の入力途中に連打しないよう待ってから投げ、内容が変わらなければ投げない。
@@ -1950,18 +1963,21 @@ export default function QueryGeneratorPage({
    * 取得済みの続きを読み足す。
    * プレビュー本体（runQuery）が置き換えなのに対し、こちらは末尾に追加する。
    * 読んでいる最中に条件が変わったら、その結果は捨てる。
+   * 件数を指定しているときは「その件数だけ返るクエリ」を見せている場面なので、
+   * 呼び出し側（canLoadMore）で読み足し自体を出さない。
    */
   const loadMorePreview = useCallback(async () => {
     if (previewLoading || loadingMore) return;
 
-    const offsetForNext = queryResult?.records.length ?? 0;
+    // スキップ指定があるぶんだけ手前を飛ばして読んでいる
+    const offsetForNext = (offset ?? 0) + (queryResult?.records.length ?? 0);
     const requestId = queryRequestId.current;
     const query =
       queryUtils.generateQuery(conditions, fields, {
         ...queryOptions,
         limit: PREVIEW_SIZE,
         offset: offsetForNext,
-      }) || `limit ${PREVIEW_SIZE} offset ${offsetForNext}`;
+      }) || buildRangeOnlyQuery(PREVIEW_SIZE, offsetForNext);
 
     setLoadingMore(true);
     try {
@@ -1995,6 +2011,7 @@ export default function QueryGeneratorPage({
     previewLoading,
     loadingMore,
     queryResult,
+    offset,
     conditions,
     fields,
     queryOptions,
@@ -2002,6 +2019,14 @@ export default function QueryGeneratorPage({
     app.appId,
     app.spaceId,
   ]);
+
+  /**
+   * 続きを読めるのは、件数を指定していないとき（＝どこまで見るかを
+   * プレビュー側で決めているとき）だけ。件数を指定しているなら、
+   * その件数がクエリの答えなので勝手に足さない。
+   */
+  const canLoadMore =
+    limit === undefined && hasMoreRecords(queryResult, offset ?? 0);
 
 
   // APIプレビュー表示・コピーで共用するJSONリクエストボディ
@@ -3083,7 +3108,7 @@ export default function QueryGeneratorPage({
                       )}
                     </div>
 
-                    {hasMoreRecords(queryResult) && (
+                    {canLoadMore && (
                       <div className="flex justify-center pt-3">
                         <Button
                           variant="outline"
