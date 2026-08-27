@@ -14,12 +14,15 @@ import AppDetailDialog from "@/components/AppDetailDialog";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
 import { KintoneApp, AppFilter, KintoneAuth } from "@/types/kintone";
-import { AlertCircle, Search, Star, X } from "lucide-react";
+import { AlertCircle, Pin, Search, X } from "lucide-react";
+// ピン留めの保存先は従来のブックマーク（favorites）と同じキー。
+// 呼び名を変えただけで、利用者が付けた印はそのまま引き継ぐ
 import {
   addToFavorites,
   removeFromFavorites,
   isAppFavorite,
 } from "@/utils/favorites";
+import { getRecentAppIds, recordAppOpened } from "@/utils/recent-apps";
 import { getQueryCount } from "@/hooks/useQueryGenerator";
 import { cn } from "@/utils/tailwind";
 
@@ -50,6 +53,9 @@ export default function AppManagementPage({
   const [error, setError] = useState<string>("");
   const [queryCounts, setQueryCounts] = useState<Record<string, number>>({});
   const [detailApp, setDetailApp] = useState<KintoneApp | null>(null);
+  const [recentAppIds, setRecentAppIds] = useState<string[]>(() =>
+    getRecentAppIds(),
+  );
   const [currentView, setCurrentView] = useState<
     "apps" | "querySelection" | "queryGenerator"
   >("apps");
@@ -59,7 +65,7 @@ export default function AppManagementPage({
   );
   const [filter, setFilter] = useState<AppFilter>({
     searchTerm: "",
-    showFavoritesOnly: false,
+    showPinnedOnly: false,
   });
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -96,7 +102,7 @@ export default function AppManagementPage({
         setApps(
           allApps.map((app) => ({
             ...app,
-            isFavorite: isAppFavorite(app.appId),
+            isPinned: isAppFavorite(app.appId),
           })),
         );
       } catch (err) {
@@ -156,11 +162,11 @@ export default function AppManagementPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const toggleFavorite = (appId: string) => {
+  const togglePin = (appId: string) => {
     const app = apps.find((a) => a.appId === appId);
     if (!app) return;
 
-    if (app.isFavorite) {
+    if (app.isPinned) {
       removeFromFavorites(appId);
     } else {
       addToFavorites(appId);
@@ -168,7 +174,7 @@ export default function AppManagementPage({
 
     setApps((prevApps) =>
       prevApps.map((prev) =>
-        prev.appId === appId ? { ...prev, isFavorite: !prev.isFavorite } : prev,
+        prev.appId === appId ? { ...prev, isPinned: !prev.isPinned } : prev,
       ),
     );
   };
@@ -177,7 +183,7 @@ export default function AppManagementPage({
     const term = filter.searchTerm.trim().toLowerCase();
 
     return apps.filter((app) => {
-      if (filter.showFavoritesOnly && !app.isFavorite) return false;
+      if (filter.showPinnedOnly && !app.isPinned) return false;
       if (!term) return true;
 
       // 名前で当たらないときの受け皿として、ID・コード・説明・担当者も見る
@@ -194,10 +200,12 @@ export default function AppManagementPage({
     });
   }, [apps, filter]);
 
-  const isFiltered = !!filter.searchTerm.trim() || filter.showFavoritesOnly;
+  const isFiltered = !!filter.searchTerm.trim() || filter.showPinnedOnly;
 
   // Navigation handlers
   const handleAppSelect = (app: KintoneApp) => {
+    // 開いた記録が「最近使った」の並びになる
+    setRecentAppIds(recordAppOpened(app.appId));
     setDetailApp(null);
     setSelectedApp(app);
     setCurrentView("querySelection");
@@ -308,22 +316,22 @@ export default function AppManagementPage({
           onClick={() =>
             setFilter((prev) => ({
               ...prev,
-              showFavoritesOnly: !prev.showFavoritesOnly,
+              showPinnedOnly: !prev.showPinnedOnly,
             }))
           }
-          aria-pressed={filter.showFavoritesOnly}
+          aria-pressed={filter.showPinnedOnly}
           className={cn(
             "h-8",
-            filter.showFavoritesOnly && "bg-accent text-accent-foreground",
+            filter.showPinnedOnly && "bg-accent text-accent-foreground",
           )}
         >
-          <Star
+          <Pin
             className={cn(
               "h-3.5 w-3.5",
-              filter.showFavoritesOnly && "fill-yellow-400 text-yellow-400",
+              filter.showPinnedOnly && "fill-primary text-primary",
             )}
           />
-          ブックマーク
+          ピン留め
         </Button>
 
         <span className="text-muted-foreground ml-auto shrink-0 text-xs tabular-nums">
@@ -368,15 +376,16 @@ export default function AppManagementPage({
               <AppTable
                 apps={filteredApps}
                 queryCounts={queryCounts}
+                recentAppIds={recentAppIds}
                 onSelectApp={handleAppSelect}
-                onToggleFavorite={toggleFavorite}
+                onTogglePin={togglePin}
                 onShowDetail={setDetailApp}
               />
             ) : (
               <EmptyState
                 isFiltered={isFiltered}
                 onClear={() =>
-                  setFilter({ searchTerm: "", showFavoritesOnly: false })
+                  setFilter({ searchTerm: "", showPinnedOnly: false })
                 }
               />
             )}
@@ -440,7 +449,7 @@ function EmptyState({
         </p>
         <p className="text-muted-foreground text-xs">
           {isFiltered
-            ? "検索語を短くするか、ブックマークの絞り込みを外してください。"
+            ? "検索語を短くするか、ピン留めの絞り込みを外してください。"
             : "kintoneでアプリを作成すると、ここに表示されます。"}
         </p>
       </div>

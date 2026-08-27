@@ -12,17 +12,14 @@ const apps: KintoneApp[] = [
     code: "ORDER",
     modifiedAt: "2026-08-20T10:00:00Z",
   },
-  {
-    appId: "1",
-    name: "案件管理",
-    modifiedAt: "2026-08-26T10:00:00Z",
-  },
+  { appId: "1", name: "案件管理", modifiedAt: "2026-08-26T10:00:00Z" },
   {
     appId: "7",
     name: "顧客マスタ",
-    isFavorite: true,
+    isPinned: true,
     modifiedAt: "2020-01-01T10:00:00Z",
   },
+  { appId: "5", name: "在庫管理", modifiedAt: "2026-08-01T10:00:00Z" },
 ];
 
 function renderTable(
@@ -31,8 +28,9 @@ function renderTable(
   const props = {
     apps,
     queryCounts: { "3": 2 },
+    recentAppIds: [],
     onSelectApp: vi.fn(),
-    onToggleFavorite: vi.fn(),
+    onTogglePin: vi.fn(),
     onShowDetail: vi.fn(),
     ...overrides,
   };
@@ -40,34 +38,74 @@ function renderTable(
   return props;
 }
 
+/** アプリの行だけを拾う（セクション見出しの行を除く） */
+function appRows(): HTMLElement[] {
+  return screen
+    .getAllByRole("row")
+    .filter((row) => row.hasAttribute("tabindex"));
+}
+
 /** 行の並びをアプリ名で取り出す */
 function rowNames(): string[] {
-  const [, ...rows] = screen.getAllByRole("row");
-  return rows.map(
+  return appRows().map(
     (row) => within(row).getAllByRole("cell")[1].textContent ?? "",
   );
 }
 
 describe("AppTable", () => {
-  it("ブックマークを先頭に、既定では更新の新しい順に並べる", () => {
+  it("ピン留めを先頭のセクションに、残りは更新の新しい順に並べる", () => {
     renderTable();
 
     expect(rowNames()).toEqual([
       expect.stringContaining("顧客マスタ"),
       expect.stringContaining("案件管理"),
       expect.stringContaining("受注管理"),
+      expect.stringContaining("在庫管理"),
     ]);
   });
 
-  it("見出しを押すと並べ替わり、ブックマークは先頭のまま", async () => {
+  it("最近使ったアプリを開いた順のセクションにまとめる", () => {
+    renderTable({ recentAppIds: ["5", "1"] });
+
+    expect(screen.getByText("最近使った")).toBeInTheDocument();
+    expect(rowNames()).toEqual([
+      expect.stringContaining("顧客マスタ"),
+      expect.stringContaining("在庫管理"),
+      expect.stringContaining("案件管理"),
+      expect.stringContaining("受注管理"),
+    ]);
+  });
+
+  it("ピン留め済みは最近使ったに重複させない", () => {
+    renderTable({ recentAppIds: ["7", "1"] });
+
+    const recentSection = screen.getByText("最近使った").closest("tbody");
+    expect(
+      within(recentSection as HTMLElement).getAllByRole("row"),
+    ).toHaveLength(
+      2, // 見出しの行と、案件管理の行だけ
+    );
+  });
+
+  it("セクションが1つしかないときは見出しを出さない", () => {
+    renderTable({
+      apps: apps.filter((app) => !app.isPinned),
+      recentAppIds: [],
+    });
+
+    expect(screen.queryByText("すべて")).not.toBeInTheDocument();
+  });
+
+  it("見出しを押すと並べ替わり、ピン留めは先頭のまま", async () => {
     renderTable();
 
-    // 名前順（昇順）では 受注管理 < 案件管理。既定の更新日順とは並びが変わる
+    // 名前順（昇順）では 受注 < 在庫 < 案件
     await userEvent.click(screen.getByRole("button", { name: /アプリ名/ }));
 
     expect(rowNames()).toEqual([
       expect.stringContaining("顧客マスタ"),
       expect.stringContaining("受注管理"),
+      expect.stringContaining("在庫管理"),
       expect.stringContaining("案件管理"),
     ]);
   });
@@ -84,9 +122,8 @@ describe("AppTable", () => {
 
   it("↓で次の行へ移り、Enterで開く", async () => {
     const { onSelectApp } = renderTable();
-    const [, firstRow] = screen.getAllByRole("row");
 
-    firstRow.focus();
+    appRows()[0].focus();
     await userEvent.keyboard("{ArrowDown}{Enter}");
 
     expect(onSelectApp).toHaveBeenCalledWith(
@@ -94,11 +131,22 @@ describe("AppTable", () => {
     );
   });
 
+  it("↓はセクションをまたいで移動する", async () => {
+    const { onSelectApp } = renderTable({ recentAppIds: ["5"] });
+
+    // ピン留め（顧客マスタ）→ 最近使った（在庫管理）
+    appRows()[0].focus();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+
+    expect(onSelectApp).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "5" }),
+    );
+  });
+
   it("Spaceで詳細を開く", async () => {
     const { onShowDetail } = renderTable();
-    const [, firstRow] = screen.getAllByRole("row");
 
-    firstRow.focus();
+    appRows()[0].focus();
     await userEvent.keyboard(" ");
 
     expect(onShowDetail).toHaveBeenCalledWith(
@@ -106,24 +154,24 @@ describe("AppTable", () => {
     );
   });
 
-  it("★をキーボードで押しても行の操作にはならない", async () => {
-    const { onSelectApp, onToggleFavorite } = renderTable();
+  it("ピンをキーボードで押しても行の操作にはならない", async () => {
+    const { onSelectApp, onTogglePin } = renderTable();
 
-    screen.getByRole("button", { name: "ブックマークを外す" }).focus();
+    screen.getByRole("button", { name: "ピン留めを外す" }).focus();
     await userEvent.keyboard("{Enter}");
 
-    expect(onToggleFavorite).toHaveBeenCalledWith("7");
+    expect(onTogglePin).toHaveBeenCalledWith("7");
     expect(onSelectApp).not.toHaveBeenCalled();
   });
 
-  it("★は行の選択を巻き込まない", async () => {
-    const { onSelectApp, onToggleFavorite } = renderTable();
+  it("ピンは行の選択を巻き込まない", async () => {
+    const { onSelectApp, onTogglePin } = renderTable();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "ブックマークを外す" }),
+      screen.getByRole("button", { name: "ピン留めを外す" }),
     );
 
-    expect(onToggleFavorite).toHaveBeenCalledWith("7");
+    expect(onTogglePin).toHaveBeenCalledWith("7");
     expect(onSelectApp).not.toHaveBeenCalled();
   });
 });

@@ -7,12 +7,12 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import {
-  ChevronRight,
-  ChevronsUpDown,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
+  ChevronsUpDown,
   Info,
-  Star,
+  Pin,
 } from "lucide-react";
 import { KintoneApp } from "@/types/kintone";
 import { cleanAndTruncateText } from "@/utils/text";
@@ -30,8 +30,9 @@ import { cn } from "@/utils/tailwind";
  * 作成者・スペース・作成日時など選ぶ判断に使わない情報は列に出さず、
  * 詳細ダイアログに寄せている。
  *
- * ブックマークは並び順に関係なく常に先頭へ集める。★を付ける動機が
- * 「毎回ここから開く」である以上、探さずに済むほうが正しい。
+ * 上には「ピン留め」と「最近使った」を置く。前者は利用者が明示した宣言、
+ * 後者は実際に開いた記録から自動で決まる並び。数百アプリある環境では、
+ * 手で印を付けて回らなくても常用アプリが上に来るほうが早い。
  */
 
 type SortField = "name" | "appId" | "queryCount" | "modifiedAt";
@@ -41,10 +42,15 @@ interface AppTableProps {
   apps: KintoneApp[];
   /** appId -> 保存済みクエリ数 */
   queryCounts: Record<string, number>;
+  /** 新しい順のappId。「最近使った」の並びに使う */
+  recentAppIds: string[];
   onSelectApp: (app: KintoneApp) => void;
-  onToggleFavorite: (appId: string) => void;
+  onTogglePin: (appId: string) => void;
   onShowDetail: (app: KintoneApp) => void;
 }
+
+/** 「最近使った」に出す件数。多いと「すべて」との区別が薄れる */
+const RECENT_LIMIT = 5;
 
 /**
  * 幅は列ごとに固定する（table-fixed）。説明のように長さが読めない値があると、
@@ -69,15 +75,16 @@ const COLUMNS: {
 export default function AppTable({
   apps,
   queryCounts,
+  recentAppIds,
   onSelectApp,
-  onToggleFavorite,
+  onTogglePin,
   onShowDetail,
 }: AppTableProps) {
   const [sortField, setSortField] = useState<SortField>("modifiedAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
-  const sortedApps = useMemo(() => {
+  const sections = useMemo(() => {
     const direction = sortOrder === "asc" ? 1 : -1;
 
     const value = (app: KintoneApp): string | number => {
@@ -93,18 +100,38 @@ export default function AppTable({
       }
     };
 
-    return [...apps].sort((a, b) => {
-      // ブックマークは並び順より優先して先頭へ
-      if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1;
-
+    const bySort = (a: KintoneApp, b: KintoneApp) => {
       const aValue = value(a);
       const bValue = value(b);
       if (aValue < bValue) return -direction;
       if (aValue > bValue) return direction;
       // 同着はIDで固定して、再描画のたびに行が入れ替わらないようにする
       return Number(a.appId) - Number(b.appId);
-    });
-  }, [apps, queryCounts, sortField, sortOrder]);
+    };
+
+    const pinned = apps.filter((app) => app.isPinned).sort(bySort);
+
+    // 「最近使った」だけは並べ替えに従わない。新しい順であること自体が中身なので
+    const recent = recentAppIds
+      .map((appId) => apps.find((app) => app.appId === appId && !app.isPinned))
+      .filter((app): app is KintoneApp => !!app)
+      .slice(0, RECENT_LIMIT);
+
+    const shown = new Set([...pinned, ...recent].map((app) => app.appId));
+    const rest = apps.filter((app) => !shown.has(app.appId)).sort(bySort);
+
+    return [
+      { key: "pinned", label: "ピン留め", apps: pinned },
+      { key: "recent", label: "最近使った", apps: recent },
+      { key: "rest", label: "すべて", apps: rest },
+    ].filter((section) => section.apps.length > 0);
+  }, [apps, queryCounts, recentAppIds, sortField, sortOrder]);
+
+  /** キー操作のために、セクションをまたいだ通し番号で行を並べたもの */
+  const flatApps = useMemo(
+    () => sections.flatMap((section) => section.apps),
+    [sections],
+  );
 
   const handleSort = (field: SortField) => {
     if (field === sortField) {
@@ -121,12 +148,12 @@ export default function AppTable({
     event: React.KeyboardEvent<HTMLTableRowElement>,
     index: number,
   ) => {
-    // 行の中のボタン（★や詳細）を操作しているときは行のキー操作を出さない
+    // 行の中のボタン（ピンや詳細）を操作しているときは行のキー操作を出さない
     if (event.target !== event.currentTarget) return;
 
     const move = (next: number) => {
       event.preventDefault();
-      const clamped = Math.max(0, Math.min(next, sortedApps.length - 1));
+      const clamped = Math.max(0, Math.min(next, flatApps.length - 1));
       rowRefs.current[clamped]?.focus();
     };
 
@@ -138,25 +165,29 @@ export default function AppTable({
       case "Home":
         return move(0);
       case "End":
-        return move(sortedApps.length - 1);
+        return move(flatApps.length - 1);
       case "Enter":
         event.preventDefault();
-        return onSelectApp(sortedApps[index]);
+        return onSelectApp(flatApps[index]);
       case " ":
         event.preventDefault();
-        return onShowDetail(sortedApps[index]);
+        return onShowDetail(flatApps[index]);
     }
   };
 
-  if (sortedApps.length === 0) {
+  if (flatApps.length === 0) {
     return null;
   }
+
+  // 見出しは区切りとして意味があるときだけ出す
+  const showSectionLabels = sections.length > 1;
+  let rowIndex = -1;
 
   return (
     <table className="w-full table-fixed text-sm">
       <thead className="bg-card sticky top-0 z-10">
         <tr className="border-border border-b">
-          <TableHead className="w-9" aria-label="ブックマーク" />
+          <TableHead className="w-9" aria-label="ピン留め" />
           {COLUMNS.map((column) => {
             const field = column.field;
 
@@ -198,118 +229,137 @@ export default function AppTable({
         </tr>
       </thead>
 
-      <TableBody>
-        {sortedApps.map((app, index) => {
-          const queryCount = queryCounts[app.appId] || 0;
-          const relative = formatRelativeDate(app.modifiedAt);
-
-          return (
-            <TableRow
-              key={app.appId}
-              ref={(element) => {
-                rowRefs.current[index] = element;
-              }}
-              tabIndex={0}
-              onClick={() => onSelectApp(app)}
-              onKeyDown={(event) => handleKeyDown(event, index)}
-              className="focus-visible:bg-muted/60 focus-visible:ring-ring/60 group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
-            >
-              <TableCell className="px-1 text-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onToggleFavorite(app.appId);
-                  }}
-                  title={
-                    app.isFavorite ? "ブックマークを外す" : "ブックマークする"
-                  }
-                  aria-pressed={!!app.isFavorite}
-                >
-                  <Star
-                    className={cn(
-                      "h-3.5 w-3.5",
-                      app.isFavorite
-                        ? "fill-yellow-400 text-yellow-400"
-                        : "text-muted-foreground/40 group-hover:text-muted-foreground",
-                    )}
-                  />
-                </Button>
-              </TableCell>
-
-              {/* 1行1アプリ。名前もコードも説明も、はみ出す分は列の幅で切る */}
-              <TableCell>
-                <div className="flex items-baseline gap-2">
-                  <span className="truncate font-medium" title={app.name}>
-                    {app.name}
-                  </span>
-                  {app.code && (
-                    <span className="text-muted-foreground shrink-0 font-mono text-xs">
-                      {app.code}
-                    </span>
-                  )}
-                </div>
-              </TableCell>
-
-              <TableCell className="hidden xl:table-cell">
-                {app.description ? (
-                  <div
-                    className="text-muted-foreground truncate text-xs"
-                    title={cleanAndTruncateText(app.description, 300)}
-                  >
-                    {cleanAndTruncateText(app.description, 120)}
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground/30 text-xs">-</span>
-                )}
-              </TableCell>
-
-              <TableCell className="text-muted-foreground font-mono text-xs tabular-nums">
-                {app.appId}
-              </TableCell>
-
-              <TableCell className="text-right tabular-nums">
-                {queryCount > 0 ? (
-                  <span className="text-foreground">{queryCount}</span>
-                ) : (
-                  <span className="text-muted-foreground/40">-</span>
-                )}
-              </TableCell>
-
-              <TableCell
-                className="text-muted-foreground text-xs whitespace-nowrap"
-                title={formatAbsoluteDateTime(app.modifiedAt) || undefined}
+      {sections.map((section) => (
+        <TableBody key={section.key}>
+          {showSectionLabels && (
+            <tr>
+              <td
+                colSpan={COLUMNS.length + 2}
+                className="text-muted-foreground bg-muted/30 border-border border-b px-3 py-1 text-xs"
               >
-                {relative || "-"}
-              </TableCell>
+                {section.label}
+                <span className="ml-1.5 opacity-60">{section.apps.length}</span>
+              </td>
+            </tr>
+          )}
 
-              <TableCell className="pr-2 text-right">
-                <div className="flex items-center justify-end">
+          {section.apps.map((app) => {
+            const queryCount = queryCounts[app.appId] || 0;
+            const relative = formatRelativeDate(app.modifiedAt);
+            rowIndex += 1;
+            const index = rowIndex;
+
+            return (
+              <TableRow
+                key={app.appId}
+                ref={(element) => {
+                  rowRefs.current[index] = element;
+                }}
+                tabIndex={0}
+                onClick={() => onSelectApp(app)}
+                onKeyDown={(event) => handleKeyDown(event, index)}
+                className="focus-visible:bg-muted/60 focus-visible:ring-ring/60 group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
+              >
+                <TableCell className="px-1 text-center">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                    className="h-7 w-7"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onShowDetail(app);
+                      onTogglePin(app.appId);
                     }}
-                    title="詳細（レコード件数を取得）"
-                    aria-label={`${app.name} の詳細`}
+                    title={
+                      app.isPinned ? "ピン留めを外す" : "ピン留めして上に固定"
+                    }
+                    aria-pressed={!!app.isPinned}
+                    aria-label={
+                      app.isPinned ? "ピン留めを外す" : "ピン留めして上に固定"
+                    }
                   >
-                    <Info className="h-3.5 w-3.5" />
+                    <Pin
+                      className={cn(
+                        "h-3.5 w-3.5",
+                        app.isPinned
+                          ? "fill-primary text-primary"
+                          : "text-muted-foreground/0 group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70",
+                      )}
+                    />
                   </Button>
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="text-muted-foreground/30 group-hover:text-muted-foreground h-4 w-4 shrink-0 transition-colors"
-                  />
-                </div>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
+                </TableCell>
+
+                {/* 1行1アプリ。名前もコードも説明も、はみ出す分は列の幅で切る */}
+                <TableCell>
+                  <div className="flex items-baseline gap-2">
+                    <span className="truncate font-medium" title={app.name}>
+                      {app.name}
+                    </span>
+                    {app.code && (
+                      <span className="text-muted-foreground shrink-0 font-mono text-xs">
+                        {app.code}
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+
+                <TableCell className="hidden xl:table-cell">
+                  {app.description ? (
+                    <div
+                      className="text-muted-foreground truncate text-xs"
+                      title={cleanAndTruncateText(app.description, 300)}
+                    >
+                      {cleanAndTruncateText(app.description, 120)}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground/30 text-xs">-</span>
+                  )}
+                </TableCell>
+
+                <TableCell className="text-muted-foreground font-mono text-xs tabular-nums">
+                  {app.appId}
+                </TableCell>
+
+                <TableCell className="text-right tabular-nums">
+                  {queryCount > 0 ? (
+                    <span className="text-foreground">{queryCount}</span>
+                  ) : (
+                    <span className="text-muted-foreground/40">-</span>
+                  )}
+                </TableCell>
+
+                <TableCell
+                  className="text-muted-foreground text-xs whitespace-nowrap"
+                  title={formatAbsoluteDateTime(app.modifiedAt) || undefined}
+                >
+                  {relative || "-"}
+                </TableCell>
+
+                <TableCell className="pr-2 text-right">
+                  <div className="flex items-center justify-end">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onShowDetail(app);
+                      }}
+                      title="詳細（レコード件数を取得）"
+                      aria-label={`${app.name} の詳細`}
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </Button>
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="text-muted-foreground/30 group-hover:text-muted-foreground h-4 w-4 shrink-0 transition-colors"
+                    />
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      ))}
     </table>
   );
 }

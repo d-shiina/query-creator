@@ -13,7 +13,8 @@ export interface KintoneApp {
   description?: string;
   spaceId?: string | null;
   threadId?: string | null;
-  isFavorite?: boolean;
+  /** 一覧の先頭に固定するか。保存先は従来のブックマーク（favorites）と同じ */
+  isPinned?: boolean;
   createdAt?: string;
   updatedAt?: string;
   modifiedAt?: string;
@@ -99,7 +100,7 @@ export interface KintoneQuery {
 export interface AppFilter {
   /** アプリ名・ID・コード・担当者をまとめて見る絞り込み語 */
   searchTerm: string;
-  showFavoritesOnly: boolean;
+  showPinnedOnly: boolean;
 }
 
 export interface KintoneUser {
