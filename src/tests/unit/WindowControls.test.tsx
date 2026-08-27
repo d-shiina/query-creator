@@ -2,7 +2,9 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import React from "react";
-import TitleBar from "@/components/template/TitleBar";
+import WindowControls, {
+  windowControlsInsetStyle,
+} from "@/components/template/WindowControls";
 
 type MaximizeListener = (isMaximized: boolean) => void;
 
@@ -39,13 +41,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("TitleBar", () => {
+describe("WindowControls", () => {
   beforeEach(() => {
     stubElectronWindow();
   });
 
   test("Windowsではウィンドウ操作ボタンを表示する", () => {
-    render(<TitleBar />);
+    render(<WindowControls />);
 
     expect(screen.getByRole("button", { name: "最小化" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "最大化" })).toBeInTheDocument();
@@ -53,7 +55,7 @@ describe("TitleBar", () => {
   });
 
   test("ボタンがドラッグ領域から除外されている", () => {
-    render(<TitleBar />);
+    render(<WindowControls />);
 
     expect(screen.getByRole("button", { name: "閉じる" })).toHaveClass(
       "no-drag",
@@ -65,7 +67,7 @@ describe("TitleBar", () => {
     ["最大化", "maximize"],
     ["閉じる", "close"],
   ] as const)("%s ボタンが %s を呼ぶ", async (label, method) => {
-    render(<TitleBar />);
+    render(<WindowControls />);
 
     await userEvent.click(screen.getByRole("button", { name: label }));
 
@@ -74,7 +76,7 @@ describe("TitleBar", () => {
 
   test("最大化されたら「元のサイズに戻す」に切り替わる", async () => {
     const { emitMaximizeChange } = stubElectronWindow();
-    render(<TitleBar />);
+    render(<WindowControls />);
 
     act(() => emitMaximizeChange(true));
 
@@ -85,10 +87,17 @@ describe("TitleBar", () => {
     });
   });
 
-  test("macOSでは信号機ボタンと重ならないよう独自ボタンを出さない", () => {
+  test("macOSでは信号機ボタンがあるので独自ボタンを出さない", () => {
     stubElectronWindow({ platform: "darwin" });
-    render(<TitleBar />);
+    const { container } = render(<WindowControls />);
 
-    expect(screen.queryByRole("button", { name: "閉じる" })).toBeNull();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  test("ヘッダーの余白はボタンが乗る側に空ける", () => {
+    expect(windowControlsInsetStyle()).toEqual({ paddingRight: 138 });
+
+    stubElectronWindow({ platform: "darwin" });
+    expect(windowControlsInsetStyle()).toEqual({ paddingLeft: 78 });
   });
 });

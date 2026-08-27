@@ -1,16 +1,23 @@
 import React, { useEffect, useState } from "react";
-import { AppLogo } from "@/components/ui/app-logo";
 
 /**
- * Windows標準のタイトルバーを廃止（BrowserWindowのtitleBarStyle:"hidden"）した代わりに
- * アプリ側で描画するタイトルバー。
+ * OS標準のタイトルバーを廃止（BrowserWindowのtitleBarStyle:"hidden"）した代わりの
+ * ウィンドウ操作ボタン。独立した帯を持たず、各画面のヘッダーの右上に重ねて描画する
+ * ことで、アプリのUIと地続きに見せる。
  *
- * - バー全体はドラッグ領域（-webkit-app-region: drag）
- * - ボタンだけはクリックできるようドラッグ対象から外す
- * - macOSでは信号機ボタンがOS側に残るので、独自ボタンは出さず左側に余白だけ確保する
+ * - ヘッダー側は `draglayer` を付けてバー全体をドラッグ領域にする
+ * - ボタンはドラッグ対象から外す（.no-drag）
+ * - macOSは信号機ボタンがOS側に残るので、独自ボタンは描画しない
  */
 
-const TITLE = "kintone API Query Creator";
+/** ボタン3つ分の幅。ヘッダー側で右端に空ける余白と一致させる */
+export const WINDOW_CONTROLS_WIDTH = 138;
+/** macOSの信号機ボタンを避けるために左端へ空ける余白 */
+export const TRAFFIC_LIGHTS_WIDTH = 78;
+
+export function isMacOS() {
+  return window.electronWindow?.platform === "darwin";
+}
 
 /** Windows 11のタイトルバーに合わせた線画アイコン（10x10のグリッド） */
 function MinimizeIcon() {
@@ -91,7 +98,7 @@ function WindowButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={`no-drag text-foreground/80 flex h-8 w-[46px] items-center justify-center transition-colors ${
+      className={`no-drag text-foreground/70 flex h-8 w-[46px] items-center justify-center transition-colors ${
         variant === "close"
           ? "hover:bg-[#c42b1c] hover:text-white active:bg-[#c42b1c]/90"
           : "hover:bg-foreground/10 active:bg-foreground/15"
@@ -102,10 +109,19 @@ function WindowButton({
   );
 }
 
-export default function TitleBar() {
+/**
+ * タイトルバーを兼ねるヘッダーに当てる余白。
+ * ウィンドウ操作ボタン（macOSでは信号機ボタン）とヘッダー自身のボタンが
+ * 重ならないよう、ボタンが乗る側に幅を空ける。
+ */
+export function windowControlsInsetStyle(): React.CSSProperties {
+  return isMacOS()
+    ? { paddingLeft: TRAFFIC_LIGHTS_WIDTH }
+    : { paddingRight: WINDOW_CONTROLS_WIDTH };
+}
+
+export default function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
-  const [isFocused, setIsFocused] = useState(true);
-  const isMac = window.electronWindow?.platform === "darwin";
 
   useEffect(() => {
     const api = window.electronWindow;
@@ -125,56 +141,29 @@ export default function TitleBar() {
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    const onFocus = () => setIsFocused(true);
-    const onBlur = () => setIsFocused(false);
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("blur", onBlur);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("blur", onBlur);
-    };
-  }, []);
+  if (isMacOS()) return null;
 
   return (
-    <header
-      className={`draglayer border-border bg-card relative z-[60] flex h-8 shrink-0 items-center border-b select-none ${
-        isFocused ? "" : "opacity-70"
-      }`}
-    >
-      <div className={`flex items-center gap-2 px-3 ${isMac ? "pl-20" : ""}`}>
-        <AppLogo size={20} className="rounded-[4px]" />
-        <span className="text-muted-foreground text-xs font-medium">
-          {TITLE}
-        </span>
-      </div>
-
-      {/* 中央の空白もドラッグできるように、ボタン以外は素の要素のままにする */}
-      <div className="flex-1" />
-
-      {!isMac && (
-        <div className="flex items-center">
-          <WindowButton
-            label="最小化"
-            onClick={() => window.electronWindow?.minimize()}
-          >
-            <MinimizeIcon />
-          </WindowButton>
-          <WindowButton
-            label={isMaximized ? "元のサイズに戻す" : "最大化"}
-            onClick={() => window.electronWindow?.maximize()}
-          >
-            {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
-          </WindowButton>
-          <WindowButton
-            label="閉じる"
-            variant="close"
-            onClick={() => window.electronWindow?.close()}
-          >
-            <CloseIcon />
-          </WindowButton>
-        </div>
-      )}
-    </header>
+    <div className="fixed top-0 right-0 z-[70] flex">
+      <WindowButton
+        label="最小化"
+        onClick={() => window.electronWindow?.minimize()}
+      >
+        <MinimizeIcon />
+      </WindowButton>
+      <WindowButton
+        label={isMaximized ? "元のサイズに戻す" : "最大化"}
+        onClick={() => window.electronWindow?.maximize()}
+      >
+        {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
+      </WindowButton>
+      <WindowButton
+        label="閉じる"
+        variant="close"
+        onClick={() => window.electronWindow?.close()}
+      >
+        <CloseIcon />
+      </WindowButton>
+    </div>
   );
 }

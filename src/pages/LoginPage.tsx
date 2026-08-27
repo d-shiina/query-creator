@@ -143,7 +143,10 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <div className="bg-background absolute inset-0 flex items-center justify-center overflow-hidden p-4">
-      <div className="absolute top-4 right-4 z-10">
+      {/* ログイン画面にはヘッダーがないので、上端の帯だけをドラッグ領域にする */}
+      <div className="draglayer absolute top-0 right-0 left-0 h-8" />
+      {/* ウィンドウ操作ボタン（右上・高さ32px）と重ならない位置に置く */}
+      <div className="absolute top-10 right-4 z-10">
         <ToggleTheme />
       </div>
 

@@ -84,6 +84,7 @@ const OUTPUT_VIEWS: ReadonlyArray<{ value: OutputView; label: string }> = [
 ];
 import { Calendar } from "@/components/ui/calendar";
 import ToggleTheme from "@/components/ToggleTheme";
+import { windowControlsInsetStyle } from "@/components/template/WindowControls";
 import { BackButton } from "@/components/ui/back-button";
 import { PageLoading } from "@/components/ui/page-loading";
 
@@ -2195,7 +2196,11 @@ export default function QueryGeneratorPage({
   return (
     <div className="bg-background flex min-h-full flex-col">
       {/* Header */}
-      <header className="border-border bg-card sticky top-0 z-40 border-b">
+      {/* ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域） */}
+      <header
+        className="draglayer border-border bg-card sticky top-0 z-40 border-b"
+        style={windowControlsInsetStyle()}
+      >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-3">
             <div className="flex items-center space-x-3">

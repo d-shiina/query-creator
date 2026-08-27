@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import ToggleTheme from "@/components/ToggleTheme";
+import { windowControlsInsetStyle } from "@/components/template/WindowControls";
 import AppDataTable from "@/components/AppDataTable";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
@@ -405,7 +406,11 @@ export default function AppManagementPage({
   return (
     <div className="bg-background min-h-full">
       {/* ヘッダー */}
-      <header className="border-border bg-card sticky top-0 z-50 border-b">
+      {/* ヘッダーがタイトルバーを兼ねる（バー全体がウィンドウのドラッグ領域） */}
+      <header
+        className="draglayer border-border bg-card sticky top-0 z-50 border-b"
+        style={windowControlsInsetStyle()}
+      >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-3">
             <div className="flex items-center gap-4">

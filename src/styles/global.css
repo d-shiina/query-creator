@@ -168,6 +168,18 @@
   .no-drag {
     -webkit-app-region: no-drag;
   }
+  /*
+   * ヘッダーがタイトルバーを兼ねるため、その中の操作可能な要素は
+   * ドラッグに吸われないよう一括で除外する。個別の指定漏れを防ぐ。
+   */
+  .draglayer button,
+  .draglayer a,
+  .draglayer input,
+  .draglayer select,
+  .draglayer textarea,
+  .draglayer [role="button"] {
+    -webkit-app-region: no-drag;
+  }
   button {
     @apply cursor-pointer;
   }
