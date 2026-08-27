@@ -1,51 +1,38 @@
-import React, { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Skeleton } from "@/components/ui/skeleton";
 import AppHeader from "@/components/template/AppHeader";
-import AppDataTable from "@/components/AppDataTable";
+import AppTable from "@/components/AppTable";
+import AppDetailDialog from "@/components/AppDetailDialog";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
 import { KintoneApp, AppFilter, KintoneAuth } from "@/types/kintone";
-import {
-  Search,
-  Star,
-  Loader2,
-  Info,
-  Calendar,
-  User,
-  Grid3X3,
-  Table2,
-  Code2,
-  Save,
-  AlertCircle,
-} from "lucide-react";
+import { AlertCircle, Search, Star, X } from "lucide-react";
 import {
   addToFavorites,
   removeFromFavorites,
   isAppFavorite,
 } from "@/utils/favorites";
-import { cleanAndTruncateText } from "@/utils/text";
 import { getQueryCount } from "@/hooks/useQueryGenerator";
-import { PageLoading } from "@/components/ui/page-loading";
-import { useToast } from "@/components/ui/toast";
-import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/utils/tailwind";
+
+/**
+ * アプリ一覧。
+ *
+ * 表示形式はテーブルの1本に絞っている。アプリにはアイコンもサムネイルも
+ * ないためカードにしても手掛かりが増えず、一度に見える件数と
+ * 並べ替えのぶんだけ表が有利だったため。
+ *
+ * 画面はヘッダー・ツールバー・表の3段で固定し、スクロールするのは行だけ。
+ * 検索とアプリ数はスクロール位置に関わらず常に見えている。
+ */
 
 interface AppManagementPageProps {
   auth: KintoneAuth;
@@ -58,15 +45,11 @@ export default function AppManagementPage({
   onSelectApp,
   onLogout,
 }: AppManagementPageProps) {
-  const { toast } = useToast();
   const [apps, setApps] = useState<KintoneApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
-  const [selectedAppInfo, setSelectedAppInfo] = useState<KintoneApp | null>(
-    null,
-  );
-  const [appInfoLoading, setAppInfoLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [queryCounts, setQueryCounts] = useState<Record<string, number>>({});
+  const [detailApp, setDetailApp] = useState<KintoneApp | null>(null);
   const [currentView, setCurrentView] = useState<
     "apps" | "querySelection" | "queryGenerator"
   >("apps");
@@ -75,16 +58,12 @@ export default function AppManagementPage({
     undefined,
   );
   const [filter, setFilter] = useState<AppFilter>({
-    searchTerm: "", // 後方互換性のため残す
+    searchTerm: "",
     showFavoritesOnly: false,
-    appId: "",
-    appName: "",
-    appCode: "",
-    creator: "",
-    updatedDate: "",
   });
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // アプリ一覧を取得（ページネーション対応）
+  // アプリ一覧を取得（100件ずつ、なくなるまで）
   useEffect(() => {
     const fetchApps = async () => {
       try {
@@ -92,75 +71,35 @@ export default function AppManagementPage({
         setError("");
 
         const allApps: KintoneApp[] = [];
-        let offset = 0;
         const limit = 100;
+        let offset = 0;
         let hasMore = true;
 
-        console.log("Starting to fetch all apps...");
-
-        // ページネーションで全てのアプリを取得
         while (hasMore) {
-          console.log(`Fetching apps with offset: ${offset}`);
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const result = await (window as any).kintoneAPI.getApps(auth, {
+          const result = await window.kintoneAPI.getApps(auth, {
             offset,
             limit,
           });
 
-          if (result.success && result.data && result.data.apps) {
-            console.log(`Apps API response (offset: ${offset}):`, {
-              count: result.data.apps.length,
-              hasMore: result.data.hasMore,
-            });
-
-            const apps = result.data.apps;
-            allApps.push(...apps);
-
-            // 取得したアプリ数が limit より少ない場合、これ以上データがない
-            if (apps.length < limit) {
-              hasMore = false;
-              console.log("No more apps to fetch (apps.length < limit)");
-            } else {
-              offset += limit;
-              console.log(`Continuing to next batch, new offset: ${offset}`);
-            }
-          } else {
-            console.error("Failed to fetch apps:", result.error);
+          if (!result.success || !result.data?.apps) {
             setError(result.error || "アプリの取得に失敗しました");
-            hasMore = false;
+            break;
           }
+
+          allApps.push(...result.data.apps);
+
+          // 取得件数がlimitに満たなければ、そこで打ち止め
+          hasMore = result.data.apps.length === limit;
+          offset += limit;
         }
 
-        console.log(`Total apps fetched: ${allApps.length}`);
-
-        if (allApps.length > 0) {
-          // ブックマーク状態を設定
-          const appsWithFavorites = allApps.map((app: KintoneApp) => {
-            console.log(`App ${app.appId} creator:`, app.creator);
-            console.log(`App ${app.appId} modifier:`, app.modifier);
-            return {
-              appId: app.appId,
-              code: app.code,
-              name: app.name,
-              description: app.description,
-              spaceId: app.spaceId,
-              threadId: app.threadId,
-              createdAt: app.createdAt,
-              modifiedAt: app.modifiedAt,
-              creator: app.creator,
-              modifier: app.modifier,
-              isFavorite: isAppFavorite(app.appId),
-            };
-          });
-          setApps(appsWithFavorites);
-          console.log(`Apps with favorites set: ${appsWithFavorites.length}`);
-        } else {
-          console.log("No apps found");
-          setApps([]);
-        }
+        setApps(
+          allApps.map((app) => ({
+            ...app,
+            isFavorite: isAppFavorite(app.appId),
+          })),
+        );
       } catch (err) {
-        console.error("Exception in fetchApps:", err);
         setError(
           `エラーが発生しました: ${err instanceof Error ? err.message : "Unknown error"}`,
         );
@@ -172,28 +111,49 @@ export default function AppManagementPage({
     fetchApps();
   }, [auth]);
 
-  // Listen for localStorage changes to update query counts
+  // 保存済みクエリ数はlocalStorageにあるので、行ごとに読まずまとめて数える
+  const refreshQueryCounts = useCallback(() => {
+    setQueryCounts(
+      Object.fromEntries(
+        apps.map((app) => [app.appId, getQueryCount(app.appId)]),
+      ),
+    );
+  }, [apps]);
+
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && e.key.startsWith("kintone_saved_queries_")) {
-        // Query count update logic can be added here if needed
-      }
-    };
+    refreshQueryCounts();
 
-    const handleCustomStorageChange = () => {
-      // Query count update logic can be added here if needed
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("localStorageUpdate", handleCustomStorageChange);
-
+    // 別ウィンドウでの変更（storage）と、同一ウィンドウでの保存（独自イベント）の両方を拾う
+    window.addEventListener("storage", refreshQueryCounts);
+    window.addEventListener("localStorageUpdate", refreshQueryCounts);
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener(
-        "localStorageUpdate",
-        handleCustomStorageChange,
-      );
+      window.removeEventListener("storage", refreshQueryCounts);
+      window.removeEventListener("localStorageUpdate", refreshQueryCounts);
     };
+  }, [refreshQueryCounts]);
+
+  // 「/」で検索へ。一覧を眺めながら絞り込みに入れるようにする
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const toggleFavorite = (appId: string) => {
@@ -206,142 +166,42 @@ export default function AppManagementPage({
       addToFavorites(appId);
     }
 
-    // アプリリストを更新
     setApps((prevApps) =>
-      prevApps.map((app) =>
-        app.appId === appId ? { ...app, isFavorite: !app.isFavorite } : app,
+      prevApps.map((prev) =>
+        prev.appId === appId ? { ...prev, isFavorite: !prev.isFavorite } : prev,
       ),
     );
   };
 
-  // アプリ詳細情報を取得（アプリ一覧から既存の情報を使用）
-  const fetchAppInfo = async (appId: string) => {
-    setAppInfoLoading(true);
-    try {
-      // アプリ一覧から既存の情報を取得（APIレスポンスに含まれている）
-      const existingApp = apps.find((app) => app.appId === appId);
+  const filteredApps = useMemo(() => {
+    const term = filter.searchTerm.trim().toLowerCase();
 
-      if (existingApp) {
-        console.log("Using app info from list:", existingApp);
-        setSelectedAppInfo({
-          appId: existingApp.appId,
-          name: existingApp.name,
-          description: existingApp.description,
-          code: existingApp.code,
-          spaceId: existingApp.spaceId,
-          threadId: existingApp.threadId,
-          creator: existingApp.creator,
-          modifier: existingApp.modifier,
-          createdAt: existingApp.createdAt,
-          modifiedAt: existingApp.modifiedAt,
-        });
-      } else {
-        toast("アプリ情報が見つかりません", "error");
-      }
-    } catch (error) {
-      toast(
-        `エラーが発生しました: ${error instanceof Error ? error.message : "Unknown error"}`,
-        "error",
-      );
-    } finally {
-      setAppInfoLoading(false);
-    }
-  };
+    return apps.filter((app) => {
+      if (filter.showFavoritesOnly && !app.isFavorite) return false;
+      if (!term) return true;
 
-  const filteredApps = apps.filter((app) => {
-    // フィルターが何も設定されていない場合はすべて表示
-    const hasFilters =
-      filter.searchTerm ||
-      filter.showFavoritesOnly ||
-      filter.appId ||
-      filter.appName ||
-      filter.appCode ||
-      filter.creator ||
-      filter.updatedDate;
-    if (!hasFilters) return true;
+      // 名前で当たらないときの受け皿として、ID・コード・説明・担当者も見る
+      return [
+        app.name,
+        app.appId,
+        app.code,
+        app.description,
+        app.creator?.name,
+        app.creator?.code,
+        app.modifier?.name,
+        app.modifier?.code,
+      ].some((value) => value?.toLowerCase().includes(term));
+    });
+  }, [apps, filter]);
 
-    // 各検索条件のチェック
-    let matchesSearch = true;
-
-    // 旧式の全体検索（後方互換性のため）
-    if (filter.searchTerm) {
-      const searchTerm = filter.searchTerm.toLowerCase();
-      matchesSearch =
-        app.name.toLowerCase().includes(searchTerm) ||
-        app.description?.toLowerCase().includes(searchTerm) ||
-        false ||
-        app.appId.toLowerCase().includes(searchTerm) ||
-        app.code?.toLowerCase().includes(searchTerm) ||
-        false ||
-        app.creator?.name?.toLowerCase().includes(searchTerm) ||
-        false ||
-        app.creator?.code?.toLowerCase().includes(searchTerm) ||
-        false ||
-        app.modifier?.name?.toLowerCase().includes(searchTerm) ||
-        false ||
-        app.modifier?.code?.toLowerCase().includes(searchTerm) ||
-        false;
-    }
-
-    // 新しい複合検索条件
-    if (
-      filter.appId &&
-      !app.appId.toLowerCase().includes(filter.appId.toLowerCase())
-    ) {
-      matchesSearch = false;
-    }
-    if (
-      filter.appName &&
-      !app.name.toLowerCase().includes(filter.appName.toLowerCase())
-    ) {
-      matchesSearch = false;
-    }
-    if (
-      filter.appCode &&
-      !(app.code?.toLowerCase().includes(filter.appCode.toLowerCase()) || false)
-    ) {
-      matchesSearch = false;
-    }
-    if (
-      filter.creator &&
-      !(
-        app.creator?.name
-          ?.toLowerCase()
-          .includes(filter.creator.toLowerCase()) ||
-        false ||
-        app.creator?.code
-          ?.toLowerCase()
-          .includes(filter.creator.toLowerCase()) ||
-        false
-      )
-    ) {
-      matchesSearch = false;
-    }
-    if (
-      filter.updatedDate &&
-      !(
-        app.updatedAt?.includes(filter.updatedDate) ||
-        false ||
-        app.modifiedAt?.includes(filter.updatedDate) ||
-        false
-      )
-    ) {
-      matchesSearch = false;
-    }
-
-    // ブックマークフィルターのチェック
-    const matchesFavorite = !filter.showFavoritesOnly || app.isFavorite;
-
-    return matchesSearch && matchesFavorite;
-  });
+  const isFiltered = !!filter.searchTerm.trim() || filter.showFavoritesOnly;
 
   // Navigation handlers
   const handleAppSelect = (app: KintoneApp) => {
-    console.log("handleAppSelect called with app:", app);
+    setDetailApp(null);
     setSelectedApp(app);
     setCurrentView("querySelection");
-    onSelectApp(app); // プロパティで渡された関数を呼び出し
-    console.log("currentView set to querySelection");
+    onSelectApp(app);
   };
 
   const handleBackToApps = () => {
@@ -365,15 +225,7 @@ export default function AppManagementPage({
     setEditingQueryId(undefined);
   };
 
-  // Render different views based on currentView
-  console.log("Current state:", {
-    currentView,
-    selectedApp: selectedApp?.name,
-    editingQueryId,
-  });
-
   if (currentView === "querySelection" && selectedApp) {
-    console.log("Rendering QuerySelectionPage");
     return (
       <QuerySelectionPage
         auth={auth}
@@ -387,7 +239,6 @@ export default function AppManagementPage({
   }
 
   if (currentView === "queryGenerator" && selectedApp) {
-    console.log("Rendering QueryGeneratorPage");
     return (
       <QueryGeneratorPage
         auth={auth}
@@ -400,533 +251,204 @@ export default function AppManagementPage({
     );
   }
 
-  console.log("Rendering default AppManagementPage");
-
   return (
     <div className="bg-background flex h-full flex-col overflow-hidden">
-      {/* ヘッダー */}
       <AppHeader
         breadcrumb={[{ label: "アプリ一覧" }]}
         meta={
-          <span className="text-muted-foreground flex shrink-0 items-center gap-2 px-1 text-xs">
-            <span>{auth.subdomain}.cybozu.com</span>
-            <span className="border-border bg-muted rounded-sm border px-1.5 py-0.5">
-              {apps.length} アプリ
-            </span>
+          <span className="text-muted-foreground shrink-0 px-1 text-xs">
+            {auth.subdomain}.cybozu.com
           </span>
         }
         onLogout={onLogout}
       />
 
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* エラー表示 */}
-        {error && (
-          <div
-            role="alert"
-            className="border-destructive bg-card mb-6 border border-l-4 p-4 shadow-sm"
-          >
-            <div className="mb-2 flex items-center gap-2">
-              <AlertCircle className="text-destructive h-4 w-4" />
-              <h3 className="text-foreground text-sm font-semibold">
-                エラーが発生しました
-              </h3>
-            </div>
-            <p className="text-muted-foreground mb-3 text-sm leading-relaxed">
-              {error}
-            </p>
-            <Button
-              onClick={() => window.location.reload()}
-              variant="outline"
-              size="sm"
+      {/* ツールバー：スクロールしても検索と件数は消えない */}
+      <div className="border-border bg-card flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <div className="relative max-w-md min-w-0 flex-1">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+          <Input
+            ref={searchRef}
+            value={filter.searchTerm}
+            onChange={(event) =>
+              setFilter((prev) => ({ ...prev, searchTerm: event.target.value }))
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setFilter((prev) => ({ ...prev, searchTerm: "" }));
+                event.currentTarget.blur();
+              }
+            }}
+            placeholder="アプリ名、ID、コード、担当者で絞り込む"
+            aria-label="アプリを絞り込む"
+            className="h-8 pr-16 pl-8 text-sm"
+          />
+          {filter.searchTerm ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFilter((prev) => ({ ...prev, searchTerm: "" }));
+                searchRef.current?.focus();
+              }}
+              aria-label="検索条件を消す"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
             >
-              再読み込み
-            </Button>
-          </div>
-        )}
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <kbd className="border-border text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border px-1.5 py-0.5 font-mono text-[10px] leading-none">
+              /
+            </kbd>
+          )}
+        </div>
 
-        {/* ローディング: 実際のレイアウトを模したスケルトン */}
-        {loading ? (
-          <div aria-busy="true" aria-label="アプリを読み込み中">
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row">
-              <Skeleton className="h-9 flex-1" />
-              <div className="flex gap-3">
-                <Skeleton className="h-9 w-20" />
-                <Skeleton className="h-9 w-32" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="border-border bg-card space-y-4 rounded-lg border p-6 shadow-sm"
-                >
-                  <div className="space-y-2">
-                    <Skeleton className="h-5 w-3/4" />
-                    <div className="flex gap-2">
-                      <Skeleton className="h-5 w-16" />
-                      <Skeleton className="h-5 w-14" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-2/3" />
-                  <div className="space-y-1.5 pt-2">
-                    <Skeleton className="h-3 w-1/2" />
-                    <Skeleton className="h-3 w-1/3" />
-                  </div>
-                  <Skeleton className="h-8 w-full" />
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* フィルター・検索エリア */}
-            <div className="mb-6 space-y-4">
-              {/* 検索とフィルター */}
-              <div className="flex flex-col gap-4 sm:flex-row">
-                <div className="relative flex-1">
-                  <Search className="text-muted-foreground absolute top-3 left-3 h-4 w-4" />
-                  <Input
-                    placeholder="アプリ名、作成者、更新者で検索..."
-                    value={filter.searchTerm}
-                    onChange={(e) =>
-                      setFilter((prev) => ({
-                        ...prev,
-                        searchTerm: e.target.value,
-                      }))
-                    }
-                    className="bg-card h-9 pl-10"
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <ToggleGroup
-                    type="single"
-                    value={viewMode}
-                    onValueChange={(value) =>
-                      value && setViewMode(value as "grid" | "table")
-                    }
-                    className="bg-muted border-border rounded-md border p-0.5"
-                  >
-                    <ToggleGroupItem
-                      value="grid"
-                      aria-label="グリッド表示"
-                      className="data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
-                    >
-                      <Grid3X3 className="h-4 w-4" />
-                    </ToggleGroupItem>
-                    <ToggleGroupItem
-                      value="table"
-                      aria-label="テーブル表示"
-                      className="data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
-                    >
-                      <Table2 className="h-4 w-4" />
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      setFilter((prev) => ({
-                        ...prev,
-                        showFavoritesOnly: !prev.showFavoritesOnly,
-                      }))
-                    }
-                    className={`h-9 whitespace-nowrap ${
-                      filter.showFavoritesOnly
-                        ? "border-primary text-primary"
-                        : "text-foreground"
-                    }`}
-                  >
-                    <Star
-                      className={`mr-2 h-4 w-4 ${filter.showFavoritesOnly ? "fill-current text-primary" : "text-foreground"}`}
-                    />
-                    ブックマーク
-                  </Button>
-                </div>
-              </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            setFilter((prev) => ({
+              ...prev,
+              showFavoritesOnly: !prev.showFavoritesOnly,
+            }))
+          }
+          aria-pressed={filter.showFavoritesOnly}
+          className={cn(
+            "h-8",
+            filter.showFavoritesOnly && "bg-accent text-accent-foreground",
+          )}
+        >
+          <Star
+            className={cn(
+              "h-3.5 w-3.5",
+              filter.showFavoritesOnly && "fill-yellow-400 text-yellow-400",
+            )}
+          />
+          ブックマーク
+        </Button>
 
-              {/* 検索結果の説明 */}
-              {(filter.searchTerm || filter.showFavoritesOnly) && (
-                <div className="text-muted-foreground bg-card border-border flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-                  <Search className="h-4 w-4" />
-                  <span>
-                    {filter.searchTerm && (
-                      <>
-                        「
-                        <span className="font-medium">{filter.searchTerm}</span>
-                        」で検索中
-                      </>
-                    )}
-                    {filter.searchTerm && filter.showFavoritesOnly && " • "}
-                    {filter.showFavoritesOnly && "ブックマーク済みのみ表示"}
-                    {" • "}
-                    <span className="text-foreground font-medium">
-                      {filteredApps.length}件
-                    </span>
-                    のアプリが見つかりました
-                  </span>
-                </div>
-              )}
-            </div>
+        <span className="text-muted-foreground ml-auto shrink-0 text-xs tabular-nums">
+          {isFiltered ? (
+            <>
+              <span className="text-foreground font-medium">
+                {filteredApps.length}
+              </span>
+              {` / ${apps.length} 件`}
+            </>
+          ) : (
+            `${apps.length} 件`
+          )}
+        </span>
+      </div>
 
-            {/* アプリ一覧 */}
-            {viewMode === "grid" ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredApps.map((app) => (
-                  <Card
-                    key={app.appId}
-                    onClick={() => handleAppSelect(app)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAppSelect(app);
-                    }}
-                    className="group border-border bg-card hover:border-primary/40 relative flex h-full cursor-pointer flex-col overflow-hidden transition-all hover:shadow-md hover:shadow-black/5"
-                  >
+      {error && (
+        <div
+          role="alert"
+          className="border-destructive/40 bg-destructive/5 text-destructive flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{error}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7"
+            onClick={() => window.location.reload()}
+          >
+            再読み込み
+          </Button>
+        </div>
+      )}
 
-                    <CardHeader className="relative z-10 pb-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <CardTitle className="text-foreground line-clamp-2 text-base leading-tight font-semibold">
-                            {cleanAndTruncateText(app.name, 50)}
-                          </CardTitle>
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              variant="secondary"
-                              className="bg-muted font-mono text-xs"
-                            >
-                              ID: {app.appId}
-                            </Badge>
-                            {app.code && (
-                              <Badge
-                                variant="outline"
-                                className="h-5 px-2 py-0 text-xs"
-                              >
-                                {app.code}
-                              </Badge>
-                            )}
-                            {(() => {
-                              const queryCount = getQueryCount(app.appId);
-                              return (
-                                queryCount > 0 && (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-primary/40 text-primary h-5 px-2 py-0 text-xs"
-                                  >
-                                    <Save className="mr-1 h-3 w-3" />
-                                    {queryCount}
-                                  </Badge>
-                                )
-                              );
-                            })()}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleFavorite(app.appId);
-                          }}
-                          className="group/star h-8 w-8 flex-shrink-0 p-0 transition-colors hover:bg-yellow-50 dark:hover:bg-yellow-950/20"
-                        >
-                          {app.isFavorite ? (
-                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          ) : (
-                            <Star className="text-muted-foreground h-4 w-4 transition-colors group-hover/star:text-yellow-400" />
-                          )}
-                        </Button>
-                      </div>
-                    </CardHeader>
-
-                    <CardContent className="relative z-10 flex flex-1 flex-col">
-                      <CardDescription className="mb-4 flex-1 text-sm leading-relaxed">
-                        {app.description ? (
-                          cleanAndTruncateText(app.description, 100)
-                        ) : (
-                          <span className="text-muted-foreground/60 italic">
-                            アプリの説明はありません
-                          </span>
-                        )}
-                      </CardDescription>
-
-                      {/* メタ情報 */}
-                      <div className="mb-4 space-y-1.5">
-                        {app.creator?.name && (
-                          <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                            <User className="h-3 w-3" />
-                            <span className="truncate">
-                              作成者: {app.creator.name}
-                            </span>
-                          </div>
-                        )}
-                        {app.modifiedAt && (
-                          <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                            <Calendar className="h-3 w-3" />
-                            <span>
-                              更新:{" "}
-                              {new Date(app.modifiedAt).toLocaleDateString(
-                                "ja-JP",
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* アクションボタン */}
-                      <div className="mt-auto flex gap-2">
-                        <Button
-                          onClick={() => handleAppSelect(app)}
-                          className="flex-1"
-                          size="sm"
-                        >
-                          <Code2 className="mr-2 h-4 w-4" />
-                          クエリ生成
-                        </Button>
-                        <Dialog
-                          onOpenChange={(open: boolean) => {
-                            if (!open) {
-                              setSelectedAppInfo(null);
-                            }
-                          }}
-                        >
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="px-3"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                fetchAppInfo(app.appId);
-                              }}
-                            >
-                              <Info className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-h-[80vh] max-w-2xl overflow-hidden">
-                            <DialogHeader className="pb-4">
-                              <DialogTitle className="flex items-center gap-3 text-xl">
-                                <div>
-                                  <div className="text-foreground text-lg font-bold">
-                                    アプリ詳細情報
-                                  </div>
-                                </div>
-                              </DialogTitle>
-                              <DialogDescription className="text-base">
-                                {app.name} の詳細情報を表示しています
-                              </DialogDescription>
-                            </DialogHeader>
-
-                            <div className="scrollbar-thin max-h-[60vh] overflow-y-auto pr-2">
-                              {appInfoLoading ? (
-                                <div className="flex items-center justify-center py-12">
-                                  <Loader2 className="h-6 w-6 animate-spin" />
-                                  <span className="ml-2">読み込み中...</span>
-                                </div>
-                              ) : selectedAppInfo ? (
-                                <div className="space-y-6">
-                                  {/* 基本情報セクション */}
-                                  <div className="space-y-4">
-                                    <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
-                                      基本情報
-                                    </h3>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                      <div className="space-y-2">
-                                        <label className="text-muted-foreground text-sm font-medium">
-                                          アプリ名
-                                        </label>
-                                        <div className="border-border bg-muted/40 rounded-md border p-3">
-                                          <p className="text-sm font-medium">
-                                            {selectedAppInfo.name}
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <label className="text-muted-foreground text-sm font-medium">
-                                          アプリID
-                                        </label>
-                                        <div className="bg-muted/30 rounded-md border p-3">
-                                          <p className="font-mono text-sm font-medium">
-                                            {selectedAppInfo.appId}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <label className="text-muted-foreground text-sm font-medium">
-                                        アプリコード
-                                      </label>
-                                      <div className="bg-muted/30 rounded-md border p-3">
-                                        <p className="font-mono text-sm">
-                                          {selectedAppInfo.code || (
-                                            <span className="text-muted-foreground italic">
-                                              未設定
-                                            </span>
-                                          )}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* 説明セクション */}
-                                  <div className="space-y-4">
-                                    <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
-                                      説明
-                                    </h3>
-                                    <div className="border-border bg-muted/40 min-h-[100px] rounded-md border p-4 text-sm">
-                                      {selectedAppInfo.description ? (
-                                        <p className="leading-relaxed whitespace-pre-wrap">
-                                          {cleanAndTruncateText(
-                                            selectedAppInfo.description,
-                                            500,
-                                          )}
-                                        </p>
-                                      ) : (
-                                        <p className="text-muted-foreground py-4 text-center italic">
-                                          説明が設定されていません
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* 作成・更新情報セクション */}
-                                  <div className="space-y-4">
-                                    <h3 className="text-foreground border-b pb-2 text-lg font-semibold">
-                                      作成・更新情報
-                                    </h3>
-                                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                                      {/* 作成情報 */}
-                                      <div className="space-y-3">
-                                        <div className="flex items-center gap-2">
-                                          <User className="text-muted-foreground h-4 w-4" />
-                                          <label className="text-muted-foreground text-sm font-medium">
-                                            作成者
-                                          </label>
-                                        </div>
-                                        <div className="border-border bg-muted/40 rounded-md border p-4">
-                                          <p className="text-sm font-medium">
-                                            {(selectedAppInfo.creator?.name &&
-                                              selectedAppInfo.creator.name.trim()) ||
-                                              "-"}
-                                          </p>
-                                          {selectedAppInfo.creator?.code &&
-                                            selectedAppInfo.creator.code.trim() && (
-                                              <p className="text-muted-foreground mt-1 text-xs">
-                                                ID:{" "}
-                                                {selectedAppInfo.creator.code}
-                                              </p>
-                                            )}
-                                          <div className="mt-3 flex items-center gap-1 border-border border-t pt-2">
-                                            <Calendar className="text-muted-foreground h-3 w-3" />
-                                            <p className="text-muted-foreground text-xs">
-                                              {selectedAppInfo.createdAt
-                                                ? new Date(
-                                                    selectedAppInfo.createdAt,
-                                                  ).toLocaleString("ja-JP")
-                                                : "-"}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* 更新情報 */}
-                                      <div className="space-y-3">
-                                        <div className="flex items-center gap-2">
-                                          <User className="text-muted-foreground h-4 w-4" />
-                                          <label className="text-muted-foreground text-sm font-medium">
-                                            最終更新者
-                                          </label>
-                                        </div>
-                                        <div className="border-border bg-muted/40 rounded-md border p-4">
-                                          <p className="text-sm font-medium">
-                                            {(selectedAppInfo.modifier?.name &&
-                                              selectedAppInfo.modifier.name.trim()) ||
-                                              "-"}
-                                          </p>
-                                          {selectedAppInfo.modifier?.code &&
-                                            selectedAppInfo.modifier.code.trim() && (
-                                              <p className="text-muted-foreground mt-1 text-xs">
-                                                ID:{" "}
-                                                {selectedAppInfo.modifier.code}
-                                              </p>
-                                            )}
-                                          <div className="mt-3 flex items-center gap-1 border-border border-t pt-2">
-                                            <Calendar className="text-muted-foreground h-3 w-3" />
-                                            <p className="text-muted-foreground text-xs">
-                                              {selectedAppInfo.modifiedAt
-                                                ? new Date(
-                                                    selectedAppInfo.modifiedAt,
-                                                  ).toLocaleString("ja-JP")
-                                                : "-"}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <AppDataTable
+      {/* 一覧：行だけがスクロールし、見出しは貼り付いたまま */}
+      <div className="min-h-0 flex-1 px-4 py-4">
+        <div className="border-border bg-card flex h-full flex-col overflow-hidden rounded-lg border shadow-sm">
+          <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
+            {loading ? (
+              <TableSkeleton />
+            ) : filteredApps.length > 0 ? (
+              <AppTable
                 apps={filteredApps}
-                auth={auth}
+                queryCounts={queryCounts}
                 onSelectApp={handleAppSelect}
                 onToggleFavorite={toggleFavorite}
+                onShowDetail={setDetailApp}
+              />
+            ) : (
+              <EmptyState
+                isFiltered={isFiltered}
+                onClear={() =>
+                  setFilter({ searchTerm: "", showFavoritesOnly: false })
+                }
               />
             )}
+          </div>
 
-            {filteredApps.length === 0 && !loading && viewMode === "grid" && (
-              <div className="py-20 text-center">
-                <div className="flex flex-col items-center gap-6">
-                  <div className="flex h-16 w-16 items-center justify-center border-border bg-muted rounded-md border">
-                    <Search className="text-muted-foreground h-8 w-8" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-foreground text-xl font-semibold">
-                      {filter.searchTerm || filter.showFavoritesOnly
-                        ? "アプリが見つかりません"
-                        : "アプリがありません"}
-                    </h3>
-                    <p className="text-muted-foreground max-w-md">
-                      {filter.searchTerm || filter.showFavoritesOnly
-                        ? "検索条件を変更して再度お試しください。または、新しいアプリの作成をご検討ください。"
-                        : "まだアプリが作成されていません。Kintoneでアプリを作成してから再度アクセスしてください。"}
-                    </p>
-                  </div>
-                  {(filter.searchTerm || filter.showFavoritesOnly) && (
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        setFilter({
-                          searchTerm: "",
-                          showFavoritesOnly: false,
-                          appId: "",
-                          appName: "",
-                          appCode: "",
-                          creator: "",
-                          updatedDate: "",
-                        })
-                      }
-                      className="mt-4"
-                    >
-                      フィルターをクリア
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-          </>
-        )}
+          <div className="border-border text-muted-foreground flex h-8 shrink-0 items-center gap-3 border-t px-3 text-xs">
+            <span>↑↓ 行を移動</span>
+            <span>Enter 開く</span>
+            <span>Space 詳細</span>
+          </div>
         </div>
       </div>
+
+      <AppDetailDialog
+        app={detailApp}
+        auth={auth}
+        onClose={() => setDetailApp(null)}
+        onSelectApp={handleAppSelect}
+      />
+    </div>
+  );
+}
+
+/** 読み込み中も行の高さと列位置を保って、表示が切り替わるときに飛ばない */
+function TableSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="アプリを読み込み中" className="px-2">
+      {Array.from({ length: 12 }).map((_, index) => (
+        <div
+          key={index}
+          className="border-border/60 flex h-12 items-center gap-4 border-b px-2 last:border-0"
+        >
+          <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+          <Skeleton
+            className="h-4 min-w-0 flex-1"
+            style={{ maxWidth: `${40 + ((index * 7) % 35)}%` }}
+          />
+          <Skeleton className="h-3 w-12 shrink-0" />
+          <Skeleton className="h-3 w-16 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({
+  isFiltered,
+  onClear,
+}: {
+  isFiltered: boolean;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
+      <Search className="text-muted-foreground/40 h-6 w-6" />
+      <div className="space-y-1">
+        <p className="text-foreground text-sm font-medium">
+          {isFiltered
+            ? "条件に一致するアプリがありません"
+            : "表示できるアプリがありません"}
+        </p>
+        <p className="text-muted-foreground text-xs">
+          {isFiltered
+            ? "検索語を短くするか、ブックマークの絞り込みを外してください。"
+            : "kintoneでアプリを作成すると、ここに表示されます。"}
+        </p>
+      </div>
+      {isFiltered && (
+        <Button variant="outline" size="sm" onClick={onClear}>
+          絞り込みを解除
+        </Button>
+      )}
     </div>
   );
 }

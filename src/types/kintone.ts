@@ -97,13 +97,9 @@ export interface KintoneQuery {
 }
 
 export interface AppFilter {
+  /** アプリ名・ID・コード・担当者をまとめて見る絞り込み語 */
   searchTerm: string;
   showFavoritesOnly: boolean;
-  appId: string;
-  appName: string;
-  appCode: string;
-  creator: string;
-  updatedDate: string;
 }
 
 export interface KintoneUser {
