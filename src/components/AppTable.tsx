@@ -9,7 +9,6 @@ import { SectionRow, SortOrder, SortableHead } from "@/components/table-parts";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, Info, Pin } from "lucide-react";
 import { KintoneApp } from "@/types/kintone";
-import { cleanAndTruncateText } from "@/utils/text";
 import {
   formatAbsoluteDateTime,
   formatRelativeDate,
@@ -53,9 +52,9 @@ interface AppTableProps {
 const RECENT_LIMIT = 5;
 
 /**
- * 幅は列ごとに固定する（table-fixed）。説明のように長さが読めない値があると、
+ * 幅は列ごとに固定する（table-fixed）。長さの読めない値があると、
  * 自動幅では列が押し出されて横スクロールになるため。
- * 余りは説明に渡し、広い画面ほど説明が読めるようにする。
+ * 余りは名前に渡す。説明は一覧には出さず、詳細ダイアログで読む。
  */
 const COLUMNS: {
   /** 並べ替えできない列は field を持たない */
@@ -64,10 +63,9 @@ const COLUMNS: {
   className: string;
   align?: "right";
 }[] = [
-  { field: "name", label: "アプリ名", className: "w-[32rem]" },
-  // 幅を持たない列が余りを受け取る。広い画面では説明が伸びる
-  { label: "説明", className: "hidden xl:table-cell" },
-  { field: "appId", label: "ID", className: "w-16" },
+  // 幅を持たない列が余りを受け取る
+  { field: "name", label: "アプリ名", className: "" },
+  { field: "appId", label: "ID", className: "w-20", align: "right" },
   { field: "queryCount", label: "クエリ", className: "w-16", align: "right" },
   { field: "modifiedAt", label: "更新", className: "w-24" },
 ];
@@ -244,7 +242,7 @@ export default function AppTable({
                 onFocus={() => setActiveIndex(index)}
                 onClick={() => onSelectApp(app)}
                 onKeyDown={(event) => handleKeyDown(event, index)}
-                className="focus-visible:bg-accent focus-visible:ring-primary group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
+                className="focus-visible:bg-accent focus-visible:ring-primary group border-border/60 cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
               >
                 {/* 初回案内は、実際にピンが出る先頭行のこの欄を指す */}
                 <TableCell
@@ -283,36 +281,20 @@ export default function AppTable({
                       {app.name}
                     </span>
                     {app.code && (
-                      <span className="text-muted-foreground shrink-0 font-mono text-xs">
+                      <span className="text-muted-foreground/70 shrink-0 font-mono text-xs">
                         {app.code}
                       </span>
                     )}
                   </div>
                 </TableCell>
 
-                <TableCell className="hidden xl:table-cell">
-                  {app.description ? (
-                    <div
-                      className="text-muted-foreground truncate text-xs"
-                      title={cleanAndTruncateText(app.description, 300)}
-                    >
-                      {cleanAndTruncateText(app.description, 120)}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground/30 text-xs">-</span>
-                  )}
-                </TableCell>
-
-                <TableCell className="text-muted-foreground font-mono text-xs tabular-nums">
+                <TableCell className="text-muted-foreground text-right font-mono text-xs tabular-nums">
                   {app.appId}
                 </TableCell>
 
+                {/* 0件は空欄にする。数字がある行だけが目に入るように */}
                 <TableCell className="text-right tabular-nums">
-                  {queryCount > 0 ? (
-                    <span className="text-foreground">{queryCount}</span>
-                  ) : (
-                    <span className="text-muted-foreground/40">-</span>
-                  )}
+                  {queryCount > 0 ? queryCount : null}
                 </TableCell>
 
                 <TableCell
@@ -339,7 +321,7 @@ export default function AppTable({
                     </Button>
                     <ChevronRight
                       aria-hidden="true"
-                      className="text-muted-foreground/30 group-hover:text-muted-foreground h-4 w-4 shrink-0 transition-colors"
+                      className="text-muted-foreground h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-60 group-focus-visible:opacity-60"
                     />
                   </div>
                 </TableCell>

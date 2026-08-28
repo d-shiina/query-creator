@@ -92,9 +92,10 @@ export function SectionRow({
 }) {
   return (
     <tr>
+      {/* 帯にすると行と同じ重さになるので、地色のまま小さく置く */}
       <td
         colSpan={colSpan}
-        className="text-muted-foreground bg-muted/40 border-border border-b px-4 py-1 text-xs"
+        className="text-muted-foreground/80 px-4 pt-4 pb-1 text-xs"
       >
         {label}
         <span className="ml-1.5 opacity-60">{count}</span>

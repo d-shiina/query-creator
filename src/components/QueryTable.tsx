@@ -231,6 +231,7 @@ export default function QueryTable({
                 data-state={isSelected ? "selected" : undefined}
                 className="focus-visible:bg-accent focus-visible:ring-primary group data-[state=selected]:bg-accent/40 cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
               >
+                {/* 選んでいる行と、いま触っている行にだけ出す */}
                 <TableCell
                   className="pl-3"
                   onClick={(event) => event.stopPropagation()}
@@ -239,6 +240,11 @@ export default function QueryTable({
                     checked={isSelected}
                     onCheckedChange={() => onToggleSelect(query.id)}
                     aria-label={`${query.name} を選択`}
+                    className={cn(
+                      "transition-opacity",
+                      !isSelected &&
+                        "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 focus-visible:opacity-100",
+                    )}
                   />
                 </TableCell>
 
@@ -273,15 +279,13 @@ export default function QueryTable({
                 </TableCell>
 
                 <TableCell className="hidden xl:table-cell">
-                  {query.memo ? (
+                  {query.memo && (
                     <div
                       className="text-muted-foreground truncate text-xs"
                       title={query.memo}
                     >
                       {query.memo}
                     </div>
-                  ) : (
-                    <span className="text-muted-foreground/30 text-xs">-</span>
                   )}
                 </TableCell>
 
@@ -324,7 +328,7 @@ export default function QueryTable({
                     </Button>
                     <ChevronRight
                       aria-hidden="true"
-                      className="text-muted-foreground/30 group-hover:text-muted-foreground h-4 w-4 shrink-0 transition-colors"
+                      className="text-muted-foreground h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-60 group-focus-visible:opacity-60"
                     />
                   </div>
                 </TableCell>
