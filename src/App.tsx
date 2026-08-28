@@ -78,9 +78,11 @@ function App() {
     <ToastProvider>
       {/* ウィンドウ高に収める。スクロールは各画面が自分のヘッダーより下だけで行う
           （ここでスクロールさせると、スクロールバーがヘッダーまで伸びて
-            ウィンドウ操作ボタンのクリックを奪ってしまう） */}
+            ウィンドウ操作ボタンのクリックを奪ってしまう）。
+          フッターは流れの中に置く。浮かせて場所を余白で空けると、
+          確保した高さと実際の高さがずれて隙間になる */}
       <div className="flex h-screen flex-col overflow-hidden">
-        <div className="relative min-h-0 flex-1 overflow-hidden pb-8">
+        <div className="relative min-h-0 flex-1 overflow-hidden">
           {renderContent()}
         </div>
         <SimpleFooter />

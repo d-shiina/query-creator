@@ -92,7 +92,7 @@ export default function SimpleFooter() {
 
   if (loading || !appInfo) {
     return (
-      <footer className="bg-card border-border fixed right-0 bottom-0 left-0 z-50 border-t">
+      <footer className="bg-card border-border shrink-0 border-t">
         <div className="text-muted-foreground flex items-center justify-center px-4 py-1.5 text-xs">
           読み込み中...
         </div>
@@ -134,7 +134,7 @@ export default function SimpleFooter() {
         </DialogContent>
       </Dialog>
 
-      <footer className="bg-card border-border fixed right-0 bottom-0 left-0 z-50 border-t">
+      <footer className="bg-card border-border shrink-0 border-t">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 py-1.5 text-xs text-muted-foreground gap-2 sm:gap-4">
         {/* 左側：アプリ情報 */}
         <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
