@@ -28,7 +28,6 @@ function renderTable(
   const props = {
     apps,
     queryCounts: { "3": 2 },
-    recentAppIds: [],
     onSelectApp: vi.fn(),
     onTogglePin: vi.fn(),
     onShowDetail: vi.fn(),
@@ -64,34 +63,8 @@ describe("AppTable", () => {
     ]);
   });
 
-  it("最近使ったアプリを開いた順のセクションにまとめる", () => {
-    renderTable({ recentAppIds: ["5", "1"] });
-
-    expect(screen.getByText("最近使った")).toBeInTheDocument();
-    expect(rowNames()).toEqual([
-      expect.stringContaining("顧客マスタ"),
-      expect.stringContaining("在庫管理"),
-      expect.stringContaining("案件管理"),
-      expect.stringContaining("受注管理"),
-    ]);
-  });
-
-  it("ピン留め済みは最近使ったに重複させない", () => {
-    renderTable({ recentAppIds: ["7", "1"] });
-
-    const recentSection = screen.getByText("最近使った").closest("tbody");
-    expect(
-      within(recentSection as HTMLElement).getAllByRole("row"),
-    ).toHaveLength(
-      2, // 見出しの行と、案件管理の行だけ
-    );
-  });
-
   it("セクションが1つしかないときは見出しを出さない", () => {
-    renderTable({
-      apps: apps.filter((app) => !app.isPinned),
-      recentAppIds: [],
-    });
+    renderTable({ apps: apps.filter((app) => !app.isPinned) });
 
     expect(screen.queryByText("すべて")).not.toBeInTheDocument();
   });
@@ -128,18 +101,6 @@ describe("AppTable", () => {
 
     expect(onSelectApp).toHaveBeenCalledWith(
       expect.objectContaining({ appId: "1" }),
-    );
-  });
-
-  it("↓はセクションをまたいで移動する", async () => {
-    const { onSelectApp } = renderTable({ recentAppIds: ["5"] });
-
-    // ピン留め（顧客マスタ）→ 最近使った（在庫管理）
-    appRows()[0].focus();
-    await userEvent.keyboard("{ArrowDown}{Enter}");
-
-    expect(onSelectApp).toHaveBeenCalledWith(
-      expect.objectContaining({ appId: "5" }),
     );
   });
 

@@ -80,6 +80,10 @@ export default function AppDetailDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
+      {/*
+        開いた直後の行き先を「クエリを作る」にしておく。
+        この画面は読むための窓なので、読み終えたらEnterで先へ進める。
+      */}
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="line-clamp-2 pr-6 text-base leading-snug">
@@ -163,7 +167,7 @@ export default function AppDetailDialog({
           <Button variant="ghost" onClick={onClose}>
             閉じる
           </Button>
-          <Button onClick={() => onSelectApp(app)}>
+          <Button autoFocus onClick={() => onSelectApp(app)}>
             <Code2 className="h-4 w-4" />
             クエリを作る
           </Button>

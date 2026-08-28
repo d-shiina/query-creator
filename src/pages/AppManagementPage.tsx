@@ -24,7 +24,6 @@ import {
   removeFromFavorites,
   isAppFavorite,
 } from "@/utils/favorites";
-import { getRecentAppIds, recordAppOpened } from "@/utils/recent-apps";
 import { TOUR_APP_LIST, hasSeenTour, markTourSeen } from "@/utils/onboarding";
 import { getQueryCount } from "@/hooks/useQueryGenerator";
 
@@ -55,9 +54,6 @@ export default function AppManagementPage({
   const [error, setError] = useState<string>("");
   const [queryCounts, setQueryCounts] = useState<Record<string, number>>({});
   const [detailApp, setDetailApp] = useState<KintoneApp | null>(null);
-  const [recentAppIds, setRecentAppIds] = useState<string[]>(() =>
-    getRecentAppIds(),
-  );
   const [currentView, setCurrentView] = useState<
     "apps" | "querySelection" | "queryGenerator"
   >("apps");
@@ -232,8 +228,6 @@ export default function AppManagementPage({
 
   // Navigation handlers
   const handleAppSelect = (app: KintoneApp) => {
-    // 開いた記録が「最近使った」の並びになる
-    setRecentAppIds(recordAppOpened(app.appId));
     setDetailApp(null);
     setSelectedApp(app);
     setCurrentView("querySelection");
@@ -402,7 +396,6 @@ export default function AppManagementPage({
             ref={tableRef}
             apps={filteredApps}
             queryCounts={queryCounts}
-            recentAppIds={recentAppIds}
             onSelectApp={handleAppSelect}
             onTogglePin={togglePin}
             onShowDetail={setDetailApp}
@@ -442,7 +435,7 @@ export default function AppManagementPage({
           {
             target: "pin",
             title: "よく使うアプリを先頭に",
-            body: "行の左端にカーソルを合わせるとピンが表示されます。ピン留めしたアプリは一覧の先頭に並びます。最近開いたアプリは自動で上位に表示されます。",
+            body: "行の左端にカーソルを合わせるとピンが表示されます。ピン留めしたアプリは、並べ替えを変えても一覧の先頭に並びます。",
           },
         ]}
       />
@@ -450,7 +443,11 @@ export default function AppManagementPage({
       <AppDetailDialog
         app={detailApp}
         auth={auth}
-        onClose={() => setDetailApp(null)}
+        onClose={() => {
+          setDetailApp(null);
+          // 閉じたら見ていた行へ戻す。ここで戻さないとキー操作が続かない
+          tableRef.current?.focusRow();
+        }}
         onSelectApp={handleAppSelect}
       />
     </div>

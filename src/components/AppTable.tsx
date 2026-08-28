@@ -23,9 +23,8 @@ import { cn } from "@/utils/tailwind";
  * 作成者・スペース・作成日時など選ぶ判断に使わない情報は列に出さず、
  * 詳細ダイアログに寄せている。
  *
- * 上には「ピン留め」と「最近使った」を置く。前者は利用者が明示した宣言、
- * 後者は実際に開いた記録から自動で決まる並び。数百アプリある環境では、
- * 手で印を付けて回らなくても常用アプリが上に来るほうが早い。
+ * 上には「ピン留め」を置く。利用者が明示した常用アプリなので、
+ * 並べ替えを変えても先頭に留まる。
  */
 
 type SortField = "name" | "appId" | "queryCount" | "modifiedAt";
@@ -41,15 +40,10 @@ interface AppTableProps {
   apps: KintoneApp[];
   /** appId -> 保存済みクエリ数 */
   queryCounts: Record<string, number>;
-  /** 新しい順のappId。「最近使った」の並びに使う */
-  recentAppIds: string[];
   onSelectApp: (app: KintoneApp) => void;
   onTogglePin: (appId: string) => void;
   onShowDetail: (app: KintoneApp) => void;
 }
-
-/** 「最近使った」に出す件数。多いと「すべて」との区別が薄れる */
-const RECENT_LIMIT = 5;
 
 /**
  * 幅は列ごとに固定する（table-fixed）。長さの読めない値があると、
@@ -74,7 +68,6 @@ export default function AppTable({
   ref,
   apps,
   queryCounts,
-  recentAppIds,
   onSelectApp,
   onTogglePin,
   onShowDetail,
@@ -86,7 +79,8 @@ export default function AppTable({
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   useImperativeHandle(ref, () => ({
-    focusRow: (index = 0) => rowRefs.current[index]?.focus(),
+    // 省略時は最後に見ていた行。ダイアログを閉じたあとに戻す先として使う
+    focusRow: (index = focusableIndex) => rowRefs.current[index]?.focus(),
   }));
 
   const sections = useMemo(() => {
@@ -115,22 +109,13 @@ export default function AppTable({
     };
 
     const pinned = apps.filter((app) => app.isPinned).sort(bySort);
-
-    // 「最近使った」だけは並べ替えに従わない。新しい順であること自体が中身なので
-    const recent = recentAppIds
-      .map((appId) => apps.find((app) => app.appId === appId && !app.isPinned))
-      .filter((app): app is KintoneApp => !!app)
-      .slice(0, RECENT_LIMIT);
-
-    const shown = new Set([...pinned, ...recent].map((app) => app.appId));
-    const rest = apps.filter((app) => !shown.has(app.appId)).sort(bySort);
+    const rest = apps.filter((app) => !app.isPinned).sort(bySort);
 
     return [
       { key: "pinned", label: "ピン留め", apps: pinned },
-      { key: "recent", label: "最近使った", apps: recent },
       { key: "rest", label: "すべて", apps: rest },
     ].filter((section) => section.apps.length > 0);
-  }, [apps, queryCounts, recentAppIds, sortField, sortOrder]);
+  }, [apps, queryCounts, sortField, sortOrder]);
 
   /** キー操作のために、セクションをまたいだ通し番号で行を並べたもの */
   const flatApps = useMemo(
