@@ -11,11 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import AppHeader from "@/components/template/AppHeader";
 import AppTable, { AppTableHandle } from "@/components/AppTable";
 import { ShortcutBar } from "@/components/table-parts";
+import Coachmarks from "@/components/Coachmarks";
 import AppDetailDialog from "@/components/AppDetailDialog";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
 import { KintoneApp, AppFilter, KintoneAuth } from "@/types/kintone";
-import { AlertCircle, Pin, Search, X } from "lucide-react";
+import { AlertCircle, HelpCircle, Pin, Search, X } from "lucide-react";
 // ピン留めの保存先は従来のブックマーク（favorites）と同じキー。
 // 呼び名を変えただけで、利用者が付けた印はそのまま引き継ぐ
 import {
@@ -24,6 +25,7 @@ import {
   isAppFavorite,
 } from "@/utils/favorites";
 import { getRecentAppIds, recordAppOpened } from "@/utils/recent-apps";
+import { TOUR_APP_LIST, hasSeenTour, markTourSeen } from "@/utils/onboarding";
 import { getQueryCount } from "@/hooks/useQueryGenerator";
 import { cn } from "@/utils/tailwind";
 
@@ -68,6 +70,7 @@ export default function AppManagementPage({
     searchTerm: "",
     showPinnedOnly: false,
   });
+  const [tourOpen, setTourOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<AppTableHandle>(null);
 
@@ -181,6 +184,17 @@ export default function AppManagementPage({
     if (!loading) searchRef.current?.focus();
   }, [loading]);
 
+  // 初回だけ、見つけにくい操作を指しておく（画面は止めない）
+  useEffect(() => {
+    if (loading || hasSeenTour(TOUR_APP_LIST)) return;
+    setTourOpen(true);
+  }, [loading]);
+
+  const closeTour = () => {
+    markTourSeen(TOUR_APP_LIST);
+    setTourOpen(false);
+  };
+
   const togglePin = (appId: string) => {
     const app = apps.find((a) => a.appId === appId);
     if (!app) return;
@@ -287,12 +301,24 @@ export default function AppManagementPage({
             {auth.subdomain}.cybozu.com
           </span>
         }
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={() => setTourOpen(true)}
+            aria-label="使い方を見る"
+            title="使い方を見る"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+          </Button>
+        }
         onLogout={onLogout}
       />
 
       {/* ツールバー：スクロールしても検索と件数は消えない */}
       <div className="border-border bg-card flex h-12 shrink-0 items-center gap-2 border-b px-4">
-        <div className="relative max-w-md min-w-0 flex-1">
+        <div data-tour="search" className="relative max-w-md min-w-0 flex-1">
           <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
           <Input
             ref={searchRef}
@@ -345,6 +371,7 @@ export default function AppManagementPage({
         </div>
 
         <Button
+          data-tour="pin"
           variant="ghost"
           size="sm"
           onClick={() =>
@@ -427,12 +454,35 @@ export default function AppManagementPage({
       </div>
 
       <ShortcutBar
+        dataTour="shortcuts"
         hints={[
           { keys: "/", label: "検索" },
           { keys: "↓", label: "一覧へ" },
           { keys: "↑↓", label: "行を移動" },
           { keys: "Enter", label: "開く" },
           { keys: "Space", label: "詳細" },
+        ]}
+      />
+
+      <Coachmarks
+        open={tourOpen}
+        onClose={closeTour}
+        steps={[
+          {
+            target: "search",
+            title: "まず絞り込む",
+            body: "「/」を押すといつでもここに来ます。アプリ名・ID・コード・担当者のどれでも当たります。↓ で一覧に移り、1件まで絞れていれば Enter でそのまま開きます。",
+          },
+          {
+            target: "pin",
+            title: "よく使うアプリは先頭に固定できる",
+            body: "行の左端にカーソルを置くとピンが出ます。留めたアプリは一覧の先頭にまとまり、ここを押すと留めたものだけに絞れます。最近開いたアプリは留めなくても上に出ます。",
+          },
+          {
+            target: "shortcuts",
+            title: "キーだけで最後まで行ける",
+            body: "一覧に入ったら ↑↓ で行を移動、Enter で開きます。Space を押すと、そのアプリのレコード件数などの詳細が見られます。",
+          },
         ]}
       />
 

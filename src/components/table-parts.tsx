@@ -106,11 +106,17 @@ export function SectionRow({
 /** 一覧の下に置く、キー操作の手引き */
 export function ShortcutBar({
   hints,
+  dataTour,
 }: {
   hints: { keys: string; label: string }[];
+  /** 初回案内から指したいときの目印 */
+  dataTour?: string;
 }) {
   return (
-    <div className="border-border bg-card text-muted-foreground flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs">
+    <div
+      data-tour={dataTour}
+      className="border-border bg-card text-muted-foreground flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs"
+    >
       {hints.map((hint) => (
         <span key={hint.keys} className="flex items-center gap-1">
           <kbd className="border-border text-muted-foreground rounded border px-1 py-0.5 font-mono text-[10px] leading-none">

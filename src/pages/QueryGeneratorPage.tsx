@@ -25,6 +25,7 @@ import {
   Edit,
   ArrowRight,
   ExternalLink,
+  HelpCircle,
   Lightbulb,
   Play,
 } from "lucide-react";
@@ -86,6 +87,12 @@ import { Calendar } from "@/components/ui/calendar";
 import AppHeader, {
   HeaderIdChip,
 } from "@/components/template/AppHeader";
+import Coachmarks from "@/components/Coachmarks";
+import {
+  TOUR_QUERY_BUILDER,
+  hasSeenTour,
+  markTourSeen,
+} from "@/utils/onboarding";
 import { PageLoading } from "@/components/ui/page-loading";
 
 import { useQueryGenerator } from "@/hooks/useQueryGenerator";
@@ -1772,6 +1779,7 @@ export default function QueryGeneratorPage({
   /** 直前に投げたクエリ。同じ内容なら投げ直さない */
   /** 最後に実行したクエリ。未実行なら null */
   const [requestedQuery, setRequestedQuery] = useState<string | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
   const [error, setError] = useState<string>("");
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
@@ -2028,6 +2036,17 @@ export default function QueryGeneratorPage({
     setRequestedQuery(previewQuery);
     runQuery(previewQuery);
   }, [loading, previewQuery, requestedQuery, runQuery]);
+
+  // 初回だけ、プレビューが押したときだけ動くことを伝える
+  useEffect(() => {
+    if (loading || hasSeenTour(TOUR_QUERY_BUILDER)) return;
+    setTourOpen(true);
+  }, [loading]);
+
+  const closeTour = () => {
+    markTourSeen(TOUR_QUERY_BUILDER);
+    setTourOpen(false);
+  };
 
   /** 実行したときの条件から変わっているか（＝いま見えている結果が古いか） */
   const isPreviewStale =
@@ -2459,6 +2478,17 @@ export default function QueryGeneratorPage({
           </>
         }
         actions={
+          <>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={() => setTourOpen(true)}
+            aria-label="使い方を見る"
+            title="使い方を見る"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -2469,6 +2499,7 @@ export default function QueryGeneratorPage({
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>
+          </>
         }
         onLogout={onLogout}
       />
@@ -2718,7 +2749,10 @@ export default function QueryGeneratorPage({
               </div>
 
               {/* 出力バンド: 形式切替・クエリ・アクションを1か所に集約 */}
-              <div className="border-border space-y-2 border-t px-4 py-3">
+              <div
+                data-tour="output"
+                className="border-border space-y-2 border-t px-4 py-3"
+              >
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
                     出力
@@ -2972,6 +3006,23 @@ export default function QueryGeneratorPage({
           </div>
         </div>
 
+        <Coachmarks
+          open={tourOpen}
+          onClose={closeTour}
+          steps={[
+            {
+              target: "run",
+              title: "結果は押したときに取りに行く",
+              body: "条件を打つたびに取り直すと入力の途中の結果まで見えてしまうため、取得はこのボタン（または Ctrl+Enter）です。条件を変えると見出しに「更新されます」と出るので、そのとき押せば足ります。",
+            },
+            {
+              target: "output",
+              title: "できたクエリはここから持ち出す",
+              body: "Python / VBS の書き方を選んでコピーできます。保存しておくと、このアプリのクエリ一覧から呼び出して続きを編集できます。",
+            },
+          ]}
+        />
+
         {/* 幅の配分を変えるためのつまみ（横並びのときだけ） */}
         <div
           role="separator"
@@ -3027,6 +3078,7 @@ export default function QueryGeneratorPage({
             </p>
 
             <Button
+              data-tour="run"
               size="sm"
               variant={isPreviewStale ? "default" : "outline"}
               className="h-8 shrink-0"
