@@ -43,6 +43,10 @@ const generateQueryFromConditions = (
 
   const conditionStrings = conditions.map((condition) => {
     const { field, operator, value } = condition;
+    if (operator === "is" || operator === "is not") {
+      // kintoneの空判定は `is empty` / `is not empty`
+      return `${field} ${operator} empty`;
+    }
     if (operator === "in" || operator === "not in") {
       const values = Array.isArray(value) ? value : [value];
       const valueStr = values.map((v) => `"${v}"`).join(", ");

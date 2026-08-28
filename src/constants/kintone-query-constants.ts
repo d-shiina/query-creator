@@ -28,7 +28,7 @@ export const operators: { value: QueryOperator; label: string }[] = [
 export const fieldTypeOperators: Record<string, QueryOperator[]> = {
   SINGLE_LINE_TEXT: ["=", "!=", "like", "not like", "in", "not in"],
   MULTI_LINE_TEXT: ["like", "not like", "is", "is not"],
-  RICH_TEXT: ["like", "not like"],
+  RICH_TEXT: ["like", "not like", "is", "is not"],
   NUMBER: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
   CALC: ["=", "!=", ">", "<", ">=", "<=", "in", "not in"],
   RADIO_BUTTON: ["in", "not in"],

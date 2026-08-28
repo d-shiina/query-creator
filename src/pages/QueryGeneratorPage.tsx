@@ -7,8 +7,6 @@ import React, {
 } from "react";
 import {
   Database,
-  Settings,
-  Code,
   Loader2,
   Plus,
   Trash2,
@@ -21,7 +19,6 @@ import {
   Clock,
   Clipboard,
   ClipboardCheck,
-  FileText,
   RotateCcw,
   Copy,
   GripVertical,
@@ -29,13 +26,13 @@ import {
   ArrowRight,
   ExternalLink,
   Lightbulb,
+  Play,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { ja } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -131,7 +128,6 @@ interface KintoneErrorResponse {
 /** プレビューで一度に取得するレコード件数（続きは「さらに表示」で足す） */
 const PREVIEW_SIZE = 100;
 /** 入力が落ち着いてからプレビューを取り直すまでの待ち時間 */
-const PREVIEW_DEBOUNCE_MS = 500;
 
 interface QueryResult {
   records: Record<string, unknown>[];
@@ -634,7 +630,7 @@ const ModernDateTimePicker: React.FC<{
 };
 
 // ユーティリティ関数
-const queryUtils = {
+export const queryUtils = {
   // 条件のバリデーション
   validateCondition: (condition: QueryCondition): string[] => {
     const errors: string[] = [];
@@ -763,7 +759,10 @@ const queryUtils = {
 
         value = `(${formattedValues.join(",")})`;
       } else if (operator === "is" || operator === "is not") {
-        value = "null";
+        // kintoneの空判定は null ではなく empty。
+        // `詳細 is not null` はCB_VA01（入力内容が正しくありません）で弾かれる。
+        // https://cybozu.dev/ja/kintone/docs/overview/query/
+        value = "empty";
       } else {
         value = condition.value;
       }
@@ -1771,7 +1770,8 @@ export default function QueryGeneratorPage({
   /** 最新リクエストの世代。古いレスポンスの追い越しを捨てるために使う */
   const queryRequestId = useRef(0);
   /** 直前に投げたクエリ。同じ内容なら投げ直さない */
-  const lastRequestedQuery = useRef<string | null>(null);
+  /** 最後に実行したクエリ。未実行なら null */
+  const [requestedQuery, setRequestedQuery] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
   const [conditions, setConditions] = useState<QueryCondition[]>([
     { field: "", operator: "=", value: "", logicalOperator: "and" },
@@ -2012,20 +2012,38 @@ export default function QueryGeneratorPage({
     return built || buildRangeOnlyQuery(size, offset);
   }, [conditions, fields, queryOptions, limit, offset]);
 
-  // 条件を編集するたびにプレビューを取り直す。
-  // 値の入力途中に連打しないよう待ってから投げ、内容が変わらなければ投げない。
-  // （未入力の条件はgenerateQueryが除外するので、組み立て途中で不正クエリにはならない）
+  /**
+   * プレビューは押したときだけ取りに行く。
+   * 打つたびに結果が入れ替わると、入力の途中の状態に対する結果まで見せることになり、
+   * 何を見ているのか分からなくなるため。
+   */
+  const runPreview = useCallback(() => {
+    setRequestedQuery(previewQuery);
+    runQuery(previewQuery);
+  }, [previewQuery, runQuery]);
+
+  // 画面を開いた直後だけは、対象アプリの中身が分かるように一度だけ実行する
   useEffect(() => {
-    if (loading) return;
+    if (loading || requestedQuery !== null) return;
+    setRequestedQuery(previewQuery);
+    runQuery(previewQuery);
+  }, [loading, previewQuery, requestedQuery, runQuery]);
 
-    const timer = setTimeout(() => {
-      if (lastRequestedQuery.current === previewQuery) return;
-      lastRequestedQuery.current = previewQuery;
-      runQuery(previewQuery);
-    }, PREVIEW_DEBOUNCE_MS);
+  /** 実行したときの条件から変わっているか（＝いま見えている結果が古いか） */
+  const isPreviewStale =
+    requestedQuery !== null && requestedQuery !== previewQuery;
 
-    return () => clearTimeout(timer);
-  }, [previewQuery, loading, runQuery]);
+  // 手はキーボードに置いたままなので、Ctrl/⌘+Enterでも実行できるようにする
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      runPreview();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [runPreview]);
 
   /**
    * 取得済みの続きを読み足す。
@@ -2407,11 +2425,11 @@ export default function QueryGeneratorPage({
     <div className="bg-background flex h-full flex-col overflow-hidden">
       <AppHeader
         onBack={onBack}
-        backLabel="クエリ管理に戻る"
+        backLabel="クエリ一覧に戻る"
         breadcrumb={[
           { label: "アプリ一覧", onClick: () => onBackToAppList?.() },
           { label: app.name, truncate: true },
-          { label: "クエリ管理", onClick: () => onBack?.() },
+          { label: "クエリ", onClick: () => onBack?.() },
           { label: isEditMode ? "クエリ編集" : "新規作成" },
         ]}
         meta={
@@ -2462,19 +2480,21 @@ export default function QueryGeneratorPage({
           resizingSplit ? "cursor-col-resize select-none" : ""
         }`}
       >
-        {/* 左: 条件の編集 */}
-        <div className="@container scrollbar-thin min-h-0 min-w-0 flex-1 overflow-auto">
-          <div className="mx-auto max-w-5xl px-4 py-4">
+        {/* 左: 条件の編集。枠で囲わず、帯の区切りだけで段を分ける */}
+        <div className="@container scrollbar-thin bg-card min-h-0 min-w-0 flex-1 overflow-auto">
+          <div>
+            {error && (
+              <div className="px-4 pt-4">
+                <ErrorAlert error={error} />
+              </div>
+            )}
 
-          {error && <ErrorAlert error={error} />}
-
-          <div className="space-y-6">
-            <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>検索条件</CardTitle>
+                    <div className="bg-card border-border sticky top-0 z-10 flex h-12 items-center justify-between gap-2 border-b px-4">
+                      <h2 className="text-foreground text-sm font-medium">
+                        検索条件
+                      </h2>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         onClick={() => {
                           if (hasUnsavedInput) {
@@ -2483,10 +2503,10 @@ export default function QueryGeneratorPage({
                             resetConditions();
                           }
                         }}
-                        className="text-muted-foreground hover:text-foreground"
+                        className="text-muted-foreground hover:text-foreground h-8"
                         aria-label="条件をリセット"
                       >
-                        <RotateCcw className="h-4 w-4 mr-2" />
+                        <RotateCcw className="h-3.5 w-3.5" />
                         リセット
                       </Button>
                       <Dialog
@@ -2556,9 +2576,7 @@ export default function QueryGeneratorPage({
                         </DialogContent>
                       </Dialog>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
+                    <div className="space-y-2 px-4 py-3">
                       {conditions.map((condition, index) => (
                         <ConditionInput
                           key={index}
@@ -2587,13 +2605,12 @@ export default function QueryGeneratorPage({
                         条件を追加
                       </Button>
                     </div>
-                  </CardContent>
 
               {/*
                 並び替え・件数。ラベルを入力の上に置いた格子にすることで、
                 ペースの狭い幅でもラベルと入力が離れて折り返さない。
               */}
-              <div className="border-t px-4 py-3">
+              <div className="border-border border-t px-4 py-3">
                 <div className="@xl:grid-cols-[minmax(0,1fr)_7rem_5.5rem_5.5rem] grid grid-cols-2 gap-x-3 gap-y-2">
                   <div className="@xl:col-span-1 col-span-2 min-w-0 space-y-1">
                     <Label className="text-muted-foreground text-xs font-medium">
@@ -2701,7 +2718,7 @@ export default function QueryGeneratorPage({
               </div>
 
               {/* 出力バンド: 形式切替・クエリ・アクションを1か所に集約 */}
-              <div className="bg-muted/30 space-y-2 rounded-b-lg border-t px-4 py-3">
+              <div className="border-border space-y-2 border-t px-4 py-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-muted-foreground w-24 flex-shrink-0 text-sm font-medium">
                     出力
@@ -2924,8 +2941,17 @@ export default function QueryGeneratorPage({
                     </PopoverContent>
                   </Popover>
 
-                  {/* 一致件数（プレビューは条件を変えるたびに更新される） */}
-                  <div className="ml-auto flex items-center gap-2 text-sm">
+                  {/* 一致件数。最後に実行したときの結果なので、古ければ薄くする */}
+                  <div
+                    className={`ml-auto flex items-center gap-2 text-sm ${
+                      isPreviewStale ? "opacity-40" : ""
+                    }`}
+                    title={
+                      isPreviewStale
+                        ? "条件が変わっています。実行すると更新されます"
+                        : undefined
+                    }
+                  >
                     {previewLoading && (
                       <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
                     )}
@@ -2943,10 +2969,7 @@ export default function QueryGeneratorPage({
                   </div>
                 </div>
               </div>
-            </Card>
-
           </div>
-        </div>
         </div>
 
         {/* 幅の配分を変えるためのつまみ（横並びのときだけ） */}
@@ -2970,8 +2993,9 @@ export default function QueryGeneratorPage({
         />
 
         {/*
-          右のペインはライブプレビュー専用。左の条件と並べて置くことで、
-          条件を編集しながら結果の変化をそのまま見られる。
+          右のペインは実行結果専用。左の条件と並べて置くことで、
+          組み立てたクエリが何を返すのかを同じ画面で確かめられる。
+          取得は「実行」を押したときだけ（入力のたびに結果が入れ替わらないように）。
           横幅が足りないウィンドウでは上下に積む。
         */}
         <aside
@@ -2981,20 +3005,42 @@ export default function QueryGeneratorPage({
             isSideBySide ? { flexBasis: `${splitRatio}%` } : undefined
           }
         >
-          <div className="border-border flex items-center gap-3 border-b px-3 py-2">
-            <h2 className="text-foreground text-sm font-medium">プレビュー</h2>
+          <div className="border-border flex h-12 shrink-0 items-center gap-3 border-b px-3">
+            <h2 className="text-foreground shrink-0 text-sm font-medium">
+              プレビュー
+            </h2>
 
-            <p className="text-muted-foreground truncate text-xs">
-              {queryResult?.error
-                ? "クエリの実行でエラーが発生しました"
-                : queryResult
-                  ? describePreview(queryResult)
-                  : "レコードを取得しています..."}
+            <p
+              className={`min-w-0 flex-1 truncate text-xs ${
+                isPreviewStale ? "text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {previewLoading
+                ? "レコードを取得しています..."
+                : isPreviewStale
+                  ? "条件が変わりました。実行すると更新されます"
+                  : queryResult?.error
+                    ? "クエリの実行でエラーが発生しました"
+                    : queryResult
+                      ? describePreview(queryResult)
+                      : "実行するとここに結果が出ます"}
             </p>
 
-            {previewLoading && (
-              <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
-            )}
+            <Button
+              size="sm"
+              variant={isPreviewStale ? "default" : "outline"}
+              className="h-8 shrink-0"
+              onClick={runPreview}
+              disabled={previewLoading}
+              title="実行（Ctrl+Enter / ⌘Enter）"
+            >
+              {previewLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5" />
+              )}
+              実行
+            </Button>
           </div>
 
           <div
