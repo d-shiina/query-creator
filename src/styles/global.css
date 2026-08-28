@@ -14,6 +14,15 @@
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
 
+  /*
+   * 押せる面（ボタンの塗り）は primary と分ける。
+   * primary は線・文字・アイコンの青（ピン、リンク、フォーカス）で、
+   * こちらは面として敷いたときに強すぎない配合にする。
+   */
+  --color-button: hsl(var(--button));
+  --color-button-foreground: hsl(var(--button-foreground));
+  --color-button-hover: hsl(var(--button-hover));
+
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
 
@@ -108,15 +117,18 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 22% 14%;
 
-    /*
-     * 白地に彩度の高い青を敷くと、面積のわりに主張が強すぎた。
-     * ダークで青が落ち着いて見えるのは、地との明度差が穏やかだから。
-     * ライトでも同じ関係になるよう、押せるものは地に対して素直に濃い
-     * インク（わずかに青みのあるスレート）にして、色ではなく濃さで示す。
-     * ダークの配色は変えていない。
-     */
-    --primary: 222 20% 22%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
+
+    /*
+     * ダークのボタンが落ち着いて見えるのは、青と地の明度差が穏やかだから。
+     * 白地に同じ青をベタで敷くと差が開きすぎて光るので、面は淡い青にして
+     * 文字を濃い青で置く。ボタンの主張だけを下げ、ピンやリンクの青は
+     * primary のまま残す。
+     */
+    --button: 217 90% 93%;
+    --button-foreground: 221 83% 38%;
+    --button-hover: 217 85% 88%;
 
     --secondary: 220 15% 92%;
     --secondary-foreground: 222 18% 26%;
@@ -133,8 +145,7 @@
 
     --border: 220 13% 85%;
     --input: 220 13% 78%;
-    /* フォーカスの線は、面から浮くだけの濃さがあればよい */
-    --ring: 222 20% 34%;
+    --ring: 221 83% 53%;
 
     --radius: 0.5rem;
   }
@@ -151,6 +162,11 @@
 
     --primary: 217 91% 62%;
     --primary-foreground: 0 0% 100%;
+
+    /* ダークはこの見え方が良いという判断なので、いまの primary をそのまま写す */
+    --button: 217 91% 62%;
+    --button-foreground: 0 0% 100%;
+    --button-hover: 217 91% 56%;
 
     --secondary: 222 14% 20%;
     --secondary-foreground: 220 15% 88%;
