@@ -2520,7 +2520,10 @@ export default function QueryGeneratorPage({
               </div>
             )}
 
-                    <div className="bg-card border-border sticky top-0 z-10 flex h-12 items-center justify-between gap-2 border-b px-4">
+                    <div
+                      data-tour="conditions"
+                      className="bg-card border-border sticky top-0 z-10 flex h-12 items-center justify-between gap-2 border-b px-4"
+                    >
                       <h2 className="text-foreground text-sm font-medium">
                         検索条件
                       </h2>
@@ -3011,14 +3014,19 @@ export default function QueryGeneratorPage({
           onClose={closeTour}
           steps={[
             {
+              target: "conditions",
+              title: "条件を組み立てる",
+              body: "フィールドと演算子を選び、値を入力します。「条件を追加」で条件を増やせます。下の段では並び替え・取得件数も指定できます。",
+            },
+            {
               target: "run",
-              title: "プレビューの実行",
-              body: "このボタン、または Ctrl+Enter でレコードを取得します。条件を変更すると見出しに「条件が変更されています」と表示されます。",
+              title: "結果を確認する",
+              body: "実行を押すと、その条件で取得できるレコードと件数を表示します。条件を変えたあとは、もう一度押すと更新します。",
             },
             {
               target: "output",
-              title: "出力と保存",
-              body: "Python / VBS を選んでクエリをコピーします。保存したクエリは、クエリ一覧から再編集できます。",
+              title: "クエリを使う",
+              body: "できたクエリを Python / VBS の形式でコピーできます。保存すると、クエリ一覧から呼び出して編集を続けられます。",
             },
           ]}
         />

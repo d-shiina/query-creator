@@ -432,7 +432,10 @@ export default function AppManagementPage({
         この画面は一覧そのものがページなので、枠で囲わず窓いっぱいに置く。
         帯の区切りは罫線だけで足り、行のハイライトも端まで伸びる。
       */}
-      <div className="bg-card scrollbar-thin min-h-0 flex-1 overflow-auto">
+      <div
+        data-tour="list"
+        className="bg-card scrollbar-thin min-h-0 flex-1 overflow-auto"
+      >
         {loading ? (
           <TableSkeleton />
         ) : filteredApps.length > 0 ? (
@@ -454,7 +457,6 @@ export default function AppManagementPage({
       </div>
 
       <ShortcutBar
-        dataTour="shortcuts"
         hints={[
           { keys: "/", label: "検索" },
           { keys: "↓", label: "一覧へ" },
@@ -469,19 +471,19 @@ export default function AppManagementPage({
         onClose={closeTour}
         steps={[
           {
+            target: "list",
+            title: "アプリを選ぶ",
+            body: "クエリを作る kintone アプリの行をクリックすると、そのアプリの保存済みクエリ一覧に進みます。行の右端の ⓘ では、レコード件数や作成者などの詳細を確認できます。",
+          },
+          {
             target: "search",
-            title: "検索",
-            body: "「/」で検索欄に移動します。アプリ名・ID・コード・担当者が対象です。↓ で一覧に移動し、1件に絞れている場合は Enter で開きます。",
+            title: "アプリを探す",
+            body: "アプリ名・ID・コード・担当者で絞り込めます。",
           },
           {
             target: "pin",
-            title: "ピン留め",
-            body: "行の左端にカーソルを合わせるとピンが表示されます。ピン留めしたアプリは一覧の先頭に並びます。このボタンでピン留めのみに絞り込めます。最近開いたアプリは自動で上位に表示されます。",
-          },
-          {
-            target: "shortcuts",
-            title: "キーボード操作",
-            body: "↑↓ で行を移動、Enter で開きます。Space でレコード件数などの詳細を表示します。",
+            title: "よく使うアプリを先頭に",
+            body: "行の左端にカーソルを合わせるとピンが表示されます。ピン留めしたアプリは一覧の先頭に並びます。最近開いたアプリは自動で上位に表示されます。",
           },
         ]}
       />

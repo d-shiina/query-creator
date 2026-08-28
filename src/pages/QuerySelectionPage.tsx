@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Pin, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  HelpCircle,
+  Loader2,
+  Pin,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,10 +20,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import AppHeader from "@/components/template/AppHeader";
+import Coachmarks from "@/components/Coachmarks";
 import QueryTable, { QueryTableHandle } from "@/components/QueryTable";
 import { ShortcutBar } from "@/components/table-parts";
 
 import { SavedQuery, useQueryGenerator } from "@/hooks/useQueryGenerator";
+import { TOUR_QUERY_LIST, hasSeenTour, markTourSeen } from "@/utils/onboarding";
 import { KintoneAuth, KintoneApp, QueryCondition } from "@/types/kintone";
 // ピン留めの保存先は従来のお気に入り（favorites）と同じキー
 import {
@@ -88,6 +98,7 @@ export default function QuerySelectionPage({
   const [deleteTargets, setDeleteTargets] = useState<SavedQuery[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [pinnedVersion, setPinnedVersion] = useState(0);
+  const [tourOpen, setTourOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<QueryTableHandle>(null);
 
@@ -188,6 +199,17 @@ export default function QuerySelectionPage({
     searchRef.current?.focus();
   }, []);
 
+  // 初回だけ、この画面で何ができるかを指しておく
+  useEffect(() => {
+    if (hasSeenTour(TOUR_QUERY_LIST)) return;
+    setTourOpen(true);
+  }, []);
+
+  const closeTour = () => {
+    markTourSeen(TOUR_QUERY_LIST);
+    setTourOpen(false);
+  };
+
   const togglePin = (queryId: string) => {
     if (isQueryFavorite(queryId)) {
       removeQueryFromFavorites(queryId);
@@ -250,6 +272,18 @@ export default function QuerySelectionPage({
           <span className="text-muted-foreground shrink-0 px-1 text-xs">
             ID: {app.appId}
           </span>
+        }
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={() => setTourOpen(true)}
+            aria-label="使い方を見る"
+            title="使い方を見る"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+          </Button>
         }
         onLogout={onLogout}
       />
@@ -344,14 +378,17 @@ export default function QuerySelectionPage({
           )}
         </span>
 
-        <Button size="sm" className="h-8" onClick={onCreateNew}>
+        <Button data-tour="new" size="sm" className="h-8" onClick={onCreateNew}>
           <Plus className="h-3.5 w-3.5" />
           新規クエリ
         </Button>
       </div>
 
       {/* 一覧：行だけがスクロールし、見出しは貼り付いたまま */}
-      <div className="bg-card scrollbar-thin min-h-0 flex-1 overflow-auto">
+      <div
+        data-tour="list"
+        className="bg-card scrollbar-thin min-h-0 flex-1 overflow-auto"
+      >
         {filteredQueries.length > 0 ? (
           <QueryTable
             ref={tableRef}
@@ -385,6 +422,23 @@ export default function QuerySelectionPage({
           { keys: "Space", label: "選択" },
           { keys: "Delete", label: "削除" },
           { keys: "Esc", label: "アプリ一覧へ" },
+        ]}
+      />
+
+      <Coachmarks
+        open={tourOpen}
+        onClose={closeTour}
+        steps={[
+          {
+            target: "new",
+            title: "クエリを作る",
+            body: "押すと条件の編集画面に進みます。作ったクエリはこの画面に保存されます。",
+          },
+          {
+            target: "list",
+            title: "保存したクエリ",
+            body: "行をクリックすると内容を編集できます。左のチェックで選ぶと、まとめて削除できます。",
+          },
         ]}
       />
 

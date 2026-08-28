@@ -7,8 +7,9 @@
 
 const STORAGE_KEY = "kintone-tours-seen";
 
-export const TOUR_APP_LIST = "app-list@1";
-export const TOUR_QUERY_BUILDER = "query-builder@1";
+export const TOUR_APP_LIST = "app-list@2";
+export const TOUR_QUERY_LIST = "query-list@1";
+export const TOUR_QUERY_BUILDER = "query-builder@2";
 
 function read(): string[] {
   try {
