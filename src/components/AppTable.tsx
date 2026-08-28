@@ -5,15 +5,13 @@ import {
   TableHead,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 import {
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  ChevronsUpDown,
-  Info,
-  Pin,
-} from "lucide-react";
+  SectionRow,
+  SortOrder,
+  SortableHead,
+} from "@/components/table-parts";
+import { Button } from "@/components/ui/button";
+import { ChevronRight, Info, Pin } from "lucide-react";
 import { KintoneApp } from "@/types/kintone";
 import { cleanAndTruncateText } from "@/utils/text";
 import {
@@ -36,7 +34,6 @@ import { cn } from "@/utils/tailwind";
  */
 
 type SortField = "name" | "appId" | "queryCount" | "modifiedAt";
-type SortOrder = "asc" | "desc";
 
 /** 一覧の外（検索欄など）からキーボード操作を渡すための取っ手 */
 export interface AppTableHandle {
@@ -208,43 +205,19 @@ export default function AppTable({
       <thead className="bg-card sticky top-0 z-10">
         <tr className="border-border border-b">
           <TableHead className="w-12" aria-label="ピン留め" />
-          {COLUMNS.map((column) => {
-            const field = column.field;
-
-            return (
-              <TableHead
-                key={column.label}
-                className={cn(
-                  column.className,
-                  column.align === "right" && "text-right",
-                )}
-                aria-sort={
-                  field && sortField === field
-                    ? sortOrder === "asc"
-                      ? "ascending"
-                      : "descending"
-                    : undefined
-                }
-              >
-                {field ? (
-                  <button
-                    type="button"
-                    onClick={() => handleSort(field)}
-                    className={cn(
-                      "group hover:text-foreground inline-flex items-center gap-1 transition-colors",
-                      column.align === "right" && "flex-row-reverse",
-                      sortField === field && "text-foreground",
-                    )}
-                  >
-                    {column.label}
-                    <SortIcon active={sortField === field} order={sortOrder} />
-                  </button>
-                ) : (
-                  column.label
-                )}
-              </TableHead>
-            );
-          })}
+          {COLUMNS.map((column) => (
+            <SortableHead
+              key={column.label}
+              label={column.label}
+              className={column.className}
+              align={column.align}
+              active={!!column.field && sortField === column.field}
+              order={sortOrder}
+              onSort={
+                column.field ? () => handleSort(column.field!) : undefined
+              }
+            />
+          ))}
           <TableHead className="w-16 pr-4" aria-label="操作" />
         </tr>
       </thead>
@@ -252,15 +225,11 @@ export default function AppTable({
       {sections.map((section) => (
         <TableBody key={section.key}>
           {showSectionLabels && (
-            <tr>
-              <td
-                colSpan={COLUMNS.length + 2}
-                className="text-muted-foreground bg-muted/40 border-border border-b px-4 py-1 text-xs"
-              >
-                {section.label}
-                <span className="ml-1.5 opacity-60">{section.apps.length}</span>
-              </td>
-            </tr>
+            <SectionRow
+              label={section.label}
+              count={section.apps.length}
+              colSpan={COLUMNS.length + 2}
+            />
           )}
 
           {section.apps.map((app) => {
@@ -382,19 +351,5 @@ export default function AppTable({
         </TableBody>
       ))}
     </table>
-  );
-}
-
-/** 並べ替え対象の列だけ向きを出す。それ以外はホバーしたときにだけ薄く示す */
-function SortIcon({ active, order }: { active: boolean; order: SortOrder }) {
-  if (!active) {
-    return (
-      <ChevronsUpDown className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-50" />
-    );
-  }
-  return order === "asc" ? (
-    <ChevronUp className="h-3 w-3" />
-  ) : (
-    <ChevronDown className="h-3 w-3" />
   );
 }

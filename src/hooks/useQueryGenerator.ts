@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { QueryCondition } from "@/types/kintone";
 
-interface SavedQuery {
+export interface SavedQuery {
   id: string;
   name: string;
   memo?: string;

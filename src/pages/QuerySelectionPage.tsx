@@ -1,21 +1,8 @@
-import React, { useState, useMemo, useEffect } from "react";
-import {
-  Plus,
-  Database,
-  Calendar,
-  Edit,
-  Search,
-  Trash2,
-  Star,
-  X,
-  AlertTriangle,
-} from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Pin, Plus, Search, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -24,27 +11,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import AppHeader from "@/components/template/AppHeader";
+import QueryTable, { QueryTableHandle } from "@/components/QueryTable";
+import { ShortcutBar } from "@/components/table-parts";
 
-import { useQueryGenerator } from "@/hooks/useQueryGenerator";
-import { KintoneAuth, KintoneApp } from "@/types/kintone";
+import { SavedQuery, useQueryGenerator } from "@/hooks/useQueryGenerator";
+import { KintoneAuth, KintoneApp, QueryCondition } from "@/types/kintone";
+// ピン留めの保存先は従来のお気に入り（favorites）と同じキー
 import {
   addQueryToFavorites,
+  getFavoriteQueries,
   removeQueryFromFavorites,
   isQueryFavorite,
 } from "@/utils/favorites";
 
-// Helper function to generate query from conditions
+/**
+ * 保存済みクエリの一覧。
+ *
+ * アプリ一覧と同じ骨格（ヘッダー・ツールバー・表・キー操作の手引き）で組む。
+ * 表は枠で囲わず窓いっぱいに置き、スクロールするのは行だけ。
+ */
+
+/** 古い保存データには generatedQuery が無いので、条件から組み直す */
 const generateQueryFromConditions = (
-  conditions: Array<{ field: string; operator: string; value: string }>,
+  conditions: QueryCondition[],
   orderBy: string,
 ) => {
   if (!conditions || conditions.length === 0) {
@@ -54,15 +44,14 @@ const generateQueryFromConditions = (
   const conditionStrings = conditions.map((condition) => {
     const { field, operator, value } = condition;
     if (operator === "in" || operator === "not in") {
-      // Handle array values for in/not in operators
       const values = Array.isArray(value) ? value : [value];
       const valueStr = values.map((v) => `"${v}"`).join(", ");
       return `${field} ${operator} (${valueStr})`;
-    } else if (operator === "like" || operator === "not like") {
-      return `${field} ${operator} "%${value}%"`;
-    } else {
-      return `${field} ${operator} "${value}"`;
     }
+    if (operator === "like" || operator === "not like") {
+      return `${field} ${operator} "%${value}%"`;
+    }
+    return `${field} ${operator} "${value}"`;
   });
 
   let query = conditionStrings.join(" and ");
@@ -89,23 +78,60 @@ export default function QuerySelectionPage({
   onEditQuery,
   onLogout,
 }: QuerySelectionPageProps) {
-  console.log("QuerySelectionPage rendering with app:", app);
-
-  // States
   const [searchTerm, setSearchTerm] = useState("");
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [selectedQueries, setSelectedQueries] = useState<string[]>([]);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [queryToDelete, setQueryToDelete] = useState<string | null>(null);
+  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteTargets, setDeleteTargets] = useState<SavedQuery[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [favoritesVersion, setFavoritesVersion] = useState(0);
+  const [pinnedVersion, setPinnedVersion] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<QueryTableHandle>(null);
 
-  // Add useQueryGenerator hook with delete function
   const { savedQueries, deleteQuery } = useQueryGenerator(app.appId);
 
-  // キーボードショートカット for 戻る (Escape キー)
-  // ダイアログやポップオーバーが開いている間はRadix側のEscape（閉じる）を優先し、
-  // IME変換中のEscapeでは反応しない
+  // 発行されるクエリ文字列まで含めて一覧に渡す
+  const queries = useMemo(
+    () =>
+      (savedQueries ?? []).map((query) => ({
+        ...query,
+        generatedQuery:
+          query.generatedQuery ||
+          generateQueryFromConditions(query.conditions, query.orderBy),
+      })),
+    [savedQueries],
+  );
+
+  const pinnedIds = useMemo(() => {
+    void pinnedVersion; // ピンを付け外ししたら数え直す
+    return new Set(
+      getFavoriteQueries()
+        .filter((favorite) => favorite.appId === app.appId)
+        .map((favorite) => favorite.queryId),
+    );
+  }, [app.appId, pinnedVersion]);
+
+  const filteredQueries = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    return queries.filter((query) => {
+      if (showPinnedOnly && !pinnedIds.has(query.id)) return false;
+      if (!term) return true;
+
+      // 名前で当たらないときのために、メモとクエリ本文も見る
+      return [query.name, query.memo, query.generatedQuery].some((value) =>
+        value?.toLowerCase().includes(term),
+      );
+    });
+  }, [queries, searchTerm, showPinnedOnly, pinnedIds]);
+
+  const isFiltered = !!searchTerm.trim() || showPinnedOnly;
+  const selectedQueries = queries.filter((query) => selectedIds.has(query.id));
+
+  /*
+   * Escapeでアプリ一覧へ戻る。ダイアログやポップオーバーが開いている間は
+   * Radix側のEscape（閉じる）を優先し、IME変換中は反応しない。
+   * 検索欄で文字を消すEscapeも、消す側がpreventDefaultするのでここには来ない。
+   */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.ctrlKey || event.metaKey) return;
@@ -121,377 +147,334 @@ export default function QuerySelectionPage({
     };
 
     document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onBack]);
 
-  // お気に入り切り替え関数
-  const toggleQueryFavorite = (queryId: string) => {
+  // 「/」で検索へ、どこも掴んでいないところからの「↓」で一覧へ
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      const target = event.target as HTMLElement | null;
+      const inTextField =
+        !!target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
+      if (event.key === "/" && !inTextField) {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+        return;
+      }
+
+      if (event.key === "ArrowDown" && target === document.body) {
+        event.preventDefault();
+        tableRef.current?.focusRow(0);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // 開いて最初にすることは絞り込みなので、検索欄から始める
+  useEffect(() => {
+    searchRef.current?.focus();
+  }, []);
+
+  const togglePin = (queryId: string) => {
     if (isQueryFavorite(queryId)) {
       removeQueryFromFavorites(queryId);
     } else {
       addQueryToFavorites(queryId, app.appId);
     }
-    setFavoritesVersion((prev) => prev + 1);
+    setPinnedVersion((prev) => prev + 1);
   };
 
-  // チェックボックス選択関連
-  const handleSelectQuery = (queryId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedQueries(prev => [...prev, queryId]);
-    } else {
-      setSelectedQueries(prev => prev.filter(id => id !== queryId));
-    }
+  const toggleSelect = (queryId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(queryId)) {
+        next.delete(queryId);
+      } else {
+        next.add(queryId);
+      }
+      return next;
+    });
   };
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedQueries(filteredQueries.map(query => query.id));
-    } else {
-      setSelectedQueries([]);
-    }
-  };
-
-  // 削除関連の関数
-  const handleDeleteSingle = (queryId: string) => {
-    setQueryToDelete(queryId);
-    setShowDeleteDialog(true);
-  };
-
-  const handleDeleteSelected = () => {
-    if (selectedQueries.length === 0) return;
-    setQueryToDelete(null); // 一括削除の場合はnull
-    setShowDeleteDialog(true);
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === filteredQueries.length
+        ? new Set()
+        : new Set(filteredQueries.map((query) => query.id)),
+    );
   };
 
   const confirmDelete = async () => {
+    if (!deleteTargets) return;
+
     setIsDeleting(true);
     try {
-      if (queryToDelete) {
-        // 単一削除
-        await deleteQuery(queryToDelete);
-      } else {
-        // 一括削除
-        for (const queryId of selectedQueries) {
-          await deleteQuery(queryId);
-        }
-        setSelectedQueries([]);
+      for (const query of deleteTargets) {
+        await deleteQuery(query.id);
       }
-    } catch (error) {
-      console.error('削除に失敗しました:', error);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        deleteTargets.forEach((query) => next.delete(query.id));
+        return next;
+      });
     } finally {
       setIsDeleting(false);
-      setShowDeleteDialog(false);
-      setQueryToDelete(null);
+      setDeleteTargets(null);
     }
   };
 
-  const cancelDelete = () => {
-    setShowDeleteDialog(false);
-    setQueryToDelete(null);
-  };
-
-  // フィルタリング済みクエリ
-  const filteredQueries = useMemo(() => {
-    if (!savedQueries) return [];
-
-    return savedQueries.filter((query) => {
-      // 検索フィルター
-      if (
-        searchTerm &&
-        !query.name.toLowerCase().includes(searchTerm.toLowerCase())
-      ) {
-        return false;
-      }
-
-      // お気に入りフィルター
-      if (showFavoritesOnly && !isQueryFavorite(query.id)) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [savedQueries, searchTerm, showFavoritesOnly, favoritesVersion]);
-  console.log("savedQueries:", savedQueries);
-  console.log("savedQueries type:", typeof savedQueries);
-  console.log("savedQueries length:", savedQueries?.length);
-  console.log("savedQueries array check:", Array.isArray(savedQueries));
-
-  // Step 2: Header with QueryGeneratorPage style
   return (
     <div className="bg-background flex h-full flex-col overflow-hidden">
-      {/* Header */}
       <AppHeader
         onBack={onBack}
         backLabel="アプリ一覧に戻る"
         breadcrumb={[
           { label: "アプリ一覧", onClick: onBack },
           { label: app.name, truncate: true },
-          { label: "クエリ管理" },
+          { label: "クエリ" },
         ]}
         meta={
           <span className="text-muted-foreground shrink-0 px-1 text-xs">
-            {savedQueries?.length || 0}件
+            ID: {app.appId}
           </span>
         }
         onLogout={onLogout}
       />
 
-      {/* Main Content */}
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-
-          {/* Controls */}
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 items-center space-x-4">
-              {/* 検索バー */}
-              <div className="relative max-w-md flex-1">
-                <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-                <Input
-                  type="search"
-                  placeholder="クエリを検索..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-
-              {/* お気に入りフィルター */}
-              <Button
-                variant={showFavoritesOnly ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
-                className="flex items-center space-x-2"
-              >
-                <Star
-                  className={`h-4 w-4 ${showFavoritesOnly ? "fill-current" : ""}`}
-                />
-                <span>お気に入り</span>
-              </Button>
-
-              {/* 一括削除ボタン */}
-              {selectedQueries.length > 0 && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDeleteSelected}
-                  className="flex items-center space-x-2"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  <span>選択削除 ({selectedQueries.length})</span>
-                </Button>
-              )}
-            </div>
-
-            {/* 新規作成ボタン */}
-            <Button
-              onClick={onCreateNew}
-              className=""
+      {/* ツールバー：スクロールしても検索と新規作成は消えない */}
+      <div className="border-border bg-card flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <div className="relative max-w-md min-w-0 flex-1">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+          <Input
+            ref={searchRef}
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && searchTerm) {
+                // 文字が残っているうちは、Escapeは消すためのキー（戻るは次のEscape）
+                event.preventDefault();
+                setSearchTerm("");
+                return;
+              }
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                tableRef.current?.focusRow(0);
+                return;
+              }
+              if (event.key === "Enter" && filteredQueries.length > 0) {
+                event.preventDefault();
+                if (filteredQueries.length === 1) {
+                  onEditQuery(filteredQueries[0].id);
+                } else {
+                  tableRef.current?.focusRow(0);
+                }
+              }
+            }}
+            placeholder="クエリ名、メモ、クエリ本文で絞り込む"
+            aria-label="クエリを絞り込む"
+            className="h-8 pr-16 pl-8 text-sm"
+          />
+          {searchTerm ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm("");
+                searchRef.current?.focus();
+              }}
+              aria-label="検索条件を消す"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
             >
-              <Plus className="mr-2 h-4 w-4" />
-              新規クエリ作成
-            </Button>
-          </div>
-
-          {/* Query list - Table format */}
-          <div className="space-y-4">
-            {!filteredQueries || filteredQueries.length === 0 ? (
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <Database className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
-                  <h3 className="mb-2 text-lg font-medium">
-                    {searchTerm || showFavoritesOnly
-                      ? "条件に一致するクエリがありません"
-                      : "クエリがありません"}
-                  </h3>
-                  <p className="text-muted-foreground">
-                    {searchTerm || showFavoritesOnly
-                      ? "検索条件を変更してください"
-                      : "新規クエリを作成して始めましょう"}
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    保存されたクエリ ({filteredQueries.length}件)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-8">
-                          <Checkbox
-                            checked={selectedQueries.length === filteredQueries.length && filteredQueries.length > 0}
-                            onCheckedChange={handleSelectAll}
-                            aria-label="すべて選択"
-                          />
-                        </TableHead>
-                        <TableHead className="w-8"></TableHead>
-                        <TableHead>クエリ名</TableHead>
-                        <TableHead>メモ</TableHead>
-                        <TableHead>生成されたクエリ</TableHead>
-                        <TableHead>作成日</TableHead>
-                        <TableHead className="text-right">操作</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredQueries.map((query) => (
-                        <TableRow
-                          key={query.id}
-                          onClick={() => onEditQuery(query.id)}
-                          className="cursor-pointer"
-                        >
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={selectedQueries.includes(query.id)}
-                              onCheckedChange={(checked) => handleSelectQuery(query.id, checked as boolean)}
-                              aria-label={`${query.name}を選択`}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleQueryFavorite(query.id);
-                              }}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Star
-                                className={`h-4 w-4 ${
-                                  isQueryFavorite(query.id)
-                                    ? "fill-yellow-400 text-yellow-400"
-                                    : "text-muted-foreground hover:text-yellow-400"
-                                }`}
-                              />
-                            </Button>
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {query.name}
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-muted-foreground max-w-[200px] truncate text-sm" title={query.memo}>
-                              {query.memo || "メモなし"}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <code className="bg-muted rounded px-2 py-1 font-mono text-xs max-w-[300px] block truncate" title={query.generatedQuery || generateQueryFromConditions(query.conditions, query.orderBy) || "クエリなし"}>
-                              {query.generatedQuery ||
-                                generateQueryFromConditions(
-                                  query.conditions,
-                                  query.orderBy,
-                                ) ||
-                                "クエリなし"}
-                            </code>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              <Calendar className="mr-1 h-3 w-3" />
-                              {new Date(query.createdAt).toLocaleDateString(
-                                "ja-JP",
-                              )}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onEditQuery(query.id)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteSingle(query.id);
-                                }}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <kbd className="border-border text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border px-1.5 py-0.5 font-mono text-[10px] leading-none">
+              /
+            </kbd>
+          )}
         </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowPinnedOnly((prev) => !prev)}
+          aria-pressed={showPinnedOnly}
+          className={`h-8 ${showPinnedOnly ? "bg-accent text-accent-foreground" : ""}`}
+        >
+          <Pin
+            className={`h-3.5 w-3.5 ${showPinnedOnly ? "fill-primary text-primary" : ""}`}
+          />
+          ピン留め
+        </Button>
+
+        {selectedQueries.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDeleteTargets(selectedQueries)}
+            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {selectedQueries.length}件を削除
+          </Button>
+        )}
+
+        <span className="text-muted-foreground ml-auto shrink-0 text-xs tabular-nums">
+          {isFiltered ? (
+            <>
+              <span className="text-foreground font-medium">
+                {filteredQueries.length}
+              </span>
+              {` / ${queries.length} 件`}
+            </>
+          ) : (
+            `${queries.length} 件`
+          )}
+        </span>
+
+        <Button size="sm" className="h-8" onClick={onCreateNew}>
+          <Plus className="h-3.5 w-3.5" />
+          新規クエリ
+        </Button>
       </div>
 
-      {/* 削除確認ダイアログ */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent className="sm:max-w-md">
+      {/* 一覧：行だけがスクロールし、見出しは貼り付いたまま */}
+      <div className="bg-card scrollbar-thin min-h-0 flex-1 overflow-auto">
+        {filteredQueries.length > 0 ? (
+          <QueryTable
+            ref={tableRef}
+            queries={filteredQueries}
+            pinnedIds={pinnedIds}
+            selectedIds={selectedIds}
+            onEditQuery={(query) => onEditQuery(query.id)}
+            onTogglePin={togglePin}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={toggleSelectAll}
+            onDeleteQuery={(query) => setDeleteTargets([query])}
+          />
+        ) : (
+          <EmptyState
+            isFiltered={isFiltered}
+            onClear={() => {
+              setSearchTerm("");
+              setShowPinnedOnly(false);
+            }}
+            onCreateNew={onCreateNew}
+          />
+        )}
+      </div>
+
+      <ShortcutBar
+        hints={[
+          { keys: "/", label: "検索" },
+          { keys: "↓", label: "一覧へ" },
+          { keys: "↑↓", label: "行を移動" },
+          { keys: "Enter", label: "編集" },
+          { keys: "Space", label: "選択" },
+          { keys: "Delete", label: "削除" },
+          { keys: "Esc", label: "アプリ一覧へ" },
+        ]}
+      />
+
+      <Dialog
+        open={!!deleteTargets}
+        onOpenChange={(open) => !open && setDeleteTargets(null)}
+      >
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              <span>削除の確認</span>
-            </DialogTitle>
-            <DialogDescription className="space-y-3 pt-2">
-              {queryToDelete ? (
-                <p>
-                  クエリ「<strong>{savedQueries.find(q => q.id === queryToDelete)?.name}</strong>」を削除しますか？
-                </p>
-              ) : (
-                <p>
-                  選択した<strong>{selectedQueries.length}件</strong>のクエリを削除しますか？
-                </p>
-              )}
-              <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-lg">
-                <p className="text-sm text-destructive">
-                  <strong>⚠️ 注意：</strong>この操作は取り消せません。削除されたクエリは復元できません。
-                </p>
+            <DialogTitle className="text-base">クエリを削除</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {deleteTargets?.length === 1 ? (
+                  <p>
+                    「
+                    <span className="text-foreground font-medium">
+                      {deleteTargets[0].name}
+                    </span>
+                    」を削除します。
+                  </p>
+                ) : (
+                  <p>
+                    選択した
+                    <span className="text-foreground font-medium">
+                      {deleteTargets?.length}件
+                    </span>
+                    を削除します。
+                  </p>
+                )}
+                <p>取り消せません。</p>
               </div>
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex justify-end space-x-3 pt-4">
+          <DialogFooter>
             <Button
-              variant="outline"
-              onClick={cancelDelete}
+              variant="ghost"
+              onClick={() => setDeleteTargets(null)}
               disabled={isDeleting}
             >
               キャンセル
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={confirmDelete}
               disabled={isDeleting}
-              className="flex items-center space-x-2"
             >
               {isDeleting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>削除中...</span>
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <>
-                  <Trash2 className="h-4 w-4" />
-                  <span>削除</span>
-                </>
+                <Trash2 className="h-4 w-4" />
               )}
+              削除
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function EmptyState({
+  isFiltered,
+  onClear,
+  onCreateNew,
+}: {
+  isFiltered: boolean;
+  onClear: () => void;
+  onCreateNew: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
+      <Search className="text-muted-foreground/40 h-6 w-6" />
+      <div className="space-y-1">
+        <p className="text-foreground text-sm font-medium">
+          {isFiltered
+            ? "条件に一致するクエリがありません"
+            : "保存されたクエリがありません"}
+        </p>
+        <p className="text-muted-foreground text-xs">
+          {isFiltered
+            ? "検索語を短くするか、ピン留めの絞り込みを外してください。"
+            : "条件を組み立てて保存すると、ここに並びます。"}
+        </p>
+      </div>
+      {isFiltered ? (
+        <Button variant="outline" size="sm" onClick={onClear}>
+          絞り込みを解除
+        </Button>
+      ) : (
+        <Button size="sm" onClick={onCreateNew}>
+          <Plus className="h-3.5 w-3.5" />
+          新規クエリ
+        </Button>
+      )}
     </div>
   );
 }

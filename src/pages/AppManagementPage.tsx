@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import AppHeader from "@/components/template/AppHeader";
 import AppTable, { AppTableHandle } from "@/components/AppTable";
+import { ShortcutBar } from "@/components/table-parts";
 import AppDetailDialog from "@/components/AppDetailDialog";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
@@ -425,13 +426,15 @@ export default function AppManagementPage({
         )}
       </div>
 
-      <div className="border-border bg-card text-muted-foreground flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs">
-        <ShortcutHint keys="/" label="検索" />
-        <ShortcutHint keys="↓" label="一覧へ" />
-        <ShortcutHint keys="↑↓" label="行を移動" />
-        <ShortcutHint keys="Enter" label="開く" />
-        <ShortcutHint keys="Space" label="詳細" />
-      </div>
+      <ShortcutBar
+        hints={[
+          { keys: "/", label: "検索" },
+          { keys: "↓", label: "一覧へ" },
+          { keys: "↑↓", label: "行を移動" },
+          { keys: "Enter", label: "開く" },
+          { keys: "Space", label: "詳細" },
+        ]}
+      />
 
       <AppDetailDialog
         app={detailApp}
@@ -440,17 +443,6 @@ export default function AppManagementPage({
         onSelectApp={handleAppSelect}
       />
     </div>
-  );
-}
-
-function ShortcutHint({ keys, label }: { keys: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1">
-      <kbd className="border-border text-muted-foreground rounded border px-1 py-0.5 font-mono text-[10px] leading-none">
-        {keys}
-      </kbd>
-      {label}
-    </span>
   );
 }
 
