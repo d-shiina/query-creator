@@ -87,6 +87,7 @@ import AppHeader, {
   HeaderIdChip,
 } from "@/components/template/AppHeader";
 import Coachmarks from "@/components/Coachmarks";
+import { ShortcutBar } from "@/components/table-parts";
 import {
   TOUR_QUERY_BUILDER,
   hasSeenTour,
@@ -2051,17 +2052,31 @@ export default function QueryGeneratorPage({
   const isPreviewStale =
     requestedQuery !== null && requestedQuery !== previewQuery;
 
-  // 手はキーボードに置いたままなので、Ctrl/⌘+Enterでも実行できるようにする
+  /*
+   * 手はキーボードに置いたままなので、組み立て中の操作をキーからも出せるようにする。
+   *   Ctrl/⌘ + Enter … 実行
+   *   Ctrl/⌘ + S     … 保存（名前の入力へ）
+   * 戻るのEscapeは別の効果で見ている。
+   */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
-      event.preventDefault();
-      runPreview();
+      if (!(event.metaKey || event.ctrlKey)) return;
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runPreview();
+        return;
+      }
+
+      if (event.key.toLowerCase() === "s" && generatedQuery) {
+        event.preventDefault();
+        setSavePopoverOpen(true);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [runPreview]);
+  }, [runPreview, generatedQuery]);
 
   /**
    * 取得済みの続きを読み足す。
@@ -2510,9 +2525,9 @@ export default function QueryGeneratorPage({
 
                     <div
                       data-tour="conditions"
-                      className="bg-card border-border sticky top-0 z-10 flex h-12 items-center justify-between gap-2 border-b px-4"
+                      className="bg-card border-border sticky top-0 z-10 flex h-12 items-center gap-2 border-b px-4"
                     >
-                      <h2 className="text-foreground text-sm font-medium">
+                      <h2 className="text-foreground mr-auto text-sm font-medium">
                         検索条件
                       </h2>
                       <Button
@@ -2530,6 +2545,23 @@ export default function QueryGeneratorPage({
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         リセット
+                      </Button>
+                      {/* 実行は条件のすぐ上に置く。帯は貼り付くので、送っても押せる */}
+                      <Button
+                        data-tour="run"
+                        size="sm"
+                        variant={isPreviewStale ? "default" : "outline"}
+                        className="h-8"
+                        onClick={runPreview}
+                        disabled={previewLoading}
+                        title="実行（Ctrl+Enter）"
+                      >
+                        {previewLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                        実行
                       </Button>
                       <Dialog
                         open={leaveDialogOpen}
@@ -3035,8 +3067,12 @@ export default function QueryGeneratorPage({
           onKeyDown={handleSplitKeyDown}
           onDoubleClick={() => setSplitRatio(46)}
           title="ドラッグで幅を調整（ダブルクリックで既定に戻す）"
-          className={`no-drag border-border hidden w-2 shrink-0 cursor-col-resize border-l transition-colors lg:block ${
-            resizingSplit ? "bg-primary/60" : "hover:bg-primary/40"
+          /*
+            見た目は罫線一本。掴める幅は擬似要素で左右に広げているので、
+            細くても摘まみ損ねない。
+          */
+          className={`no-drag relative hidden w-px shrink-0 cursor-col-resize transition-colors before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] lg:block ${
+            resizingSplit ? "bg-primary" : "bg-border hover:bg-primary/50"
           }`}
         />
 
@@ -3073,33 +3109,16 @@ export default function QueryGeneratorPage({
                       ? describePreview(queryResult)
                       : "実行すると結果を表示します"}
             </p>
-
-            <Button
-              data-tour="run"
-              size="sm"
-              variant={isPreviewStale ? "default" : "outline"}
-              className="h-8 shrink-0"
-              onClick={runPreview}
-              disabled={previewLoading}
-              title="実行（Ctrl+Enter / ⌘Enter）"
-            >
-              {previewLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Play className="h-3.5 w-3.5" />
-              )}
-              実行
-            </Button>
           </div>
 
           <div
             ref={previewScrollRef}
-            className="scrollbar-thin min-h-0 flex-1 overflow-auto p-3"
+            className="scrollbar-thin min-h-0 flex-1 overflow-auto"
           >
             {queryResult && (
               <>
                   {queryResult.error ? (
-                    <div className="bg-muted/40 rounded-md border p-4">
+                    <div className="m-3 rounded-md border bg-muted/40 p-4">
                       <div className="mb-3 flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-red-500"></div>
                         <h3 className="text-foreground text-sm font-medium">
@@ -3164,17 +3183,17 @@ export default function QueryGeneratorPage({
                   ) : (
                     <>
                       <div
-                        className="scrollbar-thin overflow-x-auto rounded-md border"
+                        className="scrollbar-thin overflow-x-auto"
                         style={{ direction: "ltr" }}
                       >
                       {queryResult.records.length > 0 ? (
                         <table className="w-full min-w-max border-collapse text-sm">
                           <thead>
-                            <tr className="bg-secondary sticky top-0 z-10 border-b-2">
+                            <tr className="bg-card border-border sticky top-0 z-10 border-b">
                               {previewColumns.map((fieldCode) => (
                                 <th
                                   key={fieldCode}
-                                  className="min-w-[110px] border-r p-2 text-left font-medium whitespace-nowrap"
+                                  className="text-muted-foreground min-w-[110px] px-3 py-2 text-left text-xs font-medium whitespace-nowrap"
                                 >
                                   {fields.find((f) => f.code === fieldCode)
                                     ?.label || fieldCode}
@@ -3190,12 +3209,12 @@ export default function QueryGeneratorPage({
                               ) => (
                                 <tr
                                   key={index}
-                                  className="even:bg-muted/50 hover:bg-accent/60 border-b"
+                                  className="border-border/60 hover:bg-muted/50 border-b"
                                 >
                                   {previewColumns.map((fieldCode) => (
                                     <td
                                       key={fieldCode}
-                                      className="min-w-[110px] max-w-[240px] border-r p-2"
+                                      className="min-w-[110px] max-w-[240px] px-3 py-2"
                                       title={formatFieldValue(record[fieldCode])}
                                     >
                                       <div className="truncate">
@@ -3216,7 +3235,7 @@ export default function QueryGeneratorPage({
                     </div>
 
                     {canLoadMore && (
-                      <div className="flex justify-center pt-3">
+                      <div className="flex justify-center p-3">
                         <Button
                           variant="outline"
                           size="sm"
@@ -3241,6 +3260,14 @@ export default function QueryGeneratorPage({
           </div>
         </aside>
       </div>
+
+      <ShortcutBar
+        hints={[
+          { keys: "Ctrl+Enter", label: "実行" },
+          { keys: "Ctrl+S", label: "保存" },
+          { keys: "Esc", label: "クエリ一覧へ" },
+        ]}
+      />
 
       {/* ナビゲーション中のローディングオーバーレイ */}
       {navigatingToQueryList && (
