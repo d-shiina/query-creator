@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { HelpCircle, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { Loader2, Plus, Search, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -263,18 +263,7 @@ export default function QuerySelectionPage({
             ID: {app.appId}
           </span>
         }
-        actions={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => setTourOpen(true)}
-            aria-label="使い方を見る"
-            title="使い方を見る"
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-          </Button>
-        }
+        onShowHelp={() => setTourOpen(true)}
         onLogout={onLogout}
       />
 

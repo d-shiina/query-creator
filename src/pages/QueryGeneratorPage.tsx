@@ -25,7 +25,6 @@ import {
   Edit,
   ArrowRight,
   ExternalLink,
-  HelpCircle,
   Lightbulb,
   Play,
 } from "lucide-react";
@@ -2477,18 +2476,8 @@ export default function QueryGeneratorPage({
             )}
           </>
         }
+        onShowHelp={() => setTourOpen(true)}
         actions={
-          <>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => setTourOpen(true)}
-            aria-label="使い方を見る"
-            title="使い方を見る"
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -2499,7 +2488,6 @@ export default function QueryGeneratorPage({
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>
-          </>
         }
         onLogout={onLogout}
       />

@@ -16,7 +16,7 @@ import AppDetailDialog from "@/components/AppDetailDialog";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
 import { KintoneApp, AppFilter, KintoneAuth } from "@/types/kintone";
-import { AlertCircle, HelpCircle, Search, X } from "lucide-react";
+import { AlertCircle, Search, X } from "lucide-react";
 // ピン留めの保存先は従来のブックマーク（favorites）と同じキー。
 // 呼び名を変えただけで、利用者が付けた印はそのまま引き継ぐ
 import {
@@ -296,18 +296,7 @@ export default function AppManagementPage({
             {auth.subdomain}.cybozu.com
           </span>
         }
-        actions={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => setTourOpen(true)}
-            aria-label="使い方を見る"
-            title="使い方を見る"
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-          </Button>
-        }
+        onShowHelp={() => setTourOpen(true)}
         onLogout={onLogout}
       />
 

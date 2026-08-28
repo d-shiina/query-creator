@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowLeft, ChevronRight, LogOut } from "lucide-react";
+import { ArrowLeft, ChevronRight, HelpCircle, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ToggleTheme from "@/components/ToggleTheme";
 import WindowControls, {
@@ -32,6 +32,8 @@ interface AppHeaderProps {
   meta?: React.ReactNode;
   /** この画面固有の操作（枠なしのアイコンボタンを想定） */
   actions?: React.ReactNode;
+  /** 渡すと、右端の共通操作に「使い方」を出す */
+  onShowHelp?: () => void;
   onLogout: () => void;
 }
 
@@ -41,6 +43,7 @@ export default function AppHeader({
   breadcrumb,
   meta,
   actions,
+  onShowHelp,
   onLogout,
 }: AppHeaderProps) {
   return (
@@ -112,6 +115,18 @@ export default function AppHeader({
 
       <div className="ml-auto flex shrink-0 items-center gap-0.5 self-stretch pl-1">
         <div className="flex items-center gap-0.5 self-center">
+          {onShowHelp && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onShowHelp}
+              aria-label="使い方"
+              title="使い方"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Button>
+          )}
           <ToggleTheme variant="ghost" className="h-7 w-7" />
           <Button
             variant="ghost"
