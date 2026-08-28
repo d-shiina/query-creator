@@ -200,7 +200,7 @@ export default function AppTable({
     <table className="w-full table-fixed text-sm">
       <thead className="bg-card sticky top-0 z-10">
         <tr className="border-border border-b">
-          <TableHead data-tour="pin" className="w-12" aria-label="ピン留め" />
+          <TableHead className="w-12" aria-label="ピン留め" />
           {COLUMNS.map((column) => (
             <SortableHead
               key={column.label}
@@ -246,7 +246,11 @@ export default function AppTable({
                 onKeyDown={(event) => handleKeyDown(event, index)}
                 className="focus-visible:bg-accent focus-visible:ring-primary group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
               >
-                <TableCell className="pr-1 pl-3 text-center">
+                {/* 初回案内は、実際にピンが出る先頭行のこの欄を指す */}
+                <TableCell
+                  data-tour={index === 0 ? "pin" : undefined}
+                  className="pr-1 pl-3 text-center"
+                >
                   <Button
                     variant="ghost"
                     size="icon"
