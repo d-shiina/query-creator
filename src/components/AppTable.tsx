@@ -255,12 +255,10 @@ export default function AppTable({
                       event.stopPropagation();
                       onTogglePin(app.appId);
                     }}
-                    title={
-                      app.isPinned ? "ピン留めを外す" : "ピン留めして上に固定"
-                    }
+                    title={app.isPinned ? "ピン留めを外す" : "ピン留めする"}
                     aria-pressed={!!app.isPinned}
                     aria-label={
-                      app.isPinned ? "ピン留めを外す" : "ピン留めして上に固定"
+                      app.isPinned ? "ピン留めを外す" : "ピン留めする"
                     }
                   >
                     <Pin
@@ -330,7 +328,7 @@ export default function AppTable({
                         event.stopPropagation();
                         onShowDetail(app);
                       }}
-                      title="詳細（レコード件数を取得）"
+                      title="詳細を表示"
                       aria-label={`${app.name} の詳細`}
                     >
                       <Info className="h-3.5 w-3.5" />

@@ -125,8 +125,8 @@ export default function AppDetailDialog({
             className="h-8 w-8 shrink-0"
             onClick={reloadCount}
             disabled={count.status === "loading"}
-            title="件数を取り直す"
-            aria-label="件数を取り直す"
+            title="再取得"
+            aria-label="レコード件数を再取得"
           >
             <RotateCw className="h-4 w-4" />
           </Button>

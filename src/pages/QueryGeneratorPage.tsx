@@ -2982,7 +2982,7 @@ export default function QueryGeneratorPage({
                     }`}
                     title={
                       isPreviewStale
-                        ? "条件が変わっています。実行すると更新されます"
+                        ? "条件が変更されています。実行すると更新します"
                         : undefined
                     }
                   >
@@ -3012,13 +3012,13 @@ export default function QueryGeneratorPage({
           steps={[
             {
               target: "run",
-              title: "結果は押したときに取りに行く",
-              body: "条件を打つたびに取り直すと入力の途中の結果まで見えてしまうため、取得はこのボタン（または Ctrl+Enter）です。条件を変えると見出しに「更新されます」と出るので、そのとき押せば足ります。",
+              title: "プレビューの実行",
+              body: "このボタン、または Ctrl+Enter でレコードを取得します。条件を変更すると見出しに「条件が変更されています」と表示されます。",
             },
             {
               target: "output",
-              title: "できたクエリはここから持ち出す",
-              body: "Python / VBS の書き方を選んでコピーできます。保存しておくと、このアプリのクエリ一覧から呼び出して続きを編集できます。",
+              title: "出力と保存",
+              body: "Python / VBS を選んでクエリをコピーします。保存したクエリは、クエリ一覧から再編集できます。",
             },
           ]}
         />
@@ -3069,12 +3069,12 @@ export default function QueryGeneratorPage({
               {previewLoading
                 ? "レコードを取得しています..."
                 : isPreviewStale
-                  ? "条件が変わりました。実行すると更新されます"
+                  ? "条件が変更されています。実行すると更新します"
                   : queryResult?.error
                     ? "クエリの実行でエラーが発生しました"
                     : queryResult
                       ? describePreview(queryResult)
-                      : "実行するとここに結果が出ます"}
+                      : "実行すると結果を表示します"}
             </p>
 
             <Button

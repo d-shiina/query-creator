@@ -251,10 +251,8 @@ export default function QueryTable({
                       event.stopPropagation();
                       onTogglePin(query.id);
                     }}
-                    title={isPinned ? "ピン留めを外す" : "ピン留めして上に固定"}
-                    aria-label={
-                      isPinned ? "ピン留めを外す" : "ピン留めして上に固定"
-                    }
+                    title={isPinned ? "ピン留めを外す" : "ピン留めする"}
+                    aria-label={isPinned ? "ピン留めを外す" : "ピン留めする"}
                     aria-pressed={isPinned}
                   >
                     <Pin

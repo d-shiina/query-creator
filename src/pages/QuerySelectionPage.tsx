@@ -466,7 +466,7 @@ function EmptyState({
         <p className="text-muted-foreground text-xs">
           {isFiltered
             ? "検索語を短くするか、ピン留めの絞り込みを外してください。"
-            : "条件を組み立てて保存すると、ここに並びます。"}
+            : "クエリを保存すると、ここに表示されます。"}
         </p>
       </div>
       {isFiltered ? (
