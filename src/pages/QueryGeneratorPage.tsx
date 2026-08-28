@@ -2801,6 +2801,7 @@ export default function QueryGeneratorPage({
                               variant="outline"
                               size="sm"
                               disabled={!generatedQuery}
+                              title="WinActorのkintone連携ノードの「カスタムクエリ」欄に貼り付けて使います"
                               onClick={async () => {
                                 const text = formatQueryForOutput(
                                   generatedQuery,
@@ -3026,7 +3027,7 @@ export default function QueryGeneratorPage({
             {
               target: "output",
               title: "クエリを使う",
-              body: "できたクエリを Python / VBS の形式でコピーできます。保存すると、クエリ一覧から呼び出して編集を続けられます。",
+              body: "コピーしたクエリは、WinActor の kintone 連携ノードの「カスタムクエリ」欄に貼り付けて使います。ノードの種類に合わせて Python / VBS を選んでください。保存すると、クエリ一覧から呼び出して編集を続けられます。",
             },
           ]}
         />
