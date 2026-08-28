@@ -200,7 +200,7 @@ export default function AppTable({
     <table className="w-full table-fixed text-sm">
       <thead className="bg-card sticky top-0 z-10">
         <tr className="border-border border-b">
-          <TableHead className="w-12" aria-label="ピン留め" />
+          <TableHead data-tour="pin" className="w-12" aria-label="ピン留め" />
           {COLUMNS.map((column) => (
             <SortableHead
               key={column.label}

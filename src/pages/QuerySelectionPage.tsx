@@ -1,13 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  HelpCircle,
-  Loader2,
-  Pin,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react";
+import { HelpCircle, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,7 +85,6 @@ export default function QuerySelectionPage({
   onLogout,
 }: QuerySelectionPageProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteTargets, setDeleteTargets] = useState<SavedQuery[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -129,7 +120,6 @@ export default function QuerySelectionPage({
     const term = searchTerm.trim().toLowerCase();
 
     return queries.filter((query) => {
-      if (showPinnedOnly && !pinnedIds.has(query.id)) return false;
       if (!term) return true;
 
       // 名前で当たらないときのために、メモとクエリ本文も見る
@@ -137,9 +127,9 @@ export default function QuerySelectionPage({
         value?.toLowerCase().includes(term),
       );
     });
-  }, [queries, searchTerm, showPinnedOnly, pinnedIds]);
+  }, [queries, searchTerm]);
 
-  const isFiltered = !!searchTerm.trim() || showPinnedOnly;
+  const isFiltered = !!searchTerm.trim();
   const selectedQueries = queries.filter((query) => selectedIds.has(query.id));
 
   /*
@@ -340,19 +330,6 @@ export default function QuerySelectionPage({
           )}
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowPinnedOnly((prev) => !prev)}
-          aria-pressed={showPinnedOnly}
-          className={`h-8 ${showPinnedOnly ? "bg-accent text-accent-foreground" : ""}`}
-        >
-          <Pin
-            className={`h-3.5 w-3.5 ${showPinnedOnly ? "fill-primary text-primary" : ""}`}
-          />
-          ピン留め
-        </Button>
-
         {selectedQueries.length > 0 && (
           <Button
             variant="ghost"
@@ -404,10 +381,7 @@ export default function QuerySelectionPage({
         ) : (
           <EmptyState
             isFiltered={isFiltered}
-            onClear={() => {
-              setSearchTerm("");
-              setShowPinnedOnly(false);
-            }}
+            onClear={() => setSearchTerm("")}
             onCreateNew={onCreateNew}
           />
         )}
@@ -519,7 +493,7 @@ function EmptyState({
         </p>
         <p className="text-muted-foreground text-xs">
           {isFiltered
-            ? "検索語を短くするか、ピン留めの絞り込みを外してください。"
+            ? "検索語を短くしてください。"
             : "クエリを保存すると、ここに表示されます。"}
         </p>
       </div>

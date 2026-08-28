@@ -16,7 +16,7 @@ import AppDetailDialog from "@/components/AppDetailDialog";
 import QuerySelectionPage from "./QuerySelectionPage";
 import QueryGeneratorPage from "./QueryGeneratorPage";
 import { KintoneApp, AppFilter, KintoneAuth } from "@/types/kintone";
-import { AlertCircle, HelpCircle, Pin, Search, X } from "lucide-react";
+import { AlertCircle, HelpCircle, Search, X } from "lucide-react";
 // ピン留めの保存先は従来のブックマーク（favorites）と同じキー。
 // 呼び名を変えただけで、利用者が付けた印はそのまま引き継ぐ
 import {
@@ -27,7 +27,6 @@ import {
 import { getRecentAppIds, recordAppOpened } from "@/utils/recent-apps";
 import { TOUR_APP_LIST, hasSeenTour, markTourSeen } from "@/utils/onboarding";
 import { getQueryCount } from "@/hooks/useQueryGenerator";
-import { cn } from "@/utils/tailwind";
 
 /**
  * アプリ一覧。
@@ -66,10 +65,7 @@ export default function AppManagementPage({
   const [editingQueryId, setEditingQueryId] = useState<string | undefined>(
     undefined,
   );
-  const [filter, setFilter] = useState<AppFilter>({
-    searchTerm: "",
-    showPinnedOnly: false,
-  });
+  const [filter, setFilter] = useState<AppFilter>({ searchTerm: "" });
   const [tourOpen, setTourOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<AppTableHandle>(null);
@@ -216,7 +212,6 @@ export default function AppManagementPage({
     const term = filter.searchTerm.trim().toLowerCase();
 
     return apps.filter((app) => {
-      if (filter.showPinnedOnly && !app.isPinned) return false;
       if (!term) return true;
 
       // 名前で当たらないときの受け皿として、ID・コード・説明・担当者も見る
@@ -233,7 +228,7 @@ export default function AppManagementPage({
     });
   }, [apps, filter]);
 
-  const isFiltered = !!filter.searchTerm.trim() || filter.showPinnedOnly;
+  const isFiltered = !!filter.searchTerm.trim();
 
   // Navigation handlers
   const handleAppSelect = (app: KintoneApp) => {
@@ -370,31 +365,6 @@ export default function AppManagementPage({
           )}
         </div>
 
-        <Button
-          data-tour="pin"
-          variant="ghost"
-          size="sm"
-          onClick={() =>
-            setFilter((prev) => ({
-              ...prev,
-              showPinnedOnly: !prev.showPinnedOnly,
-            }))
-          }
-          aria-pressed={filter.showPinnedOnly}
-          className={cn(
-            "h-8",
-            filter.showPinnedOnly && "bg-accent text-accent-foreground",
-          )}
-        >
-          <Pin
-            className={cn(
-              "h-3.5 w-3.5",
-              filter.showPinnedOnly && "fill-primary text-primary",
-            )}
-          />
-          ピン留め
-        </Button>
-
         <span className="text-muted-foreground ml-auto shrink-0 text-xs tabular-nums">
           {isFiltered ? (
             <>
@@ -451,7 +421,7 @@ export default function AppManagementPage({
         ) : (
           <EmptyState
             isFiltered={isFiltered}
-            onClear={() => setFilter({ searchTerm: "", showPinnedOnly: false })}
+            onClear={() => setFilter({ searchTerm: "" })}
           />
         )}
       </div>
@@ -538,7 +508,7 @@ function EmptyState({
         </p>
         <p className="text-muted-foreground text-xs">
           {isFiltered
-            ? "検索語を短くするか、ピン留めの絞り込みを外してください。"
+            ? "検索語を短くしてください。"
             : "kintoneでアプリを作成すると、ここに表示されます。"}
         </p>
       </div>
