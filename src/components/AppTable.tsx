@@ -5,11 +5,7 @@ import {
   TableHead,
   TableRow,
 } from "@/components/ui/table";
-import {
-  SectionRow,
-  SortOrder,
-  SortableHead,
-} from "@/components/table-parts";
+import { SectionRow, SortOrder, SortableHead } from "@/components/table-parts";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, Info, Pin } from "lucide-react";
 import { KintoneApp } from "@/types/kintone";
@@ -248,7 +244,7 @@ export default function AppTable({
                 onFocus={() => setActiveIndex(index)}
                 onClick={() => onSelectApp(app)}
                 onKeyDown={(event) => handleKeyDown(event, index)}
-                className="focus-visible:bg-accent/60 focus-visible:ring-primary group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
+                className="focus-visible:bg-accent focus-visible:ring-primary group cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
               >
                 <TableCell className="pr-1 pl-3 text-center">
                   <Button

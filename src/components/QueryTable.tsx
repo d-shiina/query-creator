@@ -229,7 +229,7 @@ export default function QueryTable({
                 onClick={() => onEditQuery(query)}
                 onKeyDown={(event) => handleKeyDown(event, index)}
                 data-state={isSelected ? "selected" : undefined}
-                className="focus-visible:bg-accent/60 focus-visible:ring-primary group data-[state=selected]:bg-accent/40 cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
+                className="focus-visible:bg-accent focus-visible:ring-primary group data-[state=selected]:bg-accent/40 cursor-pointer scroll-mt-10 outline-none focus-visible:ring-1 focus-visible:ring-inset"
               >
                 <TableCell
                   className="pl-3"
